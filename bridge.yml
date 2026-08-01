@@ -1,0 +1,21 @@
+version: 1
+name: properpcloud
+description: A folder-first, source-agnostic Android audio player and pCloud integration focused on sane browsing, queueing, audiobook progress, metadata inspection, and upstreamable adapters.
+default_track: local
+shell: true
+sync_dir:
+  - .
+
+agent:
+  notes: |
+    Project created by ws-bridge create_project. Keep bridge.yml commands runnable from the project root.
+  tasks: []
+  changelog:
+    - Initialized project scaffold.
+
+commands:
+  list:
+    description: List project files
+    category: custom
+    cwd: .
+    run: ["find", ".", "-maxdepth", "2", "-type", "f"]
