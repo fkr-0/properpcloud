@@ -1,21 +1,63 @@
 version: 1
 name: properpcloud
-description: A folder-first, source-agnostic Android audio player and pCloud integration focused on sane browsing, queueing, audiobook progress, metadata inspection, and upstreamable adapters.
-default_track: local
+description: Folder-first Android audio playback for pCloud and extensible file-oriented sources.
+defaultTrack: local
 shell: true
-sync_dir:
+syncDir:
   - .
 
 agent:
   notes: |
-    Project created by ws-bridge create_project. Keep bridge.yml commands runnable from the project root.
-  tasks: []
+    Keep provider-specific code behind core-model interfaces. Never commit OAuth tokens,
+    pCloud passwords, app secrets, local.properties, APKs, or downloaded media.
+  tasks:
+    - Wire pCloud OAuth AuthorizationActivity and encrypted token storage.
+    - Implement the folder browser and folder-to-queue interaction.
+    - Persist playback progress and source filters with Room/DataStore.
   changelog:
-    - Initialized project scaffold.
+    - Bootstrapped a multi-module Android project with Media3 and pCloud SDK adapters.
+    - Added normative product, architecture, UX, testing, build, DoD, and Linux-client specifications.
+    - Added a checksum-verified Docker/Gradle build and passed the complete CI gate.
 
 commands:
+  image:
+    description: Build the checksum-verified Android toolchain image
+    category: build
+    cwd: .
+    timeoutMs: 1200000
+    run: ["make", "image"]
+  doctor:
+    description: Verify Docker image and committed Gradle Wrapper
+    category: test
+    cwd: .
+    timeoutMs: 300000
+    run: ["make", "doctor"]
+  test:
+    description: Run JVM unit and contract tests in Docker
+    category: test
+    cwd: .
+    timeoutMs: 900000
+    run: ["make", "test"]
+  build:
+    description: Build the debug APK in Docker
+    category: build
+    cwd: .
+    timeoutMs: 900000
+    run: ["make", "build"]
+  lint:
+    description: Run Android lint in Docker
+    category: lint
+    cwd: .
+    timeoutMs: 900000
+    run: ["make", "lint"]
+  ci:
+    description: Run tests, lint, and debug assembly in Docker
+    category: test
+    cwd: .
+    timeoutMs: 1200000
+    run: ["make", "ci"]
   list:
     description: List project files
     category: custom
     cwd: .
-    run: ["find", ".", "-maxdepth", "2", "-type", "f"]
+    run: ["find", ".", "-maxdepth", "3", "-type", "f"]

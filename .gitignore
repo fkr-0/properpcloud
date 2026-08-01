@@ -7,3 +7,13 @@
 *.tmp
 .vscode/
 .idea/
+.gradle/
+.cache/
+build/
+**/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
