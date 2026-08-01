@@ -1,0 +1,210 @@
+build:
+  goals:
+    - Same commands on developer host and CI.
+    - Android SDK and Java toolchain isolated from host.
+    - Reviewed Gradle Wrapper is the only Gradle launcher.
+    - Dependency and SDK downloads are cached without embedding credentials.
+    - Failures are never hidden to make an image build appear successful.
+    - One canonical Semantic Version drives source, Android packaging, tags, and releases.
+  versioning:
+    standard: Semantic Versioning 2.0.0
+    canonical_file: VERSION
+    tag_pattern: vMAJOR.MINOR.PATCH
+    changelog: CHANGELOG.md
+    Android_version_code: major * 1000000 + minor * 1000 + patch
+    immutable_release_rule: Never move a published tag; release a new patch version.
+  toolchain:
+    java:
+      distribution: Eclipse Temurin
+      major: 17
+      container_base: eclipse-temurin:17
+      pinned_digest: sha256:b04a8c5d46e210873ffd1af6ad5f4d62c69ed3a6736993556eae60bba1373a23
+      update_rule: Digest updates require a reviewed image build and complete verification run.
+    gradle:
+      version: 9.6.1
+      launcher: committed wrapper
+      distribution: bin
+      checksum: mandatory in gradle-wrapper.properties
+    android:
+      command_line_tools: 15859902
+      command_line_tools_sha256: 4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583
+      compile_sdk: 36
+      target_sdk: 36
+      build_tools: 36.0.0
+      unnecessary_for_current_scope: [NDK, CMake, emulator inside build image]
+    plugins:
+      Android_Gradle_Plugin: 9.3.1
+      Kotlin: AGP built-in Kotlin
+    libraries:
+      Media3: 1.10.1
+      pCloud_SDK: 1.11.0
+      coroutines: 1.11.0
+      JUnit4: 4.13.2
+  container:
+    image_name: properpcloud/android-build:2026.08
+    source_mount: /workspace
+    gradle_cache_mount: /gradle-cache
+    user_model:
+      - Run with host UID and GID.
+      - Use writable temporary HOME.
+      - Never create root-owned source artifacts.
+    entrypoint:
+      - Require gradlew, wrapper JAR, and wrapper properties.
+      - Never generate wrapper or edit source.
+      - Execute with no daemon, plain console, and stacktrace.
+    network:
+      build_image: allowed for package and SDK installation
+      normal_build: allowed only for declared dependency resolution
+      offline_verification: supported after dependency prefetch
+    cache:
+      local: project .cache/gradle ignored by Git
+      toolchain_archive: project .cache/toolchain with resumable segmented download and SHA-256 gate
+      CI: content-addressed cache keyed by wrapper and Gradle scripts
+      prohibited:
+        - mount complete host home
+        - include credential stores
+        - commit cache directories
+  commands:
+    make_image:
+      command: make image
+      result: resumably fetched, checksum-verified Android tools and build image
+    make_doctor:
+      command: make doctor
+      checks: [Docker available, image available, wrapper complete, Gradle reports expected version]
+    make_test:
+      command: make test
+      result: all JVM unit and contract tests
+    make_spec:
+      command: make spec
+      result: duplicate-key-safe YAML parsing and requirement/use-case trace validation
+    make_release_check:
+      command: make release-check
+      result: version, changelog, license, and Android packaging agreement
+    make_lint:
+      command: make lint
+      result: Android lint reports
+    make_build:
+      command: make build
+      result: debug APK
+    make_ci:
+      command: make ci
+      result: tests, lint, and debug APK with configuration and build caches
+    make_install:
+      command: make install
+      boundary: Build in container, install through host adb.
+  gradle_configuration:
+    version_catalog: gradle/libs.versions.toml
+    enabled:
+      - parallel execution
+      - local build cache
+      - configuration cache with warnings during bootstrap
+      - non-transitive R classes
+    migration_to_strict:
+      condition: all tasks used by CI are configuration-cache compatible
+      action: change configuration-cache problems from warn to fail
+    dependency_controls:
+      required_future_steps:
+        - Generate dependency verification metadata with SHA-256.
+        - Commit dependency locks for resolvable production configurations where practical.
+        - Run version reports in scheduled maintenance, not silently in normal builds.
+        - Review licenses before adding dependencies.
+  CI:
+    provider: GitHub Actions
+    workflow: .github/workflows/android.yml
+    permissions: read-only repository contents
+    stages:
+      - checkout
+      - build or restore Docker image through BuildKit cache
+      - restore project Gradle cache
+      - make ci
+      - upload APK and reports even when verification fails
+    protected_live_tests:
+      separate_job: true
+      conditions:
+        - trusted branch or manual approval
+        - dedicated sandbox credentials
+        - never run for untrusted forks
+      cleanup: mandatory finally step
+    artifact_retention:
+      - APK
+      - test reports
+      - lint report
+      - dependency and build evidence
+      - SHA-256 manifest
+  supply_chain:
+    mandatory:
+      - Verify Android command-line-tools archive checksum.
+      - Verify Gradle distribution checksum.
+      - Use TLS with failure-on-error and bounded retries for downloads.
+      - Keep GitHub Actions pinned to reviewed major or commit according to repository policy.
+      - Generate SBOM before public release.
+      - Scan container and dependencies before release.
+    forbidden:
+      - curl piped directly into shell
+      - sdkmanager failure masked with logical success
+      - floating Android SDK packages in release image
+      - auto-generated wrapper during build
+      - secrets in Docker build arguments or layers
+  reproducibility:
+    target:
+      - Source commit, toolchain image digest, wrapper checksum, dependency verification, and build command identify a build.
+      - Two clean release builds should produce equivalent unsigned artifacts after normalizing known nondeterministic metadata.
+    evidence:
+      fields:
+        - git_commit
+        - dirty_state
+        - container_digest
+        - java_version
+        - gradle_version
+        - AGP_version
+        - Android_SDK_packages
+        - dependency_verification_hash
+        - artifact_SHA256
+  overlay_cam_review_mapping:
+    retained_strengths:
+      code_on_host_build_in_container:
+        adaptation: source bind mount and containerized SDK
+      make_front_door:
+        adaptation: doctor, test, lint, build, shell, install, and CI targets
+      host_adb_boundary:
+        adaptation: container creates APK; host owns device access
+      Docker_CI_parity:
+        adaptation: CI builds same image and invokes make ci
+      developer_shell:
+        adaptation: explicit shell target
+    corrected_weaknesses:
+      unverified_downloads:
+        correction: command-line-tools SHA-256 verification
+      hidden_sdk_failure:
+        correction: no failure masking
+      unnecessary_native_toolchain:
+        correction: omit NDK and CMake until a module requires them
+      dual_Gradle_installation:
+        correction: wrapper only; no separately installed Gradle distribution in image
+      wrapper_autogeneration:
+        correction: missing wrapper is a hard failure
+      global_host_cache_mount:
+        correction: project-local isolated cache and host UID/GID
+      version_drift:
+        correction: version catalog and build arguments provide one reviewed location
+      legacy_compose_schema:
+        correction: Compose Specification without obsolete version key
+      weak_CI_image_cache:
+        correction: Buildx and GitHub Actions BuildKit cache
+  integration_steps:
+    bootstrap:
+      - Generate reviewed Gradle 9.6.1 wrapper and add distribution checksum.
+      - Build image with make image.
+      - Run make doctor.
+      - Resolve dependencies and commit verification metadata.
+      - Run make ci.
+    development:
+      - Edit on host.
+      - Run narrow tests through Make target or docker-run wrapper.
+      - Use make shell only for diagnosis.
+      - Use host adb for install and logcat.
+    release:
+      - Use clean checkout and digest-pinned image.
+      - Run all release gates and protected provider tests.
+      - Build unsigned or signing-isolated artifact.
+      - Record evidence and artifact hash.

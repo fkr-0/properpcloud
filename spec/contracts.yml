@@ -1,0 +1,349 @@
+contracts:
+  conventions:
+    identifiers:
+      source_id: opaque stable identifier for configured source instance
+      node_id: opaque stable identifier interpreted only by its source adapter
+      media_id: encoded source_id plus node_id, versioned and reversible without display strings
+      operation_id: generated correlation ID without credential data
+    time:
+      representation: epoch milliseconds in storage, Instant at JVM boundaries
+      clock: injected for domain and application tests
+    result:
+      shape:
+        success: typed value plus freshness and warnings
+        partial: typed value plus structured omissions
+        failure: normalized AppError plus retry metadata
+      cancellation: distinct from failure and never commits replacement state
+  domain_records:
+    SourceDescriptor:
+      fields:
+        id: SourceId
+        kind: pcloud | webdav | local | saf | other
+        display_name: String
+        capabilities: Set<SourceCapability>
+        account_reference: optional non-secret account ID
+    MediaNode:
+      variants:
+        folder:
+          required: [source_id, node_id, name]
+          optional: [parent_id, modified_at, child_count_hint, permissions]
+        audio_track:
+          required: [source_id, node_id, parent_id, filename]
+          optional:
+            - content_type
+            - size_bytes
+            - revision
+            - duration_ms
+            - embedded_tags
+            - cache_state
+            - progress_summary
+      invariants:
+        - Audio track parent_id is mandatory.
+        - Display path is derived cache, not identity.
+        - Names may be untrusted Unicode and are never interpreted as local paths.
+    StreamHandle:
+      fields:
+        uri: ephemeral HTTPS URI or verified local content URI
+        expires_at: optional Instant
+        content_type: optional String
+        expected_length: optional Long
+        expected_revision: optional Revision
+        headers: minimal redacted-safe request headers
+      persistence: forbidden except transient in-memory player state
+    QueueSnapshot:
+      fields:
+        id: UUID
+        generation: monotonically increasing Long
+        created_at: Instant
+        source_origin: optional FolderOrigin
+        ordering: SortPolicy
+        grouping: GroupPolicy
+        duplicate_policy: DuplicatePolicy
+        items: ordered list of QueueItem
+        omissions: list of QueueOmission
+      invariants:
+        - Item order is complete and deterministic before commit.
+        - Every QueueItem contains stable source, node, and parent identity.
+        - A replacement snapshot with zero items requires explicit user confirmation.
+    ProgressRecord:
+      key: [source_id, node_id]
+      fields:
+        content_revision: optional Revision
+        position_ms: non-negative Long
+        duration_ms: optional positive Long
+        playback_speed: positive Decimal
+        state: new | in_progress | completed | explicitly_reset
+        observed_at: Instant
+        completed_at: optional Instant
+      invariants:
+        - position_ms is clamped to known duration.
+        - completion state follows policy or explicit user action.
+    SavedRoot:
+      fields:
+        id: UUID
+        source_id: SourceId
+        folder_id: NodeId
+        display_name: non-empty String
+        recursive: Boolean
+        filter_policy: FilterPolicy
+        sort_policy: SortPolicy
+        group_policy: GroupPolicy
+        resume_policy: ResumePolicy
+        cache_policy: CachePolicy
+        order_index: Int
+        visible: Boolean
+      invariants:
+        - The root refers to a folder capability at creation time.
+        - Rules are serializable and versioned.
+    MetadataValue:
+      fields:
+        field: canonical metadata field
+        raw_value: optional String or binary descriptor
+        normalized_value: optional typed value
+        source: provider | embedded | filename | path | external | user
+        confidence: decimal from 0 to 1
+        warnings: list of parser or conflict codes
+    RepairPlan:
+      fields:
+        id: UUID
+        created_at: Instant
+        items:
+          - source_id
+          - node_id
+          - expected_revision
+          - approved_field_changes
+          - staging_requirements
+        state: draft | approved | applying | verified | partially_verified | failed | conflicted
+      invariants:
+        - Approved changes are immutable; edits create a new plan revision.
+        - Applying requires revalidation against expected remote revision.
+  ports:
+    IF-AUDIO-SOURCE:
+      purpose: Minimum browse and stream capability.
+      methods:
+        descriptor:
+          input: none
+          output: SourceDescriptor
+        root:
+          input: none
+          output: AudioFolder
+        list:
+          input:
+            folder_id: NodeId
+            freshness: cache_allowed | fresh_required
+          output: FolderListing
+          errors: [auth, not_found, permission, connectivity, provider]
+        resolve_stream:
+          input:
+            track_id: NodeId
+            purpose: playback | inspection | download
+          output: StreamHandle
+          errors: [auth, not_found, permission, connectivity, provider]
+        inspect_provider_metadata:
+          input: NodeId
+          output: ProviderInspection
+      guarantees:
+        - Stable IDs remain opaque outside adapter.
+        - Direct links are not cached beyond safe expiry.
+        - SDK types do not cross the interface.
+    IF-SEARCHABLE-SOURCE:
+      optional: true
+      methods:
+        search:
+          input: query, optional root, filters, page cursor
+          output: SearchPage with path context
+    IF-CHANGE-FEED-SOURCE:
+      optional: true
+      methods:
+        changes:
+          input: optional cursor, limit, wait policy
+          output: ordered changes plus next cursor and reset flag
+      guarantees:
+        - Cursor is persisted only after transactional application.
+    IF-MUTABLE-SOURCE:
+      optional: true
+      methods:
+        replace_file:
+          input:
+            node_id: NodeId
+            expected_revision: Revision
+            staged_content: ContentSource
+          output: new revision and provider metadata
+          errors: [conflict, permission, storage, connectivity, provider]
+        move:
+          input: node ID, destination folder ID, expected revision
+          output: updated node identity and parent
+        rename:
+          input: node ID, new filename, expected revision
+          output: updated metadata
+    IF-CREDENTIAL-VAULT:
+      methods:
+        put:
+          input: CredentialKey and secret bytes
+          output: opaque CredentialHandle
+        read:
+          input: CredentialHandle
+          output: secret bytes in scoped memory
+        delete:
+          input: CredentialHandle
+          output: deletion result
+      guarantees:
+        - Secret bytes are never serialized by application records.
+        - Read buffers are scoped and cleared when practical.
+        - Android implementation is backed by Keystore-protected material.
+    IF-QUEUE-REPOSITORY:
+      methods:
+        observe: Flow<QueueSnapshot>
+        replace_atomically: expected generation plus new snapshot
+        mutate_atomically: typed queue command plus expected generation
+      concurrency:
+        - Reject stale generation rather than silently overwrite concurrent user action.
+    IF-PROGRESS-REPOSITORY:
+      methods:
+        get: stable media identity -> optional ProgressRecord
+        observe_folder: folder identity -> progress projection
+        upsert: ProgressRecord
+        reset: identity plus explicit reason
+      write_policy:
+        - Coalesce frequent samples.
+        - Force flush on lifecycle boundaries.
+    IF-OFFLINE-CACHE:
+      methods:
+        status: stable media identity -> CacheEntry
+        open_verified: identity and expected revision -> optional local content handle
+        schedule_pin: PinPlan -> durable job ID
+        evict: cache entry ID -> local-only deletion result
+        reconcile: provider snapshots plus local files -> reconciliation report
+      guarantees:
+        - Eviction cannot call source deletion.
+        - Verified state requires completed hash or revision validation.
+    IF-PLAYBACK-GATEWAY:
+      methods:
+        submit_queue: QueueSnapshot and start index
+        play: none
+        pause: none
+        seek: position
+        skip: queue index delta or stable item ID
+        set_speed: positive speed
+        observe: Flow<PlaybackState>
+      guarantees:
+        - PlaybackState always contains stable media identity when an item is selected.
+        - Ephemeral URI is not exposed to presentation.
+  application_commands:
+    BrowseFolder:
+      input: source ID, folder ID, freshness policy
+      output: BrowserSnapshot
+      side_effects: optional snapshot refresh
+    BuildFolderQueue:
+      input:
+        source_id: SourceId
+        folder_id: NodeId
+        recursion: direct | subtree
+        operation: replace | append | play_next | shuffle_replace | shuffle_append
+        selection: AudioSelectionPolicy
+        sorting: SortPolicy
+        grouping: GroupPolicy
+        duplicates: DuplicatePolicy
+        partial_policy: reject | accept_with_report | ask
+      output: QueueBuildResult
+      commit_rule: Queue repository mutation occurs only after a complete plan or explicit partial acceptance.
+    ResolvePlayableItem:
+      input: queue item and optional cached preference
+      output: verified local handle or fresh StreamHandle
+    SavePlaybackProgress:
+      input: stable media ID, revision, position, duration, speed, trigger, observation time
+      output: stored record and completion transition
+    InspectMetadata:
+      input: stable media ID and depth basic | embedded | complete
+      output: layered inspection with warnings and provenance
+    ApplyMetadataRepair:
+      input: approved RepairPlan ID
+      output: per-item verified, failed, conflicted, or indeterminate results
+      commit_rule: No provider write without expected revision check.
+  events:
+    EVT-ACCOUNT-CONNECTED:
+      payload: account ID, source ID, region, timestamp
+      excludes: token and email unless explicitly allowed locally
+    EVT-FOLDER-SNAPSHOT-UPDATED:
+      payload: source ID, folder ID, generation, freshness, counts
+    EVT-QUEUE-COMMITTED:
+      payload: queue ID, generation, operation type, item count, omission count
+    EVT-PLAYBACK-SELECTED:
+      payload: stable media ID, queue generation, index
+    EVT-PROGRESS-CHECKPOINTED:
+      payload: stable media ID, position bucket, trigger
+    EVT-CACHE-VERIFIED:
+      payload: stable media ID, revision, bytes
+    EVT-REPAIR-VERIFIED:
+      payload: plan ID, stable media ID, old revision, new revision
+    EVT-OPERATION-FAILED:
+      payload: operation ID, category, normalized code, retryable, attempt
+      excludes: raw provider body unless redacted and user-exported
+  persistence:
+    DB-ACCOUNT:
+      key: account_id
+      columns:
+        - source_id
+        - provider_kind
+        - display_name
+        - regional_host
+        - credential_handle
+        - connected_at
+        - last_success_at
+      forbidden_columns: [token, password, signed_url]
+    DB-FOLDER-SNAPSHOT:
+      key: source_id, folder_id, generation
+      columns:
+        - fetched_at
+        - freshness
+        - children serialized or normalized relation
+        - provider_cursor if applicable
+      class: rebuildable
+    DB-QUEUE:
+      key: singleton profile or queue_id
+      columns: [generation, created_at, current_index, ordering_json, grouping_json, duplicate_policy]
+      class: user_state
+    DB-QUEUE-ITEM:
+      key: queue_id, ordinal
+      columns: [source_id, node_id, parent_id, filename, revision, metadata_projection]
+      class: user_state
+    DB-PROGRESS:
+      key: source_id, node_id
+      columns: [revision, position_ms, duration_ms, speed, state, observed_at, completed_at]
+      class: user_state
+    DB-SAVED-ROOT:
+      key: saved_root_id
+      columns: [source_id, folder_id, display_name, policy_json, order_index, visible]
+      class: user_state
+    DB-CACHE-ENTRY:
+      key: source_id, node_id, revision
+      columns: [local_locator, size_bytes, expected_hash, verified_at, last_access_at, pin_state]
+      class: verified_media_cache
+    DB-REPAIR-AUDIT:
+      key: audit_id
+      columns:
+        - plan_id
+        - source_id
+        - node_id
+        - expected_revision
+        - resulting_revision
+        - approved_diff
+        - state
+        - started_at
+        - completed_at
+        - recovery_reference
+      class: user_state
+  normalized_errors:
+    AppError:
+      fields:
+        category: authentication | connectivity | provider | media | storage | invariant | cancelled
+        code: stable application code
+        retryable: Boolean
+        retry_after: optional Duration
+        user_message_key: localized key
+        diagnostic_id: opaque correlation ID
+        cause_summary: redacted development description
+      mapping_rules:
+        - HTTP and SDK codes map in provider adapter.
+        - UI never branches on raw exception class or message.
+        - Retryability is explicit and bounded by command policy.

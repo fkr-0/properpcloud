@@ -1,0 +1,14 @@
+.git
+.github
+.gradle
+.cache/*
+!.cache/toolchain/
+!.cache/toolchain/commandlinetools-linux-15859902_latest.zip
+**/build
+local.properties
+*.apk
+*.aab
+captures
+.idea
+.vscode
+*.iml

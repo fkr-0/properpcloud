@@ -1,0 +1,22 @@
+[versions]
+agp = "9.3.1"
+compile-sdk = "36"
+min-sdk = "26"
+target-sdk = "36"
+build-tools = "36.0.0"
+media3 = "1.10.1"
+pcloud = "1.11.0"
+coroutines = "1.11.0"
+junit4 = "4.13.2"
+
+[libraries]
+media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
+media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
+pcloud-android = { module = "com.pcloud.sdk:android", version.ref = "pcloud" }
+pcloud-java-core = { module = "com.pcloud.sdk:java-core", version.ref = "pcloud" }
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+junit4 = { module = "junit:junit", version.ref = "junit4" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }

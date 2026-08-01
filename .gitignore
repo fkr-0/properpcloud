@@ -9,6 +9,7 @@
 .idea/
 .gradle/
 .cache/
+.ws-bridge/
 build/
 **/build/
 local.properties

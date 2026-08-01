@@ -1,0 +1,2 @@
+properpcloud original code is licensed under the MIT License.
+See the project LICENSE file and the in-app About and licenses screen.

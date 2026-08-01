@@ -1,0 +1,244 @@
+use_cases:
+  conventions:
+    actors:
+      user: authenticated listener or library maintainer
+      app: properpcloud application
+      source: pCloud or another AudioSource adapter
+      platform: Android or Linux operating-system services
+    outcome_types:
+      success: requested stable state is committed and visible
+      partial: useful subset completed and omissions are inspectable
+      failure: no unsafe or ambiguous state change is committed
+  cases:
+    UC-AUTH-LOGIN:
+      traces: [REQ-AUTH]
+      title: Connect a pCloud account
+      preconditions:
+        - No valid session exists for the account slot.
+        - Network is available.
+      trigger: User selects Connect pCloud.
+      flow:
+        - app: Create nonce-bound OAuth request and trusted redirect.
+        - app: Open provider authorization surface.
+        - user: Authenticate and approve at pCloud.
+        - source: Return token and regional API location.
+        - app: Validate nonce, account identity, and region.
+        - app: Store token in platform vault and non-secret account metadata separately.
+        - app: Build source client and load root folder.
+        - app: Navigate to browser with account identity visible.
+      alternatives:
+        user_cancel:
+          result: Return to disconnected state without alarming error.
+        provider_denial:
+          result: Show actionable error and retry.
+        callback_mismatch:
+          result: Discard response and emit redacted security diagnostic.
+        root_load_failure:
+          result: Keep authenticated state, show reconnect-versus-retry distinction.
+      postconditions:
+        success:
+          - Region-bound client can list root.
+          - No account password is stored.
+        failure:
+          - No half-created account or orphaned token remains.
+      tests: [TEST-AUTH-LOGIN, TEST-AUTH-CANCEL, TEST-AUTH-CALLBACK]
+    UC-BROWSE-FOLDER:
+      traces: [REQ-BROWSE, REQ-RESILIENCE]
+      title: Navigate folder hierarchy
+      trigger: User opens a saved root, breadcrumb, or folder row.
+      flow:
+        - app: Render cached snapshot immediately when present.
+        - app: Request direct children by stable folder ID.
+        - source: Return folders and files with stable metadata.
+        - app: Classify playable files without requiring valid tags.
+        - app: Merge a fresh snapshot transactionally.
+        - app: Preserve scroll anchor and selection.
+      offline:
+        - Render last successful snapshot with stale timestamp.
+        - Mark verified cached audio playable.
+        - Mark uncached remote audio unavailable offline.
+      failure:
+        refresh_with_cache: Retain content and show non-blocking retry.
+        no_cache: Show full error with retry and account diagnostics.
+        permission_denied: Preserve breadcrumb context and explain access loss.
+      tests: [TEST-BROWSE-FRESH, TEST-BROWSE-STALE, TEST-BROWSE-LARGE]
+    UC-QUEUE-FOLDER:
+      traces: [REQ-QUEUE, REQ-SORTING]
+      title: Build queue from direct folder children
+      input:
+        folder_id: stable source node ID
+        operation: replace | append | next | shuffle
+        recursion: false
+        order_policy: explicit current policy
+        duplicate_policy: preserve | node | hash
+      flow:
+        - app: Acquire direct folder snapshot.
+        - app: Select playable children.
+        - app: Enrich from known tags without blocking on absent metadata.
+        - app: Apply deterministic sort and tie-break policy.
+        - app: Create immutable queue snapshot with provenance.
+        - app: Persist queue atomically.
+        - app: Resolve first selected item just in time when play intent requires it.
+      partial:
+        - Omit unsupported or inaccessible files.
+        - Commit valid files and show omission count and reasons.
+      empty:
+        - Preserve existing queue.
+        - Explain no direct playable children and offer subtree action.
+      tests: [TEST-QUEUE-DIRECT, TEST-QUEUE-EMPTY, TEST-QUEUE-OMISSIONS]
+    UC-QUEUE-SUBTREE:
+      traces: [REQ-QUEUE, REQ-SORTING, REQ-RESILIENCE]
+      title: Build queue from recursive subtree
+      trigger: User chooses play or append subtree.
+      safeguards:
+        - Preview known or estimated size when large.
+        - Support cancellation without queue mutation.
+        - Bound provider request concurrency.
+      flow:
+        - app: Traverse with provider-native recursion or bounded breadth-first listing.
+        - app: Emit discovery progress by folders, files, and bytes when known.
+        - app: Collect stable candidates and omission report.
+        - app: Group by relative folder path when configured.
+        - app: Apply deterministic ordering.
+        - app: Commit atomically after completion or explicit partial acceptance.
+      failure_policy:
+        authentication_failure: Abort and preserve current queue.
+        root_not_found: Abort and preserve current queue.
+        inaccessible_child: Record omission and continue.
+        transient_network: Offer retry, accept partial, or cancel.
+      tests: [TEST-QUEUE-RECURSIVE, TEST-QUEUE-CANCEL, TEST-QUEUE-PARTIAL]
+    UC-PLAYER-OPEN-FOLDER:
+      traces: [REQ-NAVIGATION]
+      title: Open containing folder from playback
+      trigger: User taps path or folder action in now playing.
+      flow:
+        - app: Resolve parent from queue item identity, never display-path parsing.
+        - app: Open browser at parent folder.
+        - app: Scroll to and highlight current item.
+        - app: Keep playback uninterrupted.
+      moved_or_deleted:
+        - Refresh known parent and look up stable item identity when capability exists.
+        - Navigate to new parent when discovered and explain move.
+        - Otherwise show removed-item state while retaining queue history.
+      tests: [TEST-NAV-CONTAINING-FOLDER, TEST-NAV-MOVED]
+    UC-PLAY-REMOTE:
+      traces: [REQ-PLAYBACK, REQ-RESILIENCE]
+      title: Start or resume remote audio
+      trigger: Queue selects an uncached item.
+      flow:
+        - app: Load stable identity and desired resume position.
+        - app: Resolve fresh stream capability.
+        - app: Construct platform media item with stable media ID and ephemeral URI.
+        - platform: Prepare, expose timeline, seek, and play according to intent.
+        - app: Publish media metadata and controls.
+      recovery:
+        expired_or_forbidden_link:
+          maximum_refreshes: 2
+          sequence:
+            - discard capability URL
+            - resolve new capability
+            - resume from last confirmed position
+        transient_network:
+          result: Bounded backoff with visible retry and cancel.
+        unsupported_decoder:
+          result: Fail item, preserve queue, offer inspect, download, external-open, or skip.
+      tests: [TEST-PLAY-REMOTE, TEST-PLAY-LINK-EXPIRY, TEST-PLAY-RANGE]
+    UC-SAVE-PROGRESS:
+      traces: [REQ-PROGRESS]
+      title: Persist and restore long-form position
+      triggers:
+        - periodic_checkpoint
+        - pause
+        - completed_seek
+        - item_transition
+        - app_background
+        - service_teardown
+      save_flow:
+        - app: Read stable media ID, current position, duration, speed, and content revision.
+        - app: Coalesce writes while preserving latest observation.
+        - app: Apply completion policy.
+        - app: Commit progress transactionally.
+      restore_flow:
+        - app: Compare stored and current content revision.
+        - app: Seek to stored position minus smart rewind when compatible.
+        - app: Ask restart, retain, or discard when content materially changed.
+      tests: [TEST-PROGRESS-CHECKPOINT, TEST-PROGRESS-PROCESS-DEATH, TEST-PROGRESS-REVISION]
+    UC-CREATE-SAVED-ROOT:
+      traces: [REQ-SAVED-ROOTS]
+      title: Create a custom tab from folder
+      trigger: User chooses Add as tab.
+      flow:
+        - app: Pre-fill name and root identity.
+        - user: Configure recursion, filters, sort, grouping, resume, and cache policy.
+        - app: Validate policy and preview known matching count.
+        - app: Persist saved-root definition.
+        - app: Add tab without mutating source files.
+      tests: [TEST-ROOT-CREATE, TEST-ROOT-POLICY, TEST-ROOT-RENAME]
+    UC-PIN-OFFLINE:
+      traces: [REQ-OFFLINE]
+      title: Make folder available offline
+      trigger: User chooses Make available offline.
+      flow:
+        - app: Enumerate direct or recursive target.
+        - app: Estimate total bytes and compare quota.
+        - user: Confirm target and network constraints.
+        - app: Schedule resumable downloads by stable identity and expected hash.
+        - app: Verify each completed file and publish pin state.
+      failures:
+        insufficient_storage:
+          - Pause before quota breach.
+          - Offer cache management without cloud deletion semantics.
+        changed_remote_file:
+          - Discard mismatched partial data.
+          - Restart against new revision according to confirmation policy.
+        lost_storage_permission:
+          - Pause affected jobs and request access restoration.
+      tests: [TEST-CACHE-PIN, TEST-CACHE-HASH, TEST-CACHE-EVICT]
+    UC-INSPECT-METADATA:
+      traces: [REQ-INSPECTION]
+      title: Inspect file without mutation
+      trigger: User selects Inspect.
+      flow:
+        - app: Load provider metadata and local cache state.
+        - app: Read embedded tags from verified cache or bounded remote-read strategy.
+        - app: Compute normalized and effective values with provenance.
+        - app: Render raw, normalized, effective, and warning sections.
+      constraints:
+        - No local or remote media bytes are changed.
+        - Capability URLs and credentials are not displayed.
+      tests: [TEST-INSPECT-VALID, TEST-INSPECT-BROKEN-TAGS, TEST-INSPECT-REDACTION]
+    UC-REPAIR-METADATA:
+      traces: [REQ-METADATA-PROPOSAL, REQ-METADATA-WRITE]
+      title: Review and apply metadata corrections
+      preconditions:
+        - Source exposes mutation and revision capabilities.
+        - Account has modify permission.
+      flow:
+        - app: Scan selected files and capture original hashes or revisions.
+        - app: Generate candidates from path, filename, tags, and enabled providers.
+        - app: Show field proposals with confidence and provenance.
+        - user: Approve, reject, or edit fields.
+        - app: Show final byte-affecting plan and resource impact.
+        - user: Confirm write.
+        - app: Stage, edit, validate, upload with expected revision, and verify.
+        - app: Record audit and recovery information.
+      conflict:
+        - Abort affected file before overwrite.
+        - Show original, proposed, and current values.
+        - Offer rebase, rescan, or skip.
+      tests: [TEST-MUTATION-DRY-RUN, TEST-MUTATION-CONFLICT, TEST-MUTATION-VERIFY]
+    UC-LOGOUT:
+      traces: [REQ-AUTH]
+      title: Disconnect account safely
+      trigger: User confirms Disconnect.
+      flow:
+        - app: Stop provider requests and block new stream resolution.
+        - app: Invalidate local credential handle immediately.
+        - app: Attempt provider-side revocation when available.
+        - user: Choose whether non-secret snapshots and offline files are retained.
+        - app: Remove account from active UI and media hierarchy.
+      postconditions:
+        - No future request can use removed credentials.
+        - Existing remote-only playback stops.
+        - Retained verified offline files follow explicit user choice.
+      tests: [TEST-AUTH-LOGOUT, TEST-LOGOUT-PLAYBACK, TEST-LOGOUT-CACHE]

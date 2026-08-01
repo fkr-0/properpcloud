@@ -1,0 +1,392 @@
+architecture:
+  style:
+    primary: hexagonal clean architecture
+    presentation: unidirectional data flow
+    integrations: capability-oriented ports and adapters
+    persistence: local-first cache with provider-authoritative remote file state
+    backend: no mandatory custom server
+  dependency_rule:
+    allowed:
+      - presentation -> application
+      - playback adapters -> application and domain
+      - persistence adapters -> application ports and domain records
+      - provider adapters -> application ports and domain records
+      - application -> domain
+    forbidden:
+      - domain -> Android, Compose, Media3, Room, SQL, pCloud SDK, HTTP, filesystem, mpv
+      - application -> UI toolkit, provider SDK, SQL implementation, platform secret store
+      - provider adapter -> presentation
+      - persistence adapter -> presentation
+      - Android app types -> shared Linux modules
+  layers:
+    domain:
+      purpose: Provider-neutral meaning, invariants, value objects, policies, and pure algorithms.
+      current_module: core-model
+      target_modules: [core-domain, core-queue, core-metadata]
+      owns:
+        identity:
+          - SourceId
+          - NodeId
+          - parent-child relationships
+          - content revision identity
+        media:
+          - AudioFolder
+          - AudioTrack
+          - raw and normalized metadata values
+          - provenance and confidence
+        policies:
+          - deterministic sorting and grouping
+          - duplicate handling
+          - progress and completion
+          - saved-root matching
+          - cache retention
+        snapshots:
+          - queue snapshot
+          - folder snapshot description
+          - repair plan
+      restrictions:
+        - Pure Kotlin compatible with standard JVM.
+        - Clock, randomness, and locale-sensitive comparison are injected.
+        - Pure algorithms have no suspend or framework dependency.
+      verification:
+        - property tests for natural sorting and stable tie breaking
+        - decision-table tests for resume and completion
+        - serialization compatibility tests
+    application:
+      purpose: Orchestrate use cases, transactions, retries, cancellation, and policy across ports.
+      target_module: core-application
+      commands:
+        - BrowseFolder
+        - RefreshFolder
+        - BuildFolderQueue
+        - ResolvePlayableItem
+        - SavePlaybackProgress
+        - CreateSavedRoot
+        - PinOfflineTree
+        - InspectMetadata
+        - PlanMetadataRepair
+        - ApplyMetadataRepair
+        - ApplySourceChanges
+      ports:
+        source:
+          - AudioSource
+          - SearchableSource
+          - ChangeFeedSource
+          - MutableSource
+          - ThumbnailSource
+        persistence:
+          - QueueRepository
+          - ProgressRepository
+          - FolderSnapshotRepository
+          - SavedRootRepository
+          - BookmarkRepository
+          - RepairAuditRepository
+        platform:
+          - CredentialVault
+          - OfflineCache
+          - MetadataReader
+          - MetadataWriter
+          - Connectivity
+          - Clock
+          - DiagnosticSink
+      transactions:
+        - Queue replacement is atomic.
+        - Folder refresh applies one consistent generation.
+        - Progress and completion update together.
+        - Pin intent and cache accounting remain consistent after process death.
+        - Mutation audit ends as verified, failed, conflicted, or indeterminate; never silently incomplete.
+      concurrency:
+        - Structured concurrency scoped per screen, service, or durable job.
+        - Single-writer queue reducer.
+        - Per-node mutex for download and mutation.
+        - Bounded source request parallelism.
+        - Cancellation never commits an incomplete replacement queue.
+    source_integration:
+      purpose: Translate SDK and protocol behavior into source capabilities.
+      modules: [source-pcloud, source-webdav, future-source-local, future-source-saf]
+      pcloud:
+        libraries:
+          shared_source_adapter: com.pcloud.sdk:java-core
+          android_authorization_adapter: com.pcloud.sdk:android
+        responsibilities:
+          - OAuth result and regional host mapping
+          - file and folder conversion
+          - direct-link creation and expiration mapping
+          - provider error normalization
+          - hash and revision mapping
+          - change cursor translation
+        boundaries:
+          must_not:
+            - expose RemoteFile, RemoteFolder, ApiClient, or provider Call types
+            - decide queue order
+            - decide progress classification
+            - persist tokens
+            - persist signed content links
+      webdav:
+        role:
+          - generic fallback source
+          - rapid compatibility path
+          - interoperability test oracle
+        constraints:
+          - HTTPS only
+          - credentials obtained through CredentialVault
+          - capability detection for range, ETag, move, and overwrite
+          - no assumption that provider-encrypted folders are exposed
+    persistence:
+      purpose: Durable local state, indexes, snapshots, cache accounting, and migrations.
+      android:
+        relational: Room 2.8.x
+        preferences: DataStore
+        secrets: Android Keystore-backed vault
+        media_bytes: app-private files or explicit user-selected storage
+      linux:
+        relational: SQLite using common schema contracts
+        preferences: typed atomic XDG config
+        secrets: Secret Service or KWallet adapter
+        media_bytes: XDG cache directory
+      durability_classes:
+        user_state:
+          data:
+            - account metadata without token bytes
+            - queue and items
+            - progress and bookmarks
+            - saved roots and policies
+            - pin intents
+            - metadata repair audits
+          migration: never destructive
+        rebuildable_cache:
+          data:
+            - folder snapshots
+            - parsed tag cache
+            - search index
+            - artwork and thumbnails
+          migration: generation-based rebuild allowed
+        verified_media_cache:
+          data:
+            - content bytes
+            - source revision
+            - hash verification result
+            - local path and size
+          migration: preserve bytes when integrity metadata remains valid
+      migration_rules:
+        - Test every supported prior schema to current.
+        - Back up or checkpoint before high-risk migration.
+        - A failed migration leaves the prior database readable or recoverable.
+    playback:
+      purpose: Convert stable queue identities into platform playback and controller semantics.
+      shared_logic:
+        - queue reducer
+        - resume and smart-rewind policy
+        - stream renewal policy
+        - completion thresholds
+        - user-intent sequencing
+      android:
+        library: AndroidX Media3
+        components:
+          - MediaSessionService for background playback
+          - ExoPlayer engine
+          - MediaController for UI
+          - future MediaLibraryService for Android Auto
+        invariants:
+          - Long-lived player belongs to service, not Activity or composable.
+          - Media ID contains stable source and node identity.
+          - Ephemeral URI is resolved before prepare and replaced on eligible expiry.
+          - UI process can reconnect after recreation without rebuilding authoritative queue.
+      linux:
+        primary: mpv JSON IPC adapter
+        alternatives: [libVLC adapter, GStreamer adapter]
+        integration:
+          - MPRIS
+          - media keys
+          - desktop notifications
+          - optional sleep inhibition
+    presentation:
+      purpose: Accessible interaction and explicit rendering of application state.
+      android:
+        toolkit: Jetpack Compose Material 3
+        pattern:
+          - immutable screen state
+          - typed user intents
+          - ViewModel invokes application commands
+          - repositories and controllers are observed as flows
+          - saved state stores navigation IDs, not repositories or tokens
+      linux:
+        toolkit: Compose Multiplatform Desktop
+        pattern: same intent and reducer vocabulary with desktop window and shortcut adapters
+      forbidden:
+        - provider SDK calls from UI
+        - SQL calls from UI
+        - direct player ownership by composables
+        - parsing stable identity from display strings
+      async_states:
+        common: [idle, loading, ready, empty, stale, partial, failed]
+        rules:
+          - Preserve useful content during refresh.
+          - Every failed state has a context-appropriate recovery action.
+          - Partial state carries structured omission details.
+    observability:
+      purpose: Local diagnostics without credential leakage.
+      outputs:
+        - structured operation timing
+        - bounded local event ring
+        - user-triggered redacted support bundle
+        - release-only crash reporting when explicitly enabled
+      redaction:
+        mandatory:
+          - bearer tokens
+          - passwords
+          - signed links and query parameters
+          - OAuth callback codes
+        configurable:
+          - complete private paths
+          - account email
+      event_fields:
+        allowed:
+          - operation ID
+          - source kind
+          - result category
+          - latency bucket
+          - item count and byte count
+          - retry count
+        forbidden:
+          - audio content
+          - raw tags by default
+          - unrestricted provider responses
+  module_graph:
+    shared:
+      core-domain:
+        depends_on: []
+      core-application:
+        depends_on: [core-domain]
+      core-metadata:
+        depends_on: [core-domain]
+      source-pcloud-jvm:
+        depends_on: [core-domain, core-application, pcloud-java-core]
+      source-webdav-jvm:
+        depends_on: [core-domain, core-application, HTTP-client]
+      persistence-schema:
+        depends_on: [core-domain]
+    android:
+      persistence-android:
+        depends_on: [core-application, persistence-schema, Room, DataStore, Android-Keystore]
+      playback-android:
+        depends_on: [core-application, Media3]
+      feature-browser:
+        depends_on: [core-application, ui-design-system]
+      feature-player:
+        depends_on: [core-application, playback-android, ui-design-system]
+      feature-inspector:
+        depends_on: [core-application, core-metadata, ui-design-system]
+      feature-settings:
+        depends_on: [core-application, ui-design-system]
+      app-android:
+        depends_on:
+          - feature-browser
+          - feature-player
+          - feature-inspector
+          - feature-settings
+          - source-pcloud-jvm
+          - persistence-android
+          - playback-android
+    linux:
+      persistence-linux:
+        depends_on: [core-application, persistence-schema, SQLite]
+      playback-mpv:
+        depends_on: [core-application, mpv-IPC]
+      app-desktop:
+        depends_on:
+          - core-application
+          - source-pcloud-jvm
+          - persistence-linux
+          - playback-mpv
+          - Compose-Desktop
+  runtime:
+    android:
+      process_model:
+        initial: single application process
+        rationale: Avoid premature multiprocess consistency and binder complexity.
+      durable_work:
+        offline_downloads: WorkManager or Media3 download service with unique work keys
+        metadata_mutation: constrained foreground worker
+        incremental_sync: unique periodic work when enabled
+      lifecycle:
+        - Playback follows media session and foreground-service rules.
+        - Browse requests cancel when no consumer remains unless promoted to durable sync.
+        - Progress writes remain transactional and process-safe.
+    linux:
+      processes:
+        desktop:
+          owns: UI, application services, repositories, source clients
+        mpv:
+          owns: decoding and audio output
+          control: local JSON IPC socket with generated path and strict permissions
+      crash_recovery:
+        - Persist desired queue before destructive player transition.
+        - Reconcile persisted state and child-process state at startup.
+  data_flows:
+    play_folder:
+      - FolderAction.Play intent
+      - ViewModel dispatches BuildFolderQueue
+      - Application lists through AudioSource
+      - Domain selects, groups, and sorts
+      - QueueRepository atomically commits snapshot
+      - Playback observes committed queue and resolves first item
+      - UI observes queue and session projections
+    stream_refresh:
+      - Player reports eligible HTTP failure with stable media ID
+      - Application invalidates only ephemeral StreamHandle
+      - Source resolves new handle
+      - Playback resumes from last confirmed position
+      - Retry budget is decremented and surfaced in diagnostics
+    progress_checkpoint:
+      - Playback emits stable media ID and position sample
+      - Application applies completion and smart-rewind policies
+      - ProgressRepository upserts in one transaction
+      - Browser and player projections update
+    metadata_write:
+      - UI submits approved RepairPlan ID
+      - Application revalidates original revision
+      - MetadataWriter stages and edits local copy
+      - Decoder and tag validator approve candidate
+      - MutableSource replaces using expected revision
+      - Source metadata is re-read and compared
+      - Audit is committed with recovery reference
+  error_taxonomy:
+    authentication:
+      examples: [missing_token, rejected_token, wrong_region, callback_mismatch]
+      recovery: reconnect or inspect account
+    connectivity:
+      examples: [offline, DNS, timeout, TLS]
+      recovery: retry, use verified cache, inspect network
+    provider:
+      examples: [rate_limited, not_found, permission_denied, conflict, server_error]
+      recovery: bounded retry, skip, refresh, or reconnect according to code
+    media:
+      examples: [unsupported_codec, corrupt_stream, seek_unsupported, decoder_failure]
+      recovery: inspect, download, external open, or skip
+    storage:
+      examples: [full, permission_lost, corrupt_database, checksum_mismatch]
+      recovery: manage cache, restore access, or database recovery
+    invariant:
+      examples: [unknown_stable_id, impossible_queue_state, stale_mutation_revision]
+      recovery: fail closed, record redacted diagnostic, never guess destructive intent
+  security_boundaries:
+    untrusted_inputs:
+      - provider filenames, paths, MIME types, tags, artwork, and URLs
+      - OAuth callbacks
+      - imported settings and saved-root definitions
+      - external metadata responses
+    controls:
+      - validate URI scheme, host, redirect state, and region
+      - bound parser memory and image dimensions
+      - treat provider IDs as data, not executable paths
+      - use stable IDs rather than display paths for authority decisions
+      - redact capability URLs
+      - require expected revision for mutation
+  decisions:
+    ADR-001: Independent client over public SDK and API, not APK modification.
+    ADR-002: Source-neutral domain and capability ports.
+    ADR-003: No mandatory custom backend.
+    ADR-004: Shared Kotlin/JVM core for Android and Linux first.
+    ADR-005: Platform playback behind an application port.
+    ADR-006: Stable IDs persisted; ephemeral direct URLs never persisted as identity.

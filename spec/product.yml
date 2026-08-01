@@ -1,0 +1,376 @@
+product:
+  id: properpcloud
+  vision: >-
+    A trustworthy folder-first audio client for pCloud and other file-oriented sources,
+    with excellent long-form playback, transparent metadata, and no forced dependence
+    on unreliable tag-derived artist, album, and song libraries.
+  problem:
+    failures_to_remove:
+      - The file browser cannot enqueue a folder into the player.
+      - The player cannot navigate to the current file's containing folder.
+      - Malformed tags dominate navigation and ordering even when paths are canonical.
+      - Common playback actions require per-file context menus.
+      - Long recordings and audiobooks lack durable, inspectable progress semantics.
+    user_costs:
+      - repeated manual work
+      - incorrect chapter or track ordering
+      - lost position
+      - unclear metadata provenance
+      - provider UI lock-in
+  principles:
+    - id: P-FILESYSTEM-TRUTH
+      rules:
+        - Preserve source, parent folder, filename, stable ID, and relative path context.
+        - Expose folder navigation wherever a track is displayed.
+        - A playable extension or MIME type remains discoverable despite missing tags.
+    - id: P-TAGS-ENRICH
+      rules:
+        - Tags enrich display, grouping, and search.
+        - Tags never replace stable identity or remove folder navigation.
+        - Raw, normalized, inferred, and effective values remain distinguishable.
+    - id: P-PROGRESSIVE-POWER
+      rules:
+        - Safe common actions are visible.
+        - Advanced filters, grouping, inspection, and repair are progressively disclosed.
+    - id: P-CAPABILITY-PORTS
+      rules:
+        - Browse, stream, search, change feed, mutation, and cache are independent capabilities.
+        - Missing optional capabilities degrade features rather than disabling the source.
+    - id: P-EXPLICIT-STATE
+      rules:
+        - Show loading, stale, cached, offline, partial, failed, and authenticated states.
+        - Recursive operations summarize every omission category.
+    - id: P-REVERSIBLE-MUTATION
+      rules:
+        - Metadata repair is dry-run first.
+        - Remote replacement requires expected revision or content hash.
+        - Every write is verified and recorded.
+  personas:
+    folder_curator:
+      goals:
+        - Use folders and filenames as the authoritative collection.
+        - Play complete folders in deterministic order.
+        - Save roots for music, audiobooks, lectures, and recordings.
+      pains: [broken ID3 grouping, deep context menus, pathless search results]
+    long_form_listener:
+      goals:
+        - Resume exactly and predictably.
+        - Use speed, skip, bookmarks, sleep timer, and completion state.
+        - See progress across a folder or book.
+      pains: [position loss, bad chapter order, accidental restart]
+    metadata_maintainer:
+      goals:
+        - Inspect provider data, embedded tags, inferred values, and candidates.
+        - Approve controlled batch corrections.
+        - Recover from an incorrect write.
+      pains: [opaque parsing, destructive batch edits, no provenance]
+    multi_device_user:
+      goals:
+        - Use comparable Android and Linux clients.
+        - Share semantics and optionally progress without a mandatory custom server.
+  release_slices:
+    mvp_0_1:
+      name: folder-player
+      requirements:
+        - REQ-AUTH
+        - REQ-BROWSE
+        - REQ-QUEUE
+        - REQ-NAVIGATION
+        - REQ-PLAYBACK
+        - REQ-SORTING
+        - REQ-PROGRESS
+        - REQ-INSPECTION
+        - REQ-RESILIENCE
+    v0_2:
+      name: long-form-roots-offline
+      requirements: [REQ-LONGFORM, REQ-SAVED-ROOTS, REQ-OFFLINE, REQ-AUTO]
+    v0_3:
+      name: controlled-library-maintenance
+      requirements: [REQ-METADATA-PROPOSAL, REQ-METADATA-WRITE, REQ-CHANGEFEED]
+  requirements:
+    REQ-AUTH:
+      priority: must
+      release: mvp_0_1
+      title: Native pCloud OAuth session
+      behaviors:
+        - Authorize in a trusted provider or system surface.
+        - Persist bearer token in platform secret storage.
+        - Persist non-secret regional API location and account identity separately.
+        - Restore sessions without collecting an account password.
+        - Disconnect immediately locally and attempt remote revocation when supported.
+      forbidden:
+        - tokens in logs, backups, crash reports, exported settings, or UI
+        - password collection for native API authentication
+    REQ-BROWSE:
+      priority: must
+      release: mvp_0_1
+      title: Folder-first browser
+      behaviors:
+        - Browse root and nested folders using stable provider IDs.
+        - Show breadcrumb, filename, type, size, cache state, and optional progress.
+        - Preserve scroll anchor, sort, grouping, and selection per folder.
+        - Render cached snapshots immediately and refresh without blanking content.
+        - Optionally show non-audio children while excluding them from audio queues.
+      scalability:
+        - Incrementally render or paginate folders above 500 direct children.
+        - Never recursively enumerate on the main thread.
+    REQ-QUEUE:
+      priority: must
+      release: mvp_0_1
+      title: Folder-to-queue operations
+      operations:
+        - play_folder_replace
+        - append_folder
+        - play_folder_next
+        - shuffle_folder
+        - play_subtree_replace
+        - append_subtree
+      rules:
+        - Deterministic enumeration precedes optional shuffle.
+        - Queue snapshots record source folder, recursion, sort, grouping, and duplicate policy.
+        - Recursive operations expose progress, cancellation, partial acceptance, and omissions.
+        - Duplicate policy supports preserve, stable-node collapse, and content-hash collapse.
+        - An empty result never silently clears an existing queue.
+    REQ-NAVIGATION:
+      priority: must
+      release: mvp_0_1
+      title: Bidirectional browser and player navigation
+      behaviors:
+        - Now playing exposes open-containing-folder in one action.
+        - Queue rows expose open-containing-folder and inspect.
+        - Folder rows expose capability-appropriate play, append, next, inspect, pin, and save-root actions.
+        - Opening a folder from playback highlights the current file without interrupting playback.
+    REQ-PLAYBACK:
+      priority: must
+      release: mvp_0_1
+      title: Reliable remote playback
+      behaviors:
+        - Resolve fresh direct links from stable file IDs just in time.
+        - Treat direct links as expiring secrets, not persistent identity.
+        - Support seeking and HTTP ranges when provider and format permit.
+        - Refresh a link after an eligible expiry or authorization response.
+        - Preserve queue and last confirmed position across reconnects and process death.
+        - Integrate with OS media controls, audio focus, headphones, and foreground execution.
+      retry_policy:
+        idempotent_only: true
+        bounded: true
+        categories: [link_resolution, transient_transport, provider_rate_limit]
+    REQ-SORTING:
+      priority: must
+      release: mvp_0_1
+      title: Explicit ordering and grouping
+      sort_keys:
+        - natural_filename
+        - disc_then_track
+        - tagged_title
+        - modified_time
+        - duration
+        - manual_queue_order
+      grouping_keys:
+        - none
+        - containing_folder
+        - saved_root
+        - disc
+        - inferred_book
+      invariants:
+        - Numeric filename segments sort 2 before 10.
+        - Unknown disc or track numbers sort after known values unless filename-only is selected.
+        - Active sort and grouping are visible and reversible.
+        - Tie breaking is deterministic by natural filename then stable node ID.
+    REQ-PROGRESS:
+      priority: must
+      release: mvp_0_1
+      title: Long-form progress persistence
+      record:
+        - source_id
+        - node_id
+        - content_revision
+        - position_ms
+        - duration_ms
+        - playback_speed
+        - completion_state
+        - observed_at
+      checkpoints:
+        - periodic
+        - pause
+        - completed_seek
+        - item_transition
+        - app_background
+        - service_teardown
+      policies:
+        music_resume_default: disabled
+        long_form_resume_default: enabled
+        classification_inputs:
+          - saved-root policy
+          - folder override
+          - extension such as m4b
+          - duration threshold
+          - explicit item override
+        smart_rewind:
+          enabled: true
+          depends_on: interruption duration
+        revision_change:
+          action: ask before applying stale progress to materially changed content
+    REQ-INSPECTION:
+      priority: must
+      release: mvp_0_1
+      title: Clean metadata inspection
+      sections:
+        provider:
+          fields:
+            - stable IDs and parent ID
+            - resolved path
+            - MIME type and size
+            - created and modified timestamps
+            - content hash or revision
+            - permissions and sharing state
+        embedded:
+          fields:
+            - raw frames or atoms
+            - normalized title, artist, album, disc, track, genre, and date
+            - parser warnings and unsupported fields
+        effective:
+          fields:
+            - display title
+            - active sort values
+            - inferred book or album
+            - provenance and confidence per derived field
+      constraints:
+        - Inspection is read-only.
+        - Raw values remain available.
+        - Signed URLs and credentials are redacted.
+    REQ-RESILIENCE:
+      priority: must
+      release: mvp_0_1
+      title: Honest degraded operation
+      behaviors:
+        - Browse cached folders while offline.
+        - Play verified cached files while offline.
+        - Distinguish auth, network, provider, media, and storage failures.
+        - Preserve queue and progress through process death.
+        - Every asynchronous state has timeout, retry, cancellation, and stale-data semantics where applicable.
+        - Infinite loading indicators are forbidden.
+    REQ-LONGFORM:
+      priority: should
+      release: v0_2
+      title: Audiobook and lecture controls
+      features:
+        - variable speed with per-root and per-folder memory
+        - configurable skip forward and backward
+        - sleep timer by duration or end of item
+        - bookmarks with optional notes
+        - explicit complete and incomplete actions
+        - folder and subtree progress aggregation
+    REQ-SAVED-ROOTS:
+      priority: should
+      release: v0_2
+      title: Custom tabs and directory policies
+      behaviors:
+        - Create named tabs from a folder plus recursion, filter, sort, grouping, resume, and cache policy.
+        - Reorder, rename, hide, export, and import tabs.
+        - Express whitelist and blacklist rules without moving provider files.
+      examples:
+        - name: Audiobooks
+          root: /Audiobooks
+          recursive: true
+          resume: long_form
+          grouping: containing_folder
+        - name: New recordings
+          root: /Recordings
+          filter: modified_within_30_days
+          sort: modified_descending
+    REQ-OFFLINE:
+      priority: should
+      release: v0_2
+      title: Explicit offline cache
+      behaviors:
+        - Pin a file, folder, subtree, or saved root.
+        - Display required, downloaded, verified, and evictable bytes.
+        - Verify content against provider hash where available.
+        - Support Wi-Fi-only, charging-only, quota, and retention policies.
+        - Distinguish local eviction from cloud deletion in language and iconography.
+    REQ-AUTO:
+      priority: should
+      release: v0_2
+      title: Android Auto and external media browsing
+      behaviors:
+        - Expose saved roots and a shallow folder hierarchy.
+        - Prefer voice-friendly labels and non-destructive actions.
+        - Keep browse IDs stable across service restarts.
+    REQ-METADATA-PROPOSAL:
+      priority: should
+      release: v0_3
+      title: Metadata proposal pipeline
+      stages:
+        - scan existing tags and provider metadata
+        - normalize without mutation
+        - infer from filename and path
+        - query explicitly enabled external providers
+        - rank candidates
+        - render field-level diff, provenance, and confidence
+        - approve or edit
+      safety:
+        - No automatic remote write.
+        - Low-confidence fields remain unselected by default.
+        - External queries disclose which metadata leaves the device.
+    REQ-METADATA-WRITE:
+      priority: should
+      release: v0_3
+      title: Revision-safe tag writing
+      pipeline:
+        - download exact revision to staging
+        - apply only approved field changes
+        - validate tags and decodability
+        - upload with expected original hash or revision
+        - re-read remote hash and metadata
+        - record audit and recovery revision
+      conflict_behavior:
+        - Abort before overwrite when remote revision changed.
+        - Offer rebase, skip, or rescan; never force silently.
+    REQ-CHANGEFEED:
+      priority: should
+      release: v0_3
+      title: Incremental provider synchronization
+      behaviors:
+        - Persist provider change cursor.
+        - Apply changes transactionally to snapshots and indexes.
+        - Recover invalid cursors through bounded subtree or full rescan.
+  quality_attributes:
+    usability:
+      - Folder play requires at most one context invocation and one action tap on compact screens.
+      - Open-containing-folder is one tap from now playing.
+      - Active order is visible from browser and queue.
+    accessibility:
+      - Semantic labels and minimum touch targets for all controls.
+      - Dynamic text never removes the only path or filename representation.
+      - TalkBack order matches visual hierarchy.
+      - Color is not the sole state indicator.
+    performance_targets:
+      cold_start_to_cached_browser_ms_p95: 1200
+      cached_folder_render_ms_p95: 150
+      queue_action_feedback_ms_p95: 100
+      stream_start_good_network_ms_p95: 2500
+      progress_write_ms_p95: 50
+    reliability_targets:
+      queue_survives_process_death: true
+      progress_loss_window_seconds_max: 15
+      mutation_post_write_verification_rate: 1.0
+      crash_free_session_ratio: 0.995
+    privacy:
+      - No analytics by default.
+      - Crash reporting is opt-in and redacted.
+      - Core operation requires no custom backend.
+      - External metadata providers require separate consent.
+    security:
+      - Platform credential storage protects tokens.
+      - Signed stream URLs are excluded from persistent logs.
+      - TLS validation is never disabled.
+      - Release builds disallow cleartext network traffic.
+  non_goals:
+    mvp:
+      - Replace every pCloud file-management feature.
+      - Social music discovery.
+      - DRM playback.
+      - Server-side transcoding.
+      - Automatic destructive metadata correction.
+      - Mandatory self-hosted infrastructure.

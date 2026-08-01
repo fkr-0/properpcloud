@@ -1,0 +1,124 @@
+definition_of_done:
+  universal_feature:
+    product:
+      - Requirement and use-case IDs are named.
+      - Success, empty, partial, failure, cancellation, offline, and stale behavior are defined where applicable.
+      - User-visible terminology is reviewed for folder-first semantics.
+    architecture:
+      - Domain and application boundaries are preserved.
+      - Provider or platform types do not leak across ports.
+      - Stable identity and ephemeral capability data are separated.
+      - Transaction and concurrency behavior is documented.
+    implementation:
+      - Production code has no placeholder behavior in the completed scope.
+      - Errors map to stable AppError codes.
+      - Cancellation and retries are bounded.
+      - Logging is structured and redacted.
+    tests:
+      - Pure policy is covered at domain level.
+      - Use case is covered with fake ports.
+      - Adapter-specific facts have contract or integration tests.
+      - A regression test exists for every corrected defect.
+      - Tests prove no unsafe side effects on failure.
+    UX:
+      - Compact, expanded, loading, empty, stale, partial, and error layouts are reviewed.
+      - TalkBack semantics, focus order, dynamic type, and touch targets pass.
+      - Destructive or expensive operations disclose impact and have cancellation semantics.
+      - State is not communicated by color alone.
+    operations:
+      - Build passes in pinned Docker environment.
+      - Dependency and license changes are reviewed.
+      - No credential or private fixture is committed.
+      - Relevant specification and documentation are updated.
+      - VERSION, CHANGELOG.md, Android package metadata, and proposed tag agree.
+  feature_specific:
+    auth:
+      - OAuth state or nonce is validated.
+      - Region and hostname behavior are tested.
+      - Token exists only in credential vault.
+      - Logout blocks future requests before UI reports completion.
+      - Redaction tests include callbacks, exceptions, and support export.
+    folder_browser:
+      - Cached-first refresh preserves content and scroll anchor.
+      - Large-folder behavior meets memory and latency budgets.
+      - Missing or malformed tags do not hide playable files.
+      - Path and parent navigation uses IDs rather than string parsing.
+    queue:
+      - Direct and recursive operations are deterministic.
+      - Empty replacement does not clear queue silently.
+      - Cancellation leaves prior generation intact.
+      - Partial result has omission report.
+      - Concurrent edits reject stale generation.
+    playback:
+      - Stable media ID is persisted and exposed to controller.
+      - Direct URI is resolved just in time and redacted.
+      - Link expiry recovery is bounded and tested.
+      - Audio focus, headset disconnect, process recreation, and service teardown are tested.
+      - Progress loss window is measured.
+    progress:
+      - Revision-compatible restore and changed-content decision are tested.
+      - Completion threshold and explicit reset are tested.
+      - Writes are coalesced but flushed on lifecycle boundaries.
+      - Migration preserves prior progress.
+    offline_cache:
+      - Completed content is hash or revision verified.
+      - Partial and corrupt data are not exposed as playable verified cache.
+      - Quota and eviction protect pins.
+      - Local eviction cannot invoke remote deletion.
+      - Reboot and process-death recovery are tested.
+    metadata_inspection:
+      - Provider, raw embedded, normalized, and effective values remain distinct.
+      - Parser bounds and malformed fixtures pass.
+      - Export is redacted.
+      - Inspection produces zero mutation calls.
+    metadata_mutation:
+      - Dry run is complete and immutable after approval.
+      - Expected revision is revalidated immediately before write.
+      - Candidate is tag-validated and decodable before upload.
+      - Remote result is re-read and verified.
+      - Conflict, failure, and indeterminate outcomes are auditable.
+      - Recovery reference is recorded.
+  mvp_release:
+    scope:
+      required_requirements:
+        - REQ-AUTH
+        - REQ-BROWSE
+        - REQ-QUEUE
+        - REQ-NAVIGATION
+        - REQ-PLAYBACK
+        - REQ-SORTING
+        - REQ-PROGRESS
+        - REQ-INSPECTION
+        - REQ-RESILIENCE
+    correctness:
+      - All must-level traceability links are complete.
+      - Unit, contract, lint, debug build, and instrumented critical journeys pass.
+      - Live pCloud sandbox validates OAuth, EU and US host handling where test accounts permit, listing, seeking, and link renewal.
+      - Queue and progress survive forced process death.
+      - Database migrations from every released schema pass.
+    quality:
+      - No open critical or high-severity correctness, security, data-loss, or accessibility issue.
+      - Performance targets are met or an explicit release exception is accepted.
+      - Crash-free smoke suite runs on minimum, representative, and current API levels.
+      - Battery and network behavior is reviewed for one-hour background playback.
+    distribution:
+      - Release application ID, version, signing, and update path are defined.
+      - Privacy policy accurately describes no mandatory backend and optional external services.
+      - Third-party notices and source licenses are complete.
+      - APK or bundle SHA-256 and build evidence are archived.
+      - F-Droid readiness gaps are documented even when initial distribution is direct.
+      - Published Git tags and release assets are immutable and trace to one commit.
+    documentation:
+      - README quick start works from clean checkout.
+      - OAuth application registration and redirect setup are documented without secrets.
+      - Troubleshooting covers region, auth, offline, unsupported codec, and cache failures.
+      - Architecture, contracts, and threat boundaries match implementation.
+  release_blockers:
+    - Any possibility of remote deletion from a local cache-eviction path.
+    - Token, password, OAuth code, or signed URL in persistent logs or export.
+    - Queue replacement can commit an incomplete cancelled result without explicit acceptance.
+    - Progress or queue data is destroyed by migration.
+    - Metadata write can overwrite a changed remote revision silently.
+    - App claims offline availability for unverified or partial content.
+    - Player cannot recover after Activity recreation or process restart within supported behavior.
+    - Critical actions are inaccessible with TalkBack or keyboard alternatives where relevant.

@@ -6,6 +6,9 @@ The project exists because an audio collection is often already organised correc
 
 > Working title. This project is independent and is not affiliated with or endorsed by pCloud AG.
 
+[![Version](https://img.shields.io/badge/version-0.0.1-59636e)](CHANGELOG.md)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
+
 ## Decision
 
 The official pCloud Android application does not appear to have a publicly available source repository. The official pCloud Java/Android SDK is public, Apache-2.0 licensed, and actively maintained. pCloud also documents a full HTTP/JSON API, OAuth 2.0, expiring direct file links, folder listing, and incremental filesystem changes.
@@ -86,6 +89,15 @@ The build runs through the committed Gradle Wrapper inside the pinned Android to
 
 No pCloud credentials are needed for compilation or unit tests. Runtime OAuth setup is documented in `docs/architecture.md`.
 
+## Versions
+
+- `0.0.1` is the verified architecture and build bootstrap.
+- `0.1.0` is the first validated Android end-user release target.
+- `0.2.0` adds a native Linux desktop client with feature parity.
+
+The canonical version is stored in `VERSION`; release policy and Android
+version-code mapping are documented in `docs/versioning.md`.
+
 ## Design index
 
 - `spec/manifest.yml` — normative specification index and invariants
@@ -105,4 +117,7 @@ No pCloud credentials are needed for compilation or unit tests. Runtime OAuth se
 
 ## Licensing
 
-Original code in this repository is Apache-2.0. This keeps the source adapters reusable by Apache-, GPL-, and AGPL-licensed upstream projects. Code copied from a copyleft player must remain in a separately licensed module or fork; none is copied in this bootstrap.
+Original code in this repository is MIT licensed. Runtime dependencies retain
+their own licenses, including Apache-2.0 components listed in
+`THIRD_PARTY_NOTICES.md`. Code copied from a copyleft player must remain in a
+separately licensed module or fork; none is copied in this bootstrap.

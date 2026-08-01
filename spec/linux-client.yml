@@ -1,0 +1,249 @@
+linux_client:
+  objective: Deliver the same folder, queue, progress, inspection, and cache semantics with desktop-native interaction at minimum duplicated implementation cost.
+  recommendation:
+    architecture: Shared Kotlin/JVM domain, application, metadata, and pCloud adapter plus a Compose Desktop shell.
+    playback: mpv child process controlled through JSON IPC.
+    persistence: SQLite repository implementing the same persistence ports.
+    secrets: freedesktop Secret Service with KWallet-compatible fallback.
+    backend: Direct pCloud API through official Java core SDK; no Android runtime and no mandatory server.
+  alternatives:
+    reuse_android_UI_directly:
+      decision: reject
+      reasons:
+        - Android UI and lifecycle assumptions do not map cleanly to desktop windows, menus, keyboard, and MPRIS.
+        - Media3 Android playback is not a Linux desktop playback engine.
+        - Shipping an Android emulator or Waydroid is high-friction and weakly integrated.
+    Java_desktop_with_shared_core:
+      decision: preferred
+      reusable:
+        - domain records and policies
+        - application commands and ports
+        - pCloud Java core adapter
+        - queue and progress semantics
+        - metadata parser and repair planning
+        - persistence schema and migration fixtures
+        - test fakes and source contract suite
+      platform_specific:
+        - Compose Desktop screens and window state
+        - system browser OAuth callback
+        - Secret Service vault
+        - SQLite driver
+        - mpv IPC and MPRIS
+        - XDG paths, notifications, media keys
+    raw_REST_rewrite:
+      decision: defer
+      use_when:
+        - moving to a non-JVM desktop stack
+        - official Java SDK lacks required API surface
+        - Kotlin Multiplatform native target becomes a product requirement
+      costs:
+        - OAuth and regional host handling reimplementation
+        - provider error mapping
+        - upload and direct-link semantics
+        - additional protocol test burden
+    FUSE_mounted_pCloud:
+      decision: optional source adapter, not primary architecture
+      strengths:
+        - Official open-source pCloud console client can expose a local filesystem view.
+        - Existing local players can access mounted files.
+      weaknesses:
+        - Loses direct provider identity and capability semantics.
+        - Mount availability and caching become external state.
+        - Player-to-cloud metadata, change feed, and revision-safe writes are harder.
+        - Folder playback works, but integrated offline and source diagnostics are weaker.
+  target_modules:
+    shared:
+      core-domain:
+        portability: pure Kotlin/JVM
+      core-application:
+        portability: pure Kotlin/JVM plus coroutines
+      core-metadata:
+        portability: JVM parser abstractions with bounded I/O ports
+      source-pcloud-jvm:
+        dependency: pCloud java-core, never Android artifact
+      source-webdav-jvm:
+        dependency: portable HTTP client
+      persistence-schema:
+        portability: SQL schema contracts and migrations independent of Room annotations
+    desktop:
+      app-desktop:
+        toolkit: Compose Multiplatform Desktop
+      persistence-linux:
+        implementation: SQLite JDBC or another maintained JVM SQLite driver
+      credential-linux:
+        primary: Secret Service D-Bus adapter
+        fallback: KWallet adapter or password-protected local vault with explicit warning
+      playback-mpv:
+        implementation:
+          - spawn mpv with no uncontrolled shell interpolation
+          - create per-session IPC socket under runtime directory
+          - pass resolved HTTPS URL only to child process memory and command channel
+          - observe time-pos, duration, pause, idle-active, and errors
+          - restore queue and position through shared application state
+      mpris-linux:
+        responsibilities:
+          - metadata and playback status
+          - play, pause, next, previous, seek, and position
+          - stable object and track IDs without signed URLs
+      xdg-platform:
+        config: XDG_CONFIG_HOME/properpcloud
+        data: XDG_DATA_HOME/properpcloud
+        cache: XDG_CACHE_HOME/properpcloud
+        runtime: XDG_RUNTIME_DIR/properpcloud
+  OAuth:
+    preferred_flow:
+      - Launch default browser to pCloud authorization endpoint.
+      - Receive callback through a registered custom scheme when desktop registration supports it, or a temporary loopback listener when provider rules permit.
+      - Validate state and regional host.
+      - Store token in Secret Service.
+    security:
+      - Loopback listener binds only to localhost and closes after one response or timeout.
+      - State is unpredictable and single-use.
+      - Callback content is not logged.
+      - Browser flow never embeds provider login in application WebView.
+    uncertainty:
+      - Exact production redirect registration must be validated with the pCloud application console before implementation.
+  desktop_UX:
+    layout:
+      left_pane:
+        - account selector
+        - saved roots
+        - folder tree
+      center_pane:
+        - current folder
+        - search results
+        - metadata inspector
+      right_pane:
+        - queue
+        - operation details
+        - optional repair plan
+      bottom_player:
+        - title and filename
+        - containing path
+        - timeline
+        - transport
+        - speed, sleep, bookmark, and output
+    interactions:
+      mouse:
+        - double click folder to open
+        - double click track to play according to preference
+        - context menu mirrors Android semantic actions
+        - drag queue reorder and folder-to-queue drop
+      keyboard:
+        global:
+          - Space: play or pause when focus does not consume text input
+          - Ctrl+L: focus path or folder search
+          - Ctrl+F: search current scope
+          - Ctrl+Q: open queue pane, not quit
+          - configurable media shortcuts
+        queue:
+          - Delete: remove selected item with undo
+          - Alt+Up or Alt+Down: reorder
+          - Enter: play selected
+        navigation:
+          - Alt+Left and Alt+Right: history
+          - Backspace: parent folder only when not editing text
+      drag_and_drop:
+        folder_to_queue: append deterministic snapshot
+        track_to_queue: append selected track
+        external_files: optional future import or local-source action, never upload silently
+    multi_window:
+      initial: one main window plus modal or modeless inspector
+      later: detachable queue and mini-player
+    accessibility:
+      - full keyboard operation
+      - semantic labels exposed through Compose accessibility bridge
+      - high-contrast and system font scaling
+      - no drag-only operation
+  playback_details:
+    mpv_command_contract:
+      launch_flags:
+        - idle=yes
+        - terminal=no
+        - input-ipc-server with private runtime path
+        - no-config initially for deterministic behavior
+        - audio-display=no unless artwork behavior is explicitly supported
+      commands:
+        - loadfile replace or append according to queue adapter strategy
+        - seek absolute and relative
+        - set pause and speed
+        - observe_property for time-pos, duration, pause, media-title, and idle-active
+      URL_handling:
+        - Resolve immediately before load.
+        - Never place URL in persistent playlist files.
+        - Redact process diagnostics and support bundles.
+        - Refresh by loading a new capability at last confirmed position.
+      process_failure:
+        - Detect exit and preserve shared queue.
+        - Offer restart player and resume.
+        - Bound automatic restart loops.
+    codec_strategy:
+      reason_for_mpv: Mature codec and streaming support with minimal JNI complexity.
+      packaging:
+        system_dependency_first: Document supported mpv minimum version.
+        bundled_later: Consider AppImage or Flatpak runtime only after license and update review.
+  persistence_and_sync:
+    local_schema:
+      goal: Logical compatibility with Android persistence records.
+      implementation_note: Do not force Room-specific physical schema onto desktop; share migration model and serialized policy formats.
+    cross_device_progress:
+      initial: no automatic synchronization
+      optional_paths:
+        - export and import encrypted progress bundle
+        - store sidecar state in a user-selected pCloud app folder
+        - later minimal synchronization service
+      recommendation:
+        phase_1: Keep local state per client.
+        phase_2: Design a conflict-resolved sidecar format only after stable semantics exist.
+      conflict_policy_candidates:
+        - latest observed position with explicit completed-state precedence
+        - retain history and ask on large backward divergence
+        - never overwrite bookmarks by timestamp alone
+  packaging:
+    preferred_initial:
+      - developer distribution through Gradle application package
+      - Arch package for user's environment
+    broad_distribution:
+      - Flatpak for predictable runtime and desktop portals
+      - AppImage as optional portable artifact
+      - native deb and rpm only after release automation matures
+    Flatpak_boundaries:
+      - browser OAuth through portal
+      - Secret Service through D-Bus permission
+      - mpv bundled or invoked according to sandbox design
+      - XDG cache and user-approved file access
+  implementation_path:
+    phase_0_shared_extraction:
+      - Split current core-model into domain and application modules without Android imports.
+      - Depend on pCloud java-core from shared adapter; Android app adds Android auth UI adapter.
+      - Introduce repository and playback ports with in-memory tests.
+    phase_1_headless_desktop:
+      - Build a CLI smoke client that authenticates, lists folders, resolves a stream, and prints redacted metadata.
+      - Implement SQLite, Secret Service, and mpv adapters behind ports.
+      - Run the shared AudioSource contract suite.
+    phase_2_desktop_UI:
+      - Implement three-pane browser, queue, and bottom player.
+      - Add keyboard-first navigation and MPRIS.
+      - Reuse saved-root, sorting, progress, and inspector application commands.
+    phase_3_distribution:
+      - Add Flatpak manifest and reproducible packaging.
+      - Add desktop integration tests under Xvfb or compositor test environment where practical.
+      - Validate on GNOME, KDE, and i3 workflows.
+    phase_4_optional_sync:
+      - Specify encrypted sidecar progress format.
+      - Add conflict simulation tests before enabling writes.
+  acceptance:
+    comparable_feature_set:
+      - Browse and queue folders without tag dependency.
+      - Navigate player to containing folder.
+      - Persist long-form progress and queue.
+      - Resolve expiring pCloud streams.
+      - Inspect provider and embedded metadata.
+      - Manage saved roots and offline cache.
+      - Integrate media keys and MPRIS.
+    platform_specific_DOD:
+      - No Android runtime is needed.
+      - No account password is stored outside Secret Service.
+      - mpv crash does not lose queue or progress.
+      - Desktop can be operated entirely by keyboard.
+      - Package follows XDG paths and leaves no credential in command history or logs.

@@ -1,0 +1,355 @@
+ux:
+  design_intent:
+    primary: Make folder playback feel native rather than an advanced file-manager workaround.
+    secondary: Preserve expert control without turning the player into a metadata administration console.
+    emotional_quality: calm, transparent, fast, reversible
+  information_architecture:
+    compact_android:
+      primary_destinations:
+        - browser
+        - saved_roots
+        - queue
+        - settings
+      persistent_surface:
+        mini_player:
+          visible_when: a selected media item exists
+          actions: [play_pause, open_now_playing]
+          content: [title_or_filename, containing_folder, progress]
+    expanded_android_tablet:
+      panes:
+        left: saved roots and folder tree
+        center: current folder or search results
+        right: queue or inspector
+      player: persistent bottom control surface
+    linux_desktop:
+      panes:
+        navigation: account, roots, folder tree
+        content: folder list, search, or inspector
+        queue: reorderable queue and history
+      player: persistent bottom bar with optional expanded details panel
+  navigation_model:
+    rules:
+      - Folder identity, not path text, drives navigation.
+      - Back traverses UI history; breadcrumbs navigate hierarchy directly.
+      - Player-to-folder navigation never changes queue or playback.
+      - A moved file may update parent destination after source lookup.
+      - Search results always show containing path and offer reveal-in-folder.
+    deep_links:
+      supported:
+        - source account
+        - stable folder
+        - stable track
+        - saved root
+        - queue item
+      security:
+        - Never include bearer token or signed content URL.
+        - Reject unknown source IDs or malformed stable IDs.
+  screens:
+    connection:
+      states:
+        disconnected:
+          primary_action: Connect pCloud
+          secondary_actions: [Learn about permissions, Configure WebDAV source later]
+        authorizing:
+          message: Waiting for pCloud authorization
+          cancel: available
+        connected_loading:
+          message: Loading root folder
+        failed:
+          variants: [cancelled, denied, network, callback_invalid, provider_failure]
+          actions: context-specific retry or diagnostics
+      ux_rules:
+        - Explain that authorization happens at pCloud and no password is collected.
+        - Region selection is automatic from authorization result, not user guesswork.
+    browser:
+      app_bar:
+        elements:
+          - account or saved-root switcher
+          - breadcrumb with horizontal scroll and overflow
+          - search
+          - sort and grouping indicator
+          - refresh state
+      rows:
+        folder:
+          primary: folder name
+          secondary: child count hint, cached state, aggregate progress when known
+          tap: open folder
+          long_press_or_overflow:
+            - play direct
+            - play subtree
+            - play next
+            - append
+            - shuffle
+            - make available offline
+            - add as tab
+            - inspect
+        audio:
+          primary_policy:
+            preferred: effective title when user selected tag-aware display
+            fallback: filename
+          secondary:
+            - filename when title differs
+            - containing path in search or grouped views
+            - duration and progress
+            - cache and warning state
+          tap_policy: configurable play now or open details; default play now
+          overflow:
+            - play next
+            - append
+            - open containing folder
+            - make available offline
+            - inspect
+            - external open when safe
+        non_audio:
+          default: hidden in audio-only roots, visible in raw folder mode
+          actions: inspect and external open when supported
+      selection_mode:
+        entry: long press or checkbox affordance on desktop
+        batch_actions:
+          - append
+          - play next
+          - pin
+          - inspect summary
+          - metadata proposal when capability exists
+      refresh:
+        - Keep current content visible.
+        - Show inline refresh progress.
+        - On failure retain stale content and place retry near freshness indicator.
+      empty_states:
+        actual_empty: Folder is empty
+        no_audio: No playable audio directly in this folder
+        filtered: No files match current filter
+        offline_uncached: Folder has no cached snapshot
+        actions:
+          no_audio: [Play subtree, Show all files]
+          filtered: [Clear filter]
+    queue:
+      header:
+        content:
+          - item count
+          - total duration when known
+          - source folder or operation provenance
+          - active order and duplicate policy
+        actions: [save_queue_later, clear_with_confirmation, search_queue]
+      rows:
+        content: [drag_handle, ordinal, title_or_filename, containing_folder, duration, progress, warning]
+        actions: [play, play_next, remove, open_folder, inspect]
+      reorder:
+        touch: drag handle with haptic start and live ordinal announcement
+        keyboard: modifier plus arrows on desktop
+        semantics:
+          - Manual reorder switches affected queue to manual order.
+          - Original folder ordering provenance remains inspectable.
+      current_item:
+        indication: icon, text label for accessibility, and optional accent
+        auto_scroll: only when user has not actively scrolled away
+      omissions_banner:
+        condition: queue build omitted one or more candidates
+        content: counts by unsupported, inaccessible, failed, duplicate
+        action: Open report
+    now_playing:
+      hierarchy:
+        - artwork or folder-derived cover
+        - effective title
+        - filename when different
+        - clickable containing folder breadcrumb
+        - progress and duration
+        - primary transport controls
+        - speed, sleep, bookmark, queue, and more
+      primary_controls:
+        compact: [previous_or_back, rewind, play_pause, forward, next]
+        configurable:
+          previous_behavior: restart_then_previous or previous_immediately
+          skip_intervals: per long-form policy
+      containing_folder_action:
+        placement: path row directly below title
+        result: navigate and highlight without pausing
+      progress_interaction:
+        - Scrubbing preview shows target time and optional chapter or filename.
+        - Accessibility actions provide coarse skip and exact time entry where feasible.
+        - Live progress updates do not overwhelm screen readers.
+      errors:
+        reconnecting: retain controls, show attempt and cancel
+        failed: show normalized reason, retry, inspect, skip
+        expired_link: presented as reconnecting rather than provider-internal jargon
+    inspector:
+      tabs_or_sections:
+        overview:
+          - effective display values
+          - active sort values
+          - path and cache state
+          - warnings
+        provider:
+          - IDs
+          - parent and resolved path
+          - size, type, dates, revision
+          - permission and sharing state
+        embedded:
+          - normalized fields
+          - expandable raw frame or atom list
+          - parser warnings
+        provenance:
+          - value source
+          - confidence
+          - conflicts
+      interaction:
+        - Copy individual safe fields.
+        - Export redacted JSON or YAML report.
+        - Start repair proposal only from explicit action.
+      redaction:
+        - Signed URLs never appear.
+        - Account identifiers follow privacy settings.
+    saved_root_editor:
+      fields:
+        - name and icon
+        - source folder
+        - recurse toggle
+        - include and exclude rules
+        - sort and grouping
+        - music or long-form resume policy
+        - offline policy
+      preview:
+        - matching count when cheaply available
+        - sample ordered items
+        - warnings for broad recursive roots
+      validation:
+        - Explain conflicting include and exclude rules.
+        - Prevent save only for invalid identity or non-serializable policy.
+    offline_manager:
+      summaries:
+        - used bytes
+        - pinned bytes
+        - evictable bytes
+        - verification failures
+        - active and paused jobs
+      actions:
+        - pause or resume jobs
+        - retry failed verification
+        - change quota
+        - evict selected cache entries
+      language:
+        required: Remove download or Free device space
+        forbidden_for_local_evict: Delete file
+    metadata_repair:
+      steps:
+        1_selection:
+          show: selected files, source capability, estimated download and upload
+        2_proposals:
+          show: field-level current, proposed, confidence, provenance
+          defaults: low-confidence fields unselected
+        3_review:
+          show: exact approved diff and conflict baseline revision
+        4_apply:
+          show: per-file stage, validate, upload, verify
+          cancellation: stops before next safe boundary, never mid-commit without indeterminate audit
+        5_result:
+          show: verified, skipped, conflicted, failed, recovery references
+      destructive_language:
+        - State clearly that media files will be replaced remotely.
+        - Require a final confirmation distinct from proposal acceptance.
+  interaction_patterns:
+    folder_quick_actions:
+      compact:
+        default_visible: play folder button when folder contains known direct audio
+        overflow: all other operations
+      desktop:
+        toolbar: play, append, play next, subtree menu, pin
+        context_menu: same semantic commands
+    sort_control:
+      display: current primary key plus direction
+      editor:
+        - reorder multiple keys
+        - choose missing-value placement
+        - choose grouping independently
+        - preview first items before apply
+    search:
+      scopes: [current folder, current saved root, account]
+      results:
+        mandatory_context: containing path
+        actions: [play, append, reveal, inspect]
+      query_behavior:
+        - Debounce network-backed searches.
+        - Keep recent local queries private and user-clearable.
+    undo:
+      local_actions:
+        - queue remove
+        - queue reorder
+        - root reorder
+        - root visibility
+      presentation: transient snackbar plus durable history where action consequence outlives snackbar
+      remote_mutation: uses revision recovery workflow, never represented as a trivial snackbar undo
+  state_presentation:
+    freshness:
+      fresh: no badge
+      refreshing: subtle progress without content blanking
+      stale: timestamp badge and refresh action
+      offline: offline label plus cache availability
+    cache:
+      remote_only: cloud indicator with text semantics
+      downloading: progress and pause
+      verified: available offline
+      stale_revision: update available
+      corrupt: verification failed and not playable as trusted cache
+    progress:
+      new: no progress ornament
+      in_progress: bar plus time remaining or percentage according to context
+      completed: check plus explicit completed label
+      changed_content: warning requiring resume decision
+    partial_operation:
+      - Show completed result first.
+      - Show omission summary second.
+      - Never present partial as total success.
+  accessibility:
+    touch_targets_dp_min: 48
+    contrast: Meet WCAG AA-equivalent contrast for text and meaningful controls.
+    screen_reader:
+      - Announce filename when effective title differs and user requests detailed labels.
+      - Announce queue position and reorder result.
+      - Suppress per-second progress announcements.
+      - Describe stale, offline, cached, failed, and completed states in text.
+    dynamic_type:
+      - Allow multiline titles and filenames.
+      - Preserve access to complete path through details or horizontal breadcrumb.
+      - Controls reflow rather than overlap.
+    motion:
+      - Respect reduced motion.
+      - Avoid decorative waveform or artwork animation by default.
+    motor:
+      - Destructive and high-impact actions are not gesture-only.
+      - Drag reorder has keyboard and menu alternatives.
+  adaptive_layout:
+    compact_width:
+      navigation: bottom destinations plus back stack
+      browser: single pane
+      queue: separate destination or sheet
+    medium_width:
+      navigation: rail
+      browser: list plus optional queue sheet
+    expanded_width:
+      navigation: persistent tree
+      browser: center pane
+      queue_or_inspector: right pane
+    continuity:
+      - Stable folder and item identity survive layout changes.
+      - Pane changes do not reset scroll, selection, queue, or playback.
+  localization:
+    rules:
+      - Never build sentences by concatenating translated fragments.
+      - Filenames and tags preserve original Unicode.
+      - Natural sorting uses explicit policy and deterministic fallback.
+      - Time and size display uses locale; persisted values remain locale-neutral.
+      - Right-to-left layout is supported without reversing media time direction semantics.
+  usability_tests:
+    critical_tasks:
+      - Connect account and reach root.
+      - Enqueue folder with tracks numbered 1, 2, and 10.
+      - Open containing folder from now playing.
+      - Resume a two-hour file after process termination.
+      - Identify why a title differs from filename.
+      - Create an Audiobooks saved root.
+      - Evict offline copy without deleting cloud file.
+    success_thresholds:
+      first_attempt_completion_rate: 0.9
+      critical_error_rate: 0.0
+      folder_play_median_seconds: 8
+      open_containing_folder_median_seconds: 3

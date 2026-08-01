@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">properpcloud</string>
+    <string name="bootstrap_status">Folder-first pCloud audio playback.\n\nBootstrap status:\n• source-neutral queue model\n• native pCloud folder and stream adapter\n• Media3 background playback service\n\nNext: OAuth login and the production folder browser.</string>
+</resources>

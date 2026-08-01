@@ -1,0 +1,47 @@
+release:
+  version: 0.0.1
+  tag: v0.0.1
+  date: 2026-08-02
+  release_unit: properpcloud repository
+  source_revision: resolved by immutable tag v0.0.1
+  license: MIT
+  status: validated_bootstrap
+  public_api:
+    - core-model source and queue contracts
+    - pCloud source adapter behavior
+    - Docker-backed Make targets
+    - normative YAML specifications
+  verification:
+    - command: make release-check
+      result: passed
+      evidence: 10 YAML documents, 16 requirements, 12 use cases, SemVer metadata agreement
+    - command: make ci
+      result: passed
+      evidence: 181 actionable Gradle tasks; tests, lint, and debug assembly successful
+    - command: git diff --check
+      result: passed
+  toolchain:
+    Java: Eclipse Temurin 17
+    Gradle: 9.6.1
+    Android_Gradle_Plugin: 9.3.1
+    compile_sdk: 36
+    target_sdk: 36
+    build_tools: 36.0.0
+  artifacts:
+    - path: app/build/outputs/apk/debug/app-debug.apk
+      kind: unsigned_debug_apk
+      size_bytes: 6165705
+      sha256: 9341b239a2c2c29cc9c90e06f17693e8318e0000af3da3be108b2a1fbabf2f69
+      package: dev.properpcloud.app
+      version_code: 1
+      version_name: 0.0.1
+      published: false
+  known_limitations:
+    - Architectural bootstrap rather than an end-user release.
+    - No live OAuth or pCloud sandbox validation.
+    - No production folder browser, persisted queue, or progress store.
+  publish_state:
+    git_commit: requested
+    local_tag: requested
+    remote_push: deferred until GitHub repository creation
+    github_release: not_applicable_for_bootstrap

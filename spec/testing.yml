@@ -1,0 +1,257 @@
+testing:
+  strategy:
+    objective: Prove semantic correctness at the cheapest layer and reserve device or live-provider tests for integration facts.
+    pyramid:
+      domain_unit:
+        share: high
+        properties: [deterministic, no Android runtime, no network, millisecond-scale]
+      application_contract:
+        share: high
+        properties: [in-memory fake ports, virtual time, controlled cancellation and faults]
+      adapter_contract:
+        share: medium
+        properties: [provider SDK mapping, database migrations, player behavior]
+      UI_component:
+        share: medium
+        properties: [semantic tree, reducer state, selective screenshots]
+      end_to_end:
+        share: low but mandatory for critical journeys
+        properties: [emulator or device, disposable provider tree, retained evidence]
+  environments:
+    pure_jvm:
+      runs: every change
+      covers: [domain, application, provider mapping with fakes, serialization]
+    android_host:
+      runs: every change when platform behavior is required
+      covers: [ViewModel, DataStore, Room, URI and lifecycle adapters]
+    android_instrumented:
+      runs: pull request or nightly according to duration
+      covers: [MediaSession, process recreation, accessibility, foreground service]
+    live_pcloud_sandbox:
+      runs: protected manual or scheduled job with dedicated account
+      covers: [OAuth, region, listing, link expiry, ranges, change feed, mutation conflict]
+      restrictions: [least-privilege disposable data, no fork secrets, cleanup required]
+    linux_integration:
+      runs: desktop pull request after client exists
+      covers: [SQLite, secret-vault fake, mpv IPC, MPRIS]
+  fixtures:
+    folder_tree:
+      Music/Album: [01 - Opening.mp3, 2 - Middle.mp3, 10 - Ending.mp3, cover.jpg]
+      Audiobooks/Book A: [001 Intro.m4b, 002 Chapter One.m4b]
+      Audiobooks/Broken Tags: [01 - Correct Filename.mp3]
+      Empty: []
+      Restricted: permission_denied
+    tags:
+      - valid ID3v2.3
+      - valid ID3v2.4
+      - missing tags
+      - invalid text encoding
+      - duplicate frames
+      - huge artwork exceeding parser limit
+      - track 2 of 10 and disc 1 of 2
+      - contradictory filename and tag number
+    streams:
+      - range-supported content
+      - range-ignored content
+      - expiring URL returning 403
+      - transient 500 then success
+      - truncated response
+      - revision change between resolve and download
+    databases:
+      - empty current schema
+      - every released prior schema
+      - interrupted migration checkpoint
+      - stale rebuildable-cache generation
+      - Unicode queue and progress rows
+  suites:
+    sorting:
+      level: domain
+      cases:
+        TEST-SORT-NATURAL:
+          given: [track1.mp3, track10.mp3, track2.mp3]
+          expect: [track1.mp3, track2.mp3, track10.mp3]
+        TEST-SORT-TRACK-TAGS:
+          expect: known disc and track values before missing, then natural filename
+        TEST-SORT-STABILITY:
+          property: Repeated sorting yields identical stable-node order.
+        TEST-SORT-UNICODE:
+          property: Comparator is total, deterministic, and safe for valid Unicode.
+    auth:
+      level: application_and_adapter
+      cases:
+        TEST-AUTH-LOGIN:
+          expect: [nonce validated, token stored only through vault, region persisted, root loaded]
+        TEST-AUTH-CANCEL:
+          expect: no account and no credential handle
+        TEST-AUTH-CALLBACK:
+          inject: wrong nonce and malformed redirect
+          expect: reject and redact callback data
+        TEST-AUTH-LOGOUT:
+          expect: local vault deletion blocks future access even if remote revocation fails
+    browse:
+      level: application_adapter_ui
+      cases:
+        TEST-BROWSE-FRESH:
+          expect: stable IDs and correct audio classification without tag dependence
+        TEST-BROWSE-STALE:
+          inject: refresh timeout with cached snapshot
+          expect: content remains with stale label and retry
+        TEST-BROWSE-LARGE:
+          fixture_size: 10000 children
+          expect: [no main-thread enumeration, incremental rendering, bounded memory, stable scroll anchor]
+        TEST-BROWSE-UNTRUSTED-NAMES:
+          given: [control characters, bidi marks, very long names, path separators]
+          expect: safe rendering and no local-path interpretation
+    queue:
+      level: domain_application
+      cases:
+        TEST-QUEUE-DIRECT:
+          expect: direct playable children sorted and atomically committed
+        TEST-QUEUE-EMPTY:
+          expect: existing queue preserved
+        TEST-QUEUE-OMISSIONS:
+          expect: structured counts without credential data
+        TEST-QUEUE-RECURSIVE:
+          expect: deterministic path grouping and bounded source concurrency
+        TEST-QUEUE-CANCEL:
+          expect: original generation unchanged at every cancellation point
+        TEST-QUEUE-CONCURRENT-EDIT:
+          inject: manual reorder during stale queue command
+          expect: generation conflict, not overwrite
+        TEST-QUEUE-PARTIAL:
+          inject: inaccessible child and transient network error
+          expect: policy-specific reject, accept, or ask
+    navigation:
+      cases:
+        TEST-NAV-CONTAINING-FOLDER:
+          expect: parent opens and item highlights while playback continues
+        TEST-NAV-MOVED:
+          inject: parent changes after queue creation
+          expect: new parent or explicit removed state
+    playback:
+      level: adapter_instrumented
+      cases:
+        TEST-PLAY-REMOTE:
+          expect: stable media ID separated from ephemeral URI
+        TEST-PLAY-LINK-EXPIRY:
+          inject: 403 after initial prepare
+          expect: bounded re-resolution and resume
+        TEST-PLAY-RANGE:
+          expect: correct range behavior or explicit unsupported-seek state
+        TEST-PLAY-AUDIO-FOCUS:
+          scenarios: [transient_loss, duck, permanent_loss, headset_disconnect]
+        TEST-PLAY-PROCESS-RECREATE:
+          expect: UI reconnects and authoritative queue remains
+    progress:
+      cases:
+        TEST-PROGRESS-CHECKPOINT:
+          expect: latest sample within configured loss window
+        TEST-PROGRESS-PROCESS-DEATH:
+          kill_points: [playing, paused, seeking, transition]
+          expect: policy-correct queue and position restore
+        TEST-PROGRESS-REVISION:
+          inject: content hash change
+          expect: explicit resume decision
+        TEST-PROGRESS-COMPLETION:
+          covers: [threshold, manual complete, manual reset, replay completed item]
+    cache:
+      cases:
+        TEST-CACHE-PIN:
+          expect: resumable durable job and correct accounting
+        TEST-CACHE-HASH:
+          inject: mismatched bytes
+          expect: corrupt state and no verified playback
+        TEST-CACHE-EVICT:
+          expect: local deletion only; zero source-delete calls
+        TEST-CACHE-QUOTA:
+          expect: pinned entries protected and evictions explained
+    inspection:
+      cases:
+        TEST-INSPECT-VALID:
+          expect: provider, embedded, normalized, and effective sections
+        TEST-INSPECT-BROKEN-TAGS:
+          expect: filename usable and warnings visible
+        TEST-INSPECT-REDACTION:
+          expect: tokens and signed URLs absent from UI, logs, export, and snapshots
+        TEST-INSPECT-HUGE-ARTWORK:
+          expect: bounded memory and skipped-artwork warning
+    mutation:
+      cases:
+        TEST-MUTATION-DRY-RUN:
+          expect: zero source writes before final confirmation
+        TEST-MUTATION-CONFLICT:
+          inject: remote revision changes after approval
+          expect: no overwrite and conflict result
+        TEST-MUTATION-VERIFY:
+          expect: resulting revision, tags, and decodability verified
+        TEST-MUTATION-INDETERMINATE:
+          inject: network loss after upload boundary
+          expect: indeterminate audit and reconciliation
+    database:
+      cases:
+        TEST-DB-MIGRATIONS:
+          expect: every supported schema preserves user state
+        TEST-DB-POWER-LOSS:
+          inject: interruption between queue header and items
+          expect: old or new complete generation, never mixed
+        TEST-DB-CACHE-REBUILD:
+          expect: rebuild does not touch queue, progress, roots, pins, or audits
+    accessibility:
+      cases:
+        - semantic labels for every actionable icon
+        - 48dp minimum targets
+        - focus order in compact and expanded layouts
+        - maximum dynamic text scale
+        - state communicated without color
+        - reorder alternative without drag
+    performance:
+      cases:
+        - cold start to cached browser
+        - 10000-child folder projection
+        - queue build for 5000 tracks
+        - progress-write latency under playback load
+        - malformed-tag and huge-artwork memory limits
+  reusable_contract_tests:
+    AudioSource:
+      - Root ID is stable.
+      - Listed child source IDs match descriptor.
+      - Every audio item has parent ID.
+      - Remote streams use HTTPS unless a trusted local scheme is declared.
+      - Provider exceptions map to AppError.
+      - SDK objects do not escape.
+    CredentialVault:
+      - Secret round trip succeeds.
+      - Delete prevents future read.
+      - Secret is absent from serialized metadata.
+      - Locked vault maps to explicit error.
+    OfflineCache:
+      - Partial content is never verified.
+      - Hash mismatch is rejected.
+      - Eviction cannot call source deletion.
+      - Reconciliation handles orphan temporary files.
+  fault_injection:
+    network: [offline, mid-list disconnect, mid-range disconnect, DNS failure, TLS failure, timeout, rate limit]
+    process: [Activity recreation, app kill, service restart, reboot during pin]
+    storage: [disk full, database locked, truncated cache, permission revoked]
+    provider: [wrong region, invalid token, item deleted, item moved, permission removed, revision conflict]
+  release_gates:
+    pull_request:
+      required:
+        - YAML specifications parse.
+        - Unit and contract tests pass.
+        - Android lint passes.
+        - Debug APK builds in container.
+        - Secret scan has no findings.
+        - Dependency licenses remain compatible.
+    release_candidate:
+      required:
+        - Critical instrumented journeys pass.
+        - Live pCloud sandbox tests pass.
+        - Database migration matrix passes.
+        - Accessibility audit has no critical finding.
+        - Performance targets are measured and exceptions documented.
+        - Reproducible build evidence is recorded.
+        - Signed artifact is smoke-tested on supported API levels.
+  evidence:
+    retain: [JUnit XML, HTML reports, lint reports, APK SHA-256, dependency verification, emulator API, sandbox cleanup]
+    prohibit: [OAuth tokens, signed URLs, passwords, private media bytes]

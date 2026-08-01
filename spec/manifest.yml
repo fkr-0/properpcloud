@@ -1,0 +1,53 @@
+specification:
+  id: properpcloud
+  title: properpcloud product and system specification
+  version: 0.1.0
+  status: draft-implementable
+  snapshot_date: 2026-08-01
+  normative_language:
+    must: mandatory for the named release or contract
+    should: expected unless a documented ADR justifies deviation
+    may: optional extension that must preserve mandatory invariants
+  source_of_truth:
+    - file: product.yml
+      owns: product goals, scope, personas, capabilities, quality attributes
+    - file: use-cases.yml
+      owns: executable user journeys and acceptance scenarios
+    - file: architecture.yml
+      owns: layers, dependency direction, modules, runtime topology
+    - file: contracts.yml
+      owns: interfaces, commands, events, persistence records, error taxonomy
+    - file: ux.yml
+      owns: navigation, screens, interactions, accessibility, state presentation
+    - file: testing.yml
+      owns: test strategy, fixtures, matrices, fault injection, release gates
+    - file: definition-of-done.yml
+      owns: feature and release completion criteria
+    - file: build.yml
+      owns: reproducible build, CI, dependency, artifact, and supply-chain rules
+    - file: linux-client.yml
+      owns: Linux reuse strategy and desktop-specific boundaries
+  invariants:
+    - id: INV-FOLDER-FIRST
+      statement: Folder path and filename are first-class library identity and navigation data.
+    - id: INV-TAGS-ENRICH
+      statement: Embedded tags enrich media but never replace stable file identity or folder browsing.
+    - id: INV-STABLE-IDENTITY
+      statement: Persistent state uses source and node identifiers, never expiring stream URLs.
+    - id: INV-OFFLINE-HONESTY
+      statement: The UI distinguishes unavailable, stale, cached, and synchronized data.
+    - id: INV-REMOTE-MUTATION-SAFE
+      statement: Remote file mutations are previewed, revision guarded, auditable, and verifiable.
+    - id: INV-PORTABLE-CORE
+      statement: Domain and application modules remain free of Android, desktop UI, and provider SDK types.
+  traceability:
+    requirement_id_prefixes:
+      product: REQ
+      use_case: UC
+      interface: IF
+      event: EVT
+      persistence: DB
+      ux: UX
+      test: TEST
+      definition_of_done: DOD
+    rule: Every must-level product requirement has at least one use case, contract, test, and DoD reference before release.
