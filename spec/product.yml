@@ -100,6 +100,10 @@ product:
         - REQ-PLAYBACK
         - REQ-PROGRESS
         - REQ-RESILIENCE
+    v0_1_6:
+      name: interim-direct-login-and-account-ux
+      requirements:
+        - REQ-AUTH
     v0_2:
       name: native-linux-feature-parity
       requirements: [REQ-LINUX-PARITY]
@@ -149,20 +153,25 @@ product:
     REQ-AUTH:
       priority: must
       release: v0_1_4
-      title: Native pCloud OAuth session
+      title: Safe pCloud session establishment and revocation
       behaviors:
-        - Published builds bundle the public properpcloud client ID; ordinary users never create a provider app.
+        - Prefer provider-hosted OAuth whenever a bundled or explicit public client ID is available.
+        - Published builds may omit a client ID while provider application registration is unavailable.
         - Developer builds may override the bundled public client ID explicitly.
-        - Release publication fails closed when no bundled client ID is configured.
         - Authorize in a trusted provider or system surface.
-        - Persist bearer token in platform secret storage.
+        - Offer a clearly labelled interim direct-login fallback implementing pCloud's documented HTTPS username/password token exchange.
+        - Require explicit Europe or United States selection and send direct-login credentials to exactly one allowlisted regional host.
+        - Clear direct-login password form state before dispatch and never persist, log, export, back up, or restore the password.
+        - Persist OAuth bearer or legacy auth token plus token kind in platform secret storage.
         - Persist non-secret regional API location and account identity separately.
-        - Restore sessions without collecting an account password.
+        - Restore sessions without restoring or recollecting an account password.
+        - Send legacy auth tokens and method parameters through HTTPS POST bodies rather than URLs.
         - Disconnect immediately locally and attempt remote revocation when supported.
         - Surface local removal and remote revocation as separate outcomes.
       forbidden:
         - tokens in logs, backups, crash reports, exported settings, or UI
-        - password collection for native API authentication
+        - password persistence, logging, analytics, backup, export, saved-state restoration, or cross-region probing
+        - credentials in URL query parameters
         - client secrets in source, BuildConfig, CI variables, or release artifacts
     REQ-BROWSE:
       priority: must

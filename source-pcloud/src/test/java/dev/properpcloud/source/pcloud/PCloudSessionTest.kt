@@ -18,7 +18,7 @@ class PCloudSessionTest {
     fun stringRepresentationRedactsToken() {
         val session = PCloudSession("super-secret-token", "api.pcloud.com", 1)
         assertEquals(
-            "PCloudSession(accessToken=<redacted>, apiHost=api.pcloud.com, userId=1)",
+            "PCloudSession(accessToken=<redacted>, apiHost=api.pcloud.com, userId=1, tokenKind=OAUTH_BEARER)",
             session.toString(),
         )
     }

@@ -9,6 +9,7 @@ import dev.properpcloud.app.playback.PlaybackConnection
 import dev.properpcloud.app.security.EncryptedTokenVault
 import dev.properpcloud.metadata.online.MusicBrainzMetadataProvider
 import dev.properpcloud.metadata.tags.JAudioTaggerToolkit
+import dev.properpcloud.source.pcloud.PCloudDirectLoginClient
 import dev.properpcloud.source.pcloud.PCloudSessionRevoker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +35,7 @@ class AppContainer(
         demoSource = DemoAudioSource(application),
         tokenVault = tokenVault,
     )
+    val pCloudDirectLogin = PCloudDirectLoginClient()
     val pCloudSessionRevoker = PCloudSessionRevoker()
     val metadata = MetadataEditingWorkspace(
         context = application,

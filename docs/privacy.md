@@ -10,7 +10,8 @@ advertising SDK, analytics SDK, telemetry upload, or account database.
 - queue order and containing-folder references;
 - playback position, duration, completion, and selected sort/source settings;
 - a bundled or user-overridden public pCloud application client ID;
-- an OAuth access token after successful pCloud authorization.
+- an OAuth access token after successful pCloud authorization, or an interim
+  direct-login `auth` token after successful documented account authentication;
 - local embedded-tag snapshots, approved patch plans, and staged-file hashes when
   the user invokes metadata tooling.
 
@@ -25,6 +26,15 @@ When the demo source is selected, no network is required.
 When pCloud is selected, the app communicates with pCloud's documented regional
 API host and temporary content hosts returned by pCloud. The app accepts only
 `api.pcloud.com` or `eapi.pcloud.com` as the account API host.
+
+OAuth is preferred and keeps the password on pCloud's page. Until pCloud issues
+properpcloud an application client ID, the optional interim direct-login form sends
+the entered email and password once to the explicitly selected regional `userinfo`
+endpoint over HTTPS POST. The password is removed from Compose form state before
+the request starts, mutable buffers are cleared after use, and no password is
+written to preferences, backup, files, logs, analytics, crash reports, or release
+evidence. An immutable runtime string can remain until garbage collection; the app
+does not claim impossible process-memory zeroization.
 
 Temporary signed media links are capabilities. They are resolved immediately
 before playback, kept only in Media3 runtime state, and not written to DataStore,
@@ -50,9 +60,10 @@ unrestricted provider responses.
 
 ## Data not collected
 
-properpcloud does not collect:
+properpcloud does not persist or centrally collect:
 
-- a pCloud account password;
+- a pCloud account password—the interim fallback handles it transiently only for
+  the direct provider request, while OAuth does not expose it to properpcloud;
 - advertising identifiers;
 - contacts, location, camera, microphone, or phone state;
 - usage analytics or crash telemetry;

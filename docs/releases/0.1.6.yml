@@ -1,0 +1,67 @@
+release:
+  version: 0.1.6
+  tag: v0.1.6
+  date: 2026-08-02
+  status: verified_release_candidate
+  license: MIT
+  scope:
+    - documented interim direct pCloud login with explicit regional selection
+    - OAuth-preferred account settings and advanced public-client-ID override
+    - token-kind-aware encrypted persistence, SDK authentication, and logout
+    - legacy credentials moved from URLs into HTTPS form POST bodies
+    - supplied PNG branding in documentation and in-app About surface
+    - optional rather than release-blocking OAuth application identity
+  verification:
+    command: make ci
+    result: passed
+    specifications:
+      documents: 11
+      requirements: 19
+      use_cases: 19
+    tests:
+      suites: 22
+      total: 79
+      failures: 0
+      errors: 0
+      skipped: 0
+    lint:
+      errors: 0
+      warnings: 0
+      hints: 4
+    Gradle:
+      actionable_tasks: 243
+  artifact:
+    path: app/build/outputs/apk/debug/app-debug.apk
+    package: dev.properpcloud.app
+    version_code: 1006
+    version_name: 0.1.6
+    production_signed: false
+    bundled_pcloud_client_id: false
+    interim_direct_login: true
+    size_bytes: 24691633
+    sha256: f7553db2f4c4d0fa6dd128058951ecf83b867e1866119634b88c2de9c0cfb91c
+    signature:
+      certificate: Android Debug
+      apk_signature_scheme_v2: true
+  authentication:
+    oauth:
+      preferred: true
+      application_registration_available: false
+      bundled_client_id: false
+    interim_direct_login:
+      documented_provider_protocol: true
+      regions: [Europe, United States]
+      password_persisted: false
+      token_absolute_lifetime_days: 90
+      token_inactivity_lifetime_days: 30
+      two_factor_live_validation: outstanding
+    independent_code_review:
+      result: passed_with_low_risk_coverage_notes
+      material_findings: 0
+  external_validation:
+    live_eu_direct_login: outstanding
+    live_us_direct_login: outstanding
+    oauth_application_registered: false
+    physical_device_accessibility: outstanding
+    android_17_runtime: outstanding
+    production_signing_available: false

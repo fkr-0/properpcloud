@@ -207,7 +207,7 @@ Status: **local release candidate**.
 - public application client ID injected into tagged builds for one-tap pCloud sign-in;
 - no user-created app, copied token, or pasted ID in the ordinary path;
 - explicit personal/developer client-ID override retained under advanced setup;
-- tagged release fails closed until the maintainer repository variable is configured;
+- tagged release validates a supplied application ID; while pCloud registration is unavailable, releases may ship with the interim direct-login fallback;
 - local credential removal and source detachment happen before network revocation;
 - queues containing pCloud media are cleared so an already-resolved stream cannot continue;
 - regional `/logout` invalidation uses an HTTPS bearer header and typed safe outcomes.
@@ -215,6 +215,8 @@ Status: **local release candidate**.
 External gate: register the properpcloud pCloud application once, configure
 `pcloud-oauth://dev.properpcloud.app`, enable implicit grant, set the public
 `PCLOUD_CLIENT_ID` repository variable, and complete protected US/EU live tests.
+The provider console is currently unavailable for this account, so this remains
+an enhancement gate rather than a blocker for the interim direct-login release.
 
 ## `0.1.5` — Android semantic freeze and lifecycle hardening
 
@@ -231,6 +233,25 @@ Status: **local release candidate**.
 External gates remain: physical-device process-death during browse, recursive queue
 construction, playback, metadata staging, OAuth return and disconnect; TalkBack,
 200% font, media keys, headset/codec behavior, and Android 17 runtime validation.
+
+## `0.1.6` — interim direct login and account UX
+
+Status: **release target**.
+
+- preserve OAuth as the preferred login path whenever a registered public client ID exists;
+- add pCloud's documented username/password → `auth` token flow as a visibly interim fallback;
+- require explicit Europe/United States selection and send credentials to exactly one allowlisted HTTPS host;
+- clear password form state before dispatch, never persist/log/export it, and request bounded token lifetimes;
+- persist token kind so OAuth bearer and legacy `auth` sessions restore with the correct transport;
+- move legacy SDK method parameters and token from URLs to HTTPS form POST bodies;
+- perform token-kind-aware provider logout after local-first disconnect;
+- allow tagged evaluation releases without `PCLOUD_CLIENT_ID` while continuing to validate any supplied ID;
+- replace the broken documentation SVG with the supplied PNG logo and use it in the in-app About surface;
+- keep two-factor direct-login support explicitly unclaimed until protected live-account evidence exists.
+
+OAuth application registration, protected EU/US direct-login checks, and two-factor
+behavior remain external provider/device gates. The direct path is temporary and
+will become a fallback-only option once OAuth application registration succeeds.
 
 ### Deferred beyond `0.1.0`
 

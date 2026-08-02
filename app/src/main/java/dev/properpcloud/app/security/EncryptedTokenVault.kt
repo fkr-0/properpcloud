@@ -6,6 +6,7 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
 import dev.properpcloud.source.pcloud.PCloudSession
+import dev.properpcloud.source.pcloud.PCloudTokenKind
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -21,6 +22,9 @@ class EncryptedTokenVault(context: Context) : PCloudSessionStore {
         val host = preferences.getString(KEY_HOST, null) ?: return null
         val userId = preferences.getLong(KEY_USER_ID, -1)
         if (userId < 0) return null
+        val tokenKind = preferences.getString(KEY_TOKEN_KIND, null)
+            ?.let { stored -> PCloudTokenKind.entries.firstOrNull { it.name == stored } }
+            ?: PCloudTokenKind.OAUTH_BEARER
 
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(
@@ -29,7 +33,7 @@ class EncryptedTokenVault(context: Context) : PCloudSessionStore {
             GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)),
         )
         val token = cipher.doFinal(Base64.decode(ciphertext, Base64.NO_WRAP)).toString(Charsets.UTF_8)
-        PCloudSession(token, host, userId)
+        PCloudSession(token, host, userId, tokenKind)
     }.getOrNull()
 
     override fun write(session: PCloudSession) {
@@ -41,6 +45,7 @@ class EncryptedTokenVault(context: Context) : PCloudSessionStore {
             putString(KEY_IV, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
             putString(KEY_HOST, session.apiHost)
             putLong(KEY_USER_ID, session.userId)
+            putString(KEY_TOKEN_KIND, session.tokenKind.name)
         }
     }
 
@@ -72,5 +77,6 @@ class EncryptedTokenVault(context: Context) : PCloudSessionStore {
         const val KEY_IV = "token_iv"
         const val KEY_HOST = "api_host"
         const val KEY_USER_ID = "user_id"
+        const val KEY_TOKEN_KIND = "token_kind"
     }
 }

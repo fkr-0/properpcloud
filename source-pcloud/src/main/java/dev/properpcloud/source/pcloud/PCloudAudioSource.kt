@@ -7,6 +7,7 @@ import com.pcloud.sdk.DownloadOptions
 import com.pcloud.sdk.PCloudSdk
 import com.pcloud.sdk.RemoteFile
 import com.pcloud.sdk.RemoteEntry
+import com.pcloud.sdk.internal.LegacyTokenAuthenticators
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioSource
 import dev.properpcloud.core.model.AudioTrack
@@ -249,10 +250,16 @@ private class SdkPCloudMetadataTransport(
     }
 }
 
+enum class PCloudTokenKind {
+    OAUTH_BEARER,
+    LEGACY_AUTH_TOKEN,
+}
+
 data class PCloudSession(
     val accessToken: String,
     val apiHost: String,
     val userId: Long,
+    val tokenKind: PCloudTokenKind = PCloudTokenKind.OAUTH_BEARER,
 ) {
     init {
         require(accessToken.isNotBlank()) { "access token must not be blank" }
@@ -261,14 +268,18 @@ data class PCloudSession(
     }
 
     override fun toString(): String =
-        "PCloudSession(accessToken=<redacted>, apiHost=$apiHost, userId=$userId)"
+        "PCloudSession(accessToken=<redacted>, apiHost=$apiHost, userId=$userId, tokenKind=$tokenKind)"
 }
 
 object PCloudSourceFactory {
     fun create(session: PCloudSession): PCloudAudioSource {
+        val authenticator = when (session.tokenKind) {
+            PCloudTokenKind.OAUTH_BEARER -> Authenticators.newOAuthAuthenticator(session.accessToken)
+            PCloudTokenKind.LEGACY_AUTH_TOKEN -> LegacyTokenAuthenticators.create(session.accessToken)
+        }
         val client = PCloudSdk.newClientBuilder()
             .apiHost(session.apiHost)
-            .authenticator(Authenticators.newOAuthAuthenticator(session.accessToken))
+            .authenticator(authenticator)
             .create()
         return PCloudAudioSource(client)
     }

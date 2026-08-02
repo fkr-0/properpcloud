@@ -104,6 +104,7 @@ class MainActivity : ComponentActivity() {
                     toggleBatchCandidateField = viewModel::toggleBatchCandidateField,
                     stageBatchMetadata = viewModel::stageBatchMetadata,
                     shareMetadataArtifact = ::shareMetadataArtifact,
+                    signInWithPCloudPassword = viewModel::signInWithPCloudPassword,
                     updateClientId = viewModel::updateClientId,
                     openPCloudDeveloperConsole = ::openPCloudDeveloperConsole,
                     selectSource = { kind ->

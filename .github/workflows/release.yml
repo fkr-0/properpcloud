@@ -45,7 +45,7 @@ jobs:
           printf 'release_commit=%s\n' "$(git rev-parse HEAD)"
           git tag --points-at HEAD | grep --fixed-strings --line-regexp "$RELEASE_TAG"
 
-      - name: Require bundled pCloud application identity
+      - name: Validate optional bundled pCloud OAuth identity
         run: make release-client-id-check
 
       - name: Set up Buildx

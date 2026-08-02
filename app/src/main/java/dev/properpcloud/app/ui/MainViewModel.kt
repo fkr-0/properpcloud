@@ -31,6 +31,8 @@ import dev.properpcloud.core.model.TagField
 import dev.properpcloud.core.model.TrackSortKey
 import dev.properpcloud.core.model.TrackSortPolicy
 import dev.properpcloud.source.pcloud.PCloudSession
+import dev.properpcloud.source.pcloud.PCloudAccountRegion
+import dev.properpcloud.source.pcloud.PCloudDirectLoginResult
 import dev.properpcloud.source.pcloud.PCloudRevocationResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -54,6 +56,8 @@ class MainViewModel(
     private var checkpointCursor = PlaybackCheckpointCursor()
     private var lastPlaybackError: String? = null
     private var metadataJob: Job? = null
+    private var pCloudLoginJob: Job? = null
+    private var pCloudLoginGeneration: Long = 0
     private var singleMetadataItem: LoadedMetadataItem? = null
     private val batchMetadataItems = linkedMapOf<String, LoadedMetadataItem>()
     private var metadataExportArtifact: MetadataExportArtifact? = null
@@ -721,14 +725,73 @@ class MainViewModel(
         }
     }
 
+    fun signInWithPCloudPassword(
+        email: String,
+        password: CharArray,
+        region: PCloudAccountRegion,
+    ) {
+        pCloudLoginJob?.cancel()
+        val generation = ++pCloudLoginGeneration
+        _state.value = _state.value.copy(
+            pCloudLoginInProgress = true,
+            message = null,
+        )
+        pCloudLoginJob = viewModelScope.launch {
+            try {
+                val result = container.pCloudDirectLogin.signIn(email, password, region)
+                if (generation != pCloudLoginGeneration) return@launch
+                when (result) {
+                    is PCloudDirectLoginResult.Connected -> installPCloudSession(
+                        result.session,
+                        "pCloud connected through interim direct sign-in. The password was not stored; the temporary auth token is encrypted on this device.",
+                    )
+                    PCloudDirectLoginResult.InvalidInput -> {
+                        _state.value = _state.value.copy(message = "Enter a valid pCloud email and password.")
+                    }
+                    PCloudDirectLoginResult.InvalidResponse -> {
+                        _state.value = _state.value.copy(
+                            message = "pCloud returned an incomplete direct-login response. Use OAuth when available or verify the selected account region.",
+                        )
+                    }
+                    PCloudDirectLoginResult.NetworkFailure -> {
+                        _state.value = _state.value.copy(
+                            message = "Could not reach the selected pCloud regional API. Check the network and account region, then retry.",
+                        )
+                    }
+                    is PCloudDirectLoginResult.ProviderRejected -> {
+                        val code = result.providerCode?.let { " (provider code $it)" }.orEmpty()
+                        _state.value = _state.value.copy(
+                            message = "pCloud rejected direct sign-in$code. Check the email, password, and region. Accounts requiring two-factor authentication may need OAuth.",
+                        )
+                    }
+                }
+            } finally {
+                password.fill('\u0000')
+                if (generation == pCloudLoginGeneration) {
+                    _state.value = _state.value.copy(pCloudLoginInProgress = false)
+                }
+            }
+        }
+    }
+
     fun onPCloudAuthorized(session: PCloudSession) {
+        pCloudLoginGeneration += 1
+        pCloudLoginJob?.cancel()
+        installPCloudSession(
+            session,
+            "pCloud connected through OAuth. The access token is encrypted on this device.",
+        )
+    }
+
+    private fun installPCloudSession(session: PCloudSession, successMessage: String) {
         runCatching { container.sources.installPCloud(session) }
             .onSuccess {
                 _state.value = _state.value.copy(
                     sourceKind = SourceKind.PCLOUD,
                     sourceName = "pCloud",
                     pCloudConnected = true,
-                    message = "pCloud connected. The access token is encrypted on this device.",
+                    pCloudLoginInProgress = false,
+                    message = successMessage,
                 )
                 viewModelScope.launch {
                     container.preferences.updateSource(SourceKind.PCLOUD)
@@ -739,6 +802,8 @@ class MainViewModel(
     }
 
     fun disconnectPCloud() {
+        pCloudLoginGeneration += 1
+        pCloudLoginJob?.cancel()
         val hadPCloudQueue = _state.value.queue.entries.any { it.track.sourceId.value == SourceKind.PCLOUD.id }
         if (hadPCloudQueue) {
             flushPlaybackProgress()
@@ -954,6 +1019,7 @@ class MainViewModel(
         folderJob?.cancel()
         queueJob?.cancel()
         metadataJob?.cancel()
+        pCloudLoginJob?.cancel()
         discardMetadataSources()
     }
 

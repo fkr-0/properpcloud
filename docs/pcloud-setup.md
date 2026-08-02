@@ -1,98 +1,162 @@
 # pCloud setup and live validation
 
-properpcloud uses pCloud's official OAuth surface and Java/Android SDK. It does
-not collect an account password.
+properpcloud supports two documented pCloud authentication paths. OAuth is the
+preferred long-term path because account credentials stay on pCloud's own page.
+An explicitly labelled direct-login fallback is available while pCloud's
+application-registration console is unavailable.
 
-## Normal user sign-in
+## Preferred: OAuth
 
-A published properpcloud build contains the project's public pCloud application
-client ID. Open **Settings → pCloud account** and choose **Sign in to pCloud**.
-Authentication and consent happen on pCloud's official authorization page. The
-approved token returns directly to properpcloud and is encrypted locally; users
-do not copy or paste access tokens.
+A published build may contain properpcloud's public pCloud application client ID.
+Open **Settings → pCloud account** and choose **Continue with pCloud OAuth**.
+Authentication and consent happen on pCloud's authorization page. The approved
+OAuth token returns directly to properpcloud and is encrypted locally; users do
+not copy tokens or enter their pCloud password into properpcloud.
 
 A client ID identifies the application. It is not tied to the user's account,
-cannot be discovered from that account, is not a password, and is not a client
+cannot be derived from that account, is not a password, and is not a client
 secret.
 
-## Maintainer release setup
+### Maintainer OAuth setup
 
 1. Sign in to pCloud's developer console.
 2. Create the properpcloud application.
-3. Register the redirect URI `pcloud-oauth://dev.properpcloud.app`.
+3. Register `pcloud-oauth://dev.properpcloud.app` as the redirect URI.
 4. Enable **Allow implicit grant**, as required by pCloud's Android SDK token flow.
 5. Record the public client ID as the GitHub repository variable
-   `PCLOUD_CLIENT_ID`. Do not store or embed the client secret.
-6. Build the tagged release. The release workflow fails before building when the
-   variable is absent or blank.
+   `PCLOUD_CLIENT_ID`. Never store or embed the client secret.
+6. Rebuild a tagged release. The release preflight validates a supplied ID but no
+   longer blocks publication when it is absent, because interim direct sign-in is
+   available.
 
-For a personal or local test build, open **Advanced setup** in the app and paste
-your own public client ID, or build with:
+For a personal build, open **OAuth developer setup** in the app and enter a public
+client ID, or build with:
 
 ```sh
 PCLOUD_CLIENT_ID=your_public_client_id make build
 ```
 
-The returned access token is encrypted with an Android Keystore AES-GCM key and
-excluded from app backup/device transfer. Disconnect removes the stored session
-immediately and then attempts pCloud's token-invalidating `logout` method.
+## Interim: direct pCloud account sign-in
+
+pCloud's HTTP JSON authentication documentation permits an HTTPS request with
+`username`, `password`, `getauth=1`, `logout=1`, and a device name. A successful
+`userinfo` response contains an `auth` token. This path requires no application
+client ID.
+
+Open **Settings → pCloud account → Interim direct sign-in**, then:
+
+1. choose the account's storage region—**Europe** or **United States**;
+2. enter the pCloud account email and password;
+3. choose **Sign in directly**.
+
+The implementation deliberately:
+
+- sends credentials only to `https://eapi.pcloud.com/userinfo` or
+  `https://api.pcloud.com/userinfo`, according to the user's explicit choice;
+- uses an HTTPS form POST, not URL query parameters;
+- disables redirects, applies 15-second timeouts, and bounds the response body;
+- clears the password field before starting the request;
+- never stores, logs, backs up, exports, or includes the password in diagnostics;
+- requests a 90-day absolute token lifetime and 30-day inactivity lifetime;
+- encrypts only the returned `auth` token with Android Keystore AES-GCM;
+- marks the session as a legacy-auth-token session so subsequent SDK requests send
+  `auth` in an HTTPS POST body rather than an OAuth bearer header or URL;
+- invalidates that token through the matching regional `logout` method on disconnect.
+
+The password necessarily exists transiently in Android UI/process memory while the
+user types and the request is encoded. Java/Kotlin strings cannot be reliably
+zeroized, so properpcloud does not claim impossible memory erasure; it minimizes
+lifetime, clears mutable buffers, and never persists the value.
+
+This fallback may be rejected for accounts or provider policies requiring a
+separate two-factor challenge. pCloud's public direct-login documentation does not
+describe that challenge. Use OAuth when available for such accounts.
+
+## Session storage and disconnect
+
+Both OAuth and direct-login tokens are encrypted with an Android Keystore AES-GCM
+key and excluded from backup/device transfer. The stored session also records its
+token kind and regional host so the correct SDK authentication and logout protocol
+is restored after process restart.
+
+Disconnect removes the local encrypted session and provider source first. It then
+attempts provider-side invalidation:
+
+- OAuth token: regional `/logout` with HTTPS `Authorization: Bearer`;
+- direct-login token: regional `/logout` with an HTTPS form-body `auth` parameter.
+
+Local removal and remote confirmation remain separate outcomes.
 
 ## Regional API hosts
 
-OAuth returns the account's API host. properpcloud rejects every host except:
+properpcloud rejects every account API host except:
 
 ```text
-api.pcloud.com
-eapi.pcloud.com
+api.pcloud.com   # United States
+eapi.pcloud.com  # Europe
 ```
+
+The direct flow never probes both regions with a password. The user must choose the
+region explicitly.
 
 ## Troubleshooting
 
-### Sign-in button is disabled
+### OAuth button is unavailable
 
-The build has no bundled application identity and no custom override. Published
-releases must be rebuilt with `PCLOUD_CLIENT_ID`; local testers may enter a public
-client ID under **Advanced setup**. Never paste a client secret, password, or token.
+The build has no bundled application identity and no custom override. Use the
+clearly labelled interim direct-login path, or enter a public client ID under
+**OAuth developer setup**. Never enter a client secret or access token there.
 
-### Authorization is cancelled or denied
+### Direct sign-in is rejected
 
-No token is stored. Retry from Settings when ready.
+- verify the email and password;
+- verify Europe versus United States;
+- use OAuth when the account requires two-factor authentication;
+- note the numeric provider code shown by the app, but never include credentials in
+  a report.
 
 ### Disconnect says remote invalidation was unconfirmed
 
 The encrypted local session has already been removed, so the app cannot make
-further authenticated requests. A network/provider failure prevented confirmation
-from pCloud. Revoke properpcloud from pCloud's account security/application settings
-when assurance is required.
+further authenticated requests. A network/provider failure prevented confirmation.
+Use pCloud account-security/token controls when independent assurance is required.
 
 ### Folder cannot be loaded
 
 - confirm the device has network access;
 - disconnect/reconnect if authorization was revoked;
 - confirm the account's regional API is reachable;
-- use **Inspect metadata** only with synthetic/non-sensitive screenshots when
-  reporting a bug.
+- share only synthetic/non-sensitive screenshots and inspection data in bug reports.
 
 ### Playback link expires
 
-Stream links are capabilities and are never durable state. Media3 resolves a
-fresh link before playback and performs one bounded refresh when an eligible
-HTTP 401/403 response indicates expiry. Repeated failure is surfaced rather than
-looped indefinitely.
+Stream links are capabilities and are never durable state. Media3 resolves a fresh
+link before playback and performs one bounded refresh when an eligible HTTP 401/403
+response indicates expiry. Repeated failure is surfaced rather than looped.
 
 ## Protected live-account validation checklist
 
-Public CI cannot run this checklist because it contains no provider credentials.
-A maintainer should use a disposable application and test account.
+Public CI contains no provider credentials. A maintainer should use a disposable
+account and, for OAuth, a disposable application registration.
 
 ```yaml
-authorization:
-  - grant US account
-  - grant EU account
-  - deny
-  - cancel
-  - revoke then retry
-  - disconnect and verify local removal
+authentication:
+  oauth:
+    - grant US account
+    - grant EU account
+    - deny and cancel
+    - wrong callback/nonce
+  direct:
+    - successful EU account
+    - successful US account
+    - wrong password
+    - wrong region
+    - account with two-factor authentication
+    - verify password absent from logcat, backup, state restoration, and reports
+  disconnect:
+    - OAuth token invalidated
+    - direct auth token invalidated
+    - offline local-first removal
 folders:
   - root and three nested levels
   - empty folder
@@ -115,13 +179,13 @@ resilience:
   - kill process while browsing
   - kill process while scanning
   - kill process during playback
-  - restore queue and progress
+  - restore queue, progress, token kind, and regional host
 privacy:
-  - no token in logcat
+  - no password or token in logcat
   - no signed link in persisted preferences
   - no credentials in reports, backups, or release artifacts
 ```
 
-Record evidence in a private maintainer report with synthetic/redacted names.
-The public release notes should say whether this gate was completed; never infer
-live validation from deterministic fixtures.
+Record evidence privately with synthetic/redacted names. Public release notes must
+state whether the live gate was completed; deterministic fixtures are not a
+substitute for real account validation.

@@ -25,6 +25,7 @@ data class AppUiState(
     val sourceKind: SourceKind = SourceKind.DEMO,
     val sourceName: String = "Demo library",
     val pCloudConnected: Boolean = false,
+    val pCloudLoginInProgress: Boolean = false,
     val clientId: String = "",
     val currentFolder: AudioFolder? = null,
     val breadcrumbs: List<AudioFolder> = emptyList(),

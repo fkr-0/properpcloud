@@ -36,6 +36,8 @@ definition_of_done:
       - OAuth state or nonce is validated.
       - Region and hostname behavior are tested.
       - Token exists only in credential vault.
+      - Interim password input is visibly disclosed, cleared before dispatch, never durable, and tested for buffer cleanup.
+      - Legacy auth transport keeps credentials out of URLs and rejects non-pCloud hosts.
       - Logout blocks future requests before UI reports completion.
       - Redaction tests include callbacks, exceptions, and support export.
     folder_browser:

@@ -131,8 +131,8 @@ class ProperpcloudAppTest {
         compose.onNodeWithText("Settings").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("pCloud account").assertIsDisplayed()
-        compose.onNodeWithTag("settings-screen").performScrollToNode(hasText("Sign in to pCloud"))
-        compose.onNodeWithText("Sign in to pCloud").assertIsDisplayed()
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasText("Interim direct sign-in"))
+        compose.onNodeWithText("Interim direct sign-in").assertIsDisplayed()
         if (compose.onAllNodesWithTag("client-id").fetchSemanticsNodes().isEmpty()) {
             compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("toggle-advanced-oauth"))
             compose.onNodeWithTag("toggle-advanced-oauth").performClick()
@@ -142,6 +142,30 @@ class ProperpcloudAppTest {
         compose.onNodeWithTag("client-id").assertIsDisplayed()
         compose.onNodeWithTag("settings-screen").performScrollToNode(hasText("Metadata tools"))
         compose.onNodeWithText("Metadata tools").assertIsDisplayed()
+    }
+
+    @Test
+    fun settingsExposeClearlyLabelledInterimDirectLogin() {
+        compose.setContent {
+            ProperpcloudApp(
+                state = sampleState().copy(destination = AppDestination.SETTINGS),
+                actions = noOpActions(),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("direct-login-card"))
+        compose.onNodeWithText("Interim direct sign-in").assertIsDisplayed()
+        if (compose.onAllNodesWithTag("direct-login-email").fetchSemanticsNodes().isEmpty()) {
+            compose.onNodeWithTag("toggle-direct-login").performClick()
+            compose.waitForIdle()
+        }
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("direct-login-email"))
+        compose.onNodeWithTag("direct-login-email").assertIsDisplayed()
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("direct-login-password"))
+        compose.onNodeWithTag("direct-login-password").assertIsDisplayed()
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("direct-login-submit"))
+        compose.onNodeWithText("Sign in directly").assertIsDisplayed()
     }
 
     @Test
@@ -222,6 +246,7 @@ class ProperpcloudAppTest {
         toggleBatchCandidateField = { _, _ -> },
         stageBatchMetadata = {},
         shareMetadataArtifact = {},
+        signInWithPCloudPassword = { _, _, _ -> },
         updateClientId = {},
         openPCloudDeveloperConsole = {},
         selectSource = {},

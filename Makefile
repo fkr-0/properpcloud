@@ -71,7 +71,7 @@ release-check: spec ## Validate SemVer, changelog, license, and Android version 
 	  $(IMAGE) \
 	  scripts/validate-release.py
 
-release-client-id-check: ## Require the public pCloud application ID used by tagged releases.
+release-client-id-check: ## Validate the optional public pCloud OAuth application ID.
 	@python3 scripts/validate-pcloud-client-id.py
 
 release-artifacts: ## Prepare versioned APK, checksums, evidence, and release notes.

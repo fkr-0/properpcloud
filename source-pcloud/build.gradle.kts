@@ -20,6 +20,7 @@ android {
 dependencies {
     api(projects.coreModel)
     implementation(libs.pcloud.java.core)
+    implementation(libs.gson)
     implementation(libs.coroutines.core)
     testImplementation(libs.junit4)
     testImplementation(libs.coroutines.test)

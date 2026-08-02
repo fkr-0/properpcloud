@@ -24,6 +24,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Verified offline pinning, saved roots, long-form controls, and Android Auto after
   cross-platform queue/progress semantics stabilize.
 
+## [0.1.6] - 2026-08-02
+
+### Added
+
+- A clearly labelled interim direct pCloud sign-in path implementing the provider's
+  documented HTTPS `userinfo` authentication with explicit Europe/United States choice.
+- Token-kind-aware session persistence and SDK authentication for OAuth bearer tokens
+  and direct-login `auth` tokens.
+- A safer account-settings layout that separates recommended OAuth, interim direct
+  sign-in, and advanced developer configuration.
+- The supplied raster properpcloud logo in README and in-app About branding.
+
+### Changed
+
+- Tagged releases no longer require a pCloud client ID while the developer console is
+  unavailable; a configured ID is still validated and immediately enables preferred OAuth.
+- Legacy-auth SDK reads move all method parameters and the `auth` token from URL queries
+  into HTTPS form POST bodies.
+- Disconnect invalidates OAuth and legacy tokens with their respective documented
+  transport conventions while preserving local-first removal.
+
+### Security
+
+- Direct-login passwords are held only in short-lived UI/request state, removed from the
+  form before the request starts, never persisted/logged/exported/backed up, and sent only
+  to the explicitly selected allowlisted regional pCloud API over HTTPS POST.
+- Direct authentication disables redirects, bounds response size and time, avoids
+  cross-region credential probing, and retains only numeric provider rejection codes.
+- Direct-login tokens request a 90-day absolute lifetime and 30-day inactivity lifetime
+  rather than the provider's longest possible lifetime.
+
+### Testing
+
+- Added direct-login result, buffer-clearing, network/redaction, legacy SDK request
+  transformation, regional-host rejection, and Compose account-settings coverage.
+
+### Known limitations
+
+- pCloud's public direct-login documentation does not describe a two-factor challenge;
+  affected accounts may require OAuth once application registration becomes available.
+- Live direct-login and OAuth validation require a disposable provider account and remain
+  outside public CI; the release is an evaluation build signed with an Android debug key.
+
 ## [0.1.5] - 2026-08-02
 
 ### Added

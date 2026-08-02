@@ -29,7 +29,7 @@ class PCloudSessionRevoker internal constructor(
 
     suspend fun revoke(session: PCloudSession): PCloudRevocationResult = withContext(Dispatchers.IO) {
         val response = try {
-            transport.logout(session.apiHost, session.accessToken)
+            transport.logout(session)
         } catch (error: CancellationException) {
             throw error
         } catch (_: IOException) {
@@ -58,21 +58,54 @@ internal data class PCloudLogoutResponse(
 
 internal fun interface PCloudLogoutTransport {
     @Throws(IOException::class)
-    fun logout(apiHost: String, accessToken: String): PCloudLogoutResponse
+    fun logout(session: PCloudSession): PCloudLogoutResponse
 }
 
+internal class PCloudLogoutRequestPlan(
+    val method: String,
+    val authorizationHeader: String?,
+    val formBody: ByteArray?,
+) {
+    override fun toString(): String =
+        "PCloudLogoutRequestPlan(method=$method, authorizationHeader=<redacted>, formBody=<redacted>)"
+}
+
+internal fun pCloudLogoutRequestPlan(session: PCloudSession): PCloudLogoutRequestPlan =
+    when (session.tokenKind) {
+        PCloudTokenKind.OAUTH_BEARER -> PCloudLogoutRequestPlan(
+            method = "GET",
+            authorizationHeader = "Bearer ${session.accessToken}",
+            formBody = null,
+        )
+        PCloudTokenKind.LEGACY_AUTH_TOKEN -> PCloudLogoutRequestPlan(
+            method = "POST",
+            authorizationHeader = null,
+            formBody = "auth=${java.net.URLEncoder.encode(session.accessToken, Charsets.UTF_8.name())}"
+                .toByteArray(Charsets.UTF_8),
+        )
+    }
+
 private class HttpsPCloudLogoutTransport : PCloudLogoutTransport {
-    override fun logout(apiHost: String, accessToken: String): PCloudLogoutResponse {
-        require(apiHost in allowedPCloudApiHosts) { "unsupported pCloud API host" }
-        val connection = URI("https", apiHost, "/logout", null).toURL().openConnection() as HttpsURLConnection
+    override fun logout(session: PCloudSession): PCloudLogoutResponse {
+        require(session.apiHost in allowedPCloudApiHosts) { "unsupported pCloud API host" }
+        val connection = URI("https", session.apiHost, "/logout", null).toURL().openConnection() as HttpsURLConnection
+        val requestPlan = pCloudLogoutRequestPlan(session)
         try {
-            connection.requestMethod = "GET"
             connection.instanceFollowRedirects = false
             connection.connectTimeout = TIMEOUT_MILLIS
             connection.readTimeout = TIMEOUT_MILLIS
             connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("Authorization", "Bearer $accessToken")
             connection.setRequestProperty("User-Agent", "properpcloud-android")
+            connection.requestMethod = requestPlan.method
+            requestPlan.authorizationHeader?.let { header ->
+                connection.setRequestProperty("Authorization", header)
+            }
+            requestPlan.formBody?.let { body ->
+                connection.doOutput = true
+                connection.setFixedLengthStreamingMode(body.size)
+                connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+                connection.outputStream.use { it.write(body) }
+            }
 
             val status = connection.responseCode
             val body = (if (status in 200..299) connection.inputStream else connection.errorStream)
@@ -95,6 +128,7 @@ private class HttpsPCloudLogoutTransport : PCloudLogoutTransport {
                 authDeleted = AUTH_DELETED_PATTERN.find(body)?.groupValues?.get(1)?.toBooleanStrictOrNull(),
             )
         } finally {
+            requestPlan.formBody?.fill(0)
             connection.disconnect()
         }
     }

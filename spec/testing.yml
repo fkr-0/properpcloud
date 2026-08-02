@@ -82,10 +82,16 @@ testing:
         TEST-AUTH-LOGIN:
           expect: [bundled or explicit public client ID selected, token stored only through vault, region persisted, root loaded]
         TEST-AUTH-CONFIG:
-          expect: [custom override wins, bundled ID enables ordinary login, missing ID fails closed]
+          expect: [custom override wins, bundled ID enables OAuth, missing ID leaves OAuth disabled while direct fallback remains available]
         TEST-AUTH-RELEASE-CONFIG:
           command: make release-client-id-check
-          expect: tagged release fails before build when PCLOUD_CLIENT_ID is blank or malformed
+          expect: missing ID reports OAuth-disabled fallback mode, valid ID enables OAuth, malformed ID fails
+        TEST-AUTH-DIRECT:
+          expect: [explicit regional host, successful auth token session, password buffer cleared, provider and network failures typed]
+        TEST-AUTH-LEGACY-TRANSPORT:
+          expect: [HTTPS API allowlist, SDK query parameters moved to one-shot form body, auth token absent from URL and Authorization header, token-bearing replay prevented, HTTPS content capabilities passed without account token, cleartext content rejected]
+        TEST-AUTH-DIRECT-UI:
+          expect: [interim label, OAuth preference disclosure, explicit region, email and password fields, two-factor limitation]
         TEST-AUTH-CANCEL:
           expect: no account and no credential handle
         TEST-AUTH-CALLBACK:
@@ -94,7 +100,7 @@ testing:
         TEST-AUTH-LOGOUT:
           expect: local vault deletion blocks future access before remote revocation begins
         TEST-AUTH-REMOTE-REVOKE:
-          expect: [regional HTTPS endpoint, bearer header, no redirect, typed confirmed/inactive/unconfirmed result]
+          expect: [regional HTTPS endpoint, OAuth bearer header or legacy form token, no redirect, typed confirmed/inactive/unconfirmed result]
     browse:
       level: application_adapter_ui
       cases:

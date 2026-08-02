@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="docs/assets/properpcloud-badger.svg" alt="properpcloud badger cloud" width="720">
+  <img src="docs/assets/logo.png" alt="properpcloud logo" width="465">
 </p>
 
 # properpcloud
 
 Folder-first Android audio playback for pCloud and other file-oriented sources.
 
-[![Version](https://img.shields.io/badge/version-0.1.5-59636e)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.6-59636e)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
 
 Audio libraries are often already organized correctly in folders. properpcloud
@@ -15,7 +15,7 @@ artist/album/song tags.
 
 > Independent software. Not affiliated with or endorsed by pCloud AG.
 
-## What `0.1.5` provides
+## What `0.1.6` provides
 
 - adaptive Material 3 Android UI with compact and expanded layouts;
 - stable-ID folder navigation and breadcrumbs;
@@ -27,9 +27,12 @@ artist/album/song tags.
 - a first-class now-playing screen with seek timeline, queue context, and folder reveal;
 - just-in-time pCloud stream-link resolution with one bounded expiry retry;
 - encrypted pCloud OAuth token storage using Android Keystore AES-GCM;
-- normal pCloud OAuth sign-in using a release-bundled public application ID, with an
-  advanced custom-ID override for personal builds;
-- local-first disconnect followed by typed provider-side token invalidation;
+- preferred pCloud OAuth sign-in using a release-bundled public application ID when
+  pCloud application registration is available;
+- a clearly labelled interim direct-login fallback using pCloud's documented HTTPS
+  username/password token endpoint, with explicit EU/US region choice, no password
+  persistence, short-lived form state, and encrypted token storage;
+- local-first disconnect followed by token-kind-aware provider-side invalidation;
 - lifecycle-safe progress checkpoints and visible playback-controller/queue restoration failures;
 - bounded signed-link retry recovery rather than one process-lifetime attempt;
 - frozen queue/progress compatibility fixtures for the native Linux `0.2.0` client;
@@ -51,11 +54,18 @@ network access, or private fixtures.
 1. Install the APK and open **Demo library**.
 2. Browse folders and play tracks immediately. Open a track's menu and choose
    **Edit tags**, or select several tracks for **Edit batch**.
-3. Choose **Settings → pCloud account → Sign in to pCloud**. Published builds carry
-   properpcloud's public application identity, so ordinary users do not create an app,
-   copy a token, or paste a client ID.
-4. Authorize on pCloud's trusted surface. properpcloud never asks for the account
-   password. Personal/test builds may set a custom client ID under **Advanced setup**.
+3. Open **Settings → pCloud account**. Use **Continue with pCloud OAuth** when a
+   registered properpcloud application ID is bundled.
+4. While pCloud's developer console is unavailable, expand **Interim direct sign-in**,
+   select the account's Europe or United States region, and enter the account email and
+   password. They are sent once to that regional pCloud API over HTTPS; the password is
+   cleared from the form immediately and is never stored. Accounts requiring two-factor
+   authentication may need the OAuth route.
+5. Personal/test builds may still set a custom public client ID under **OAuth developer setup**.
+
+OAuth remains the target default because properpcloud never receives the password in
+that flow. The direct path is an explicitly interim implementation of pCloud's current
+documented authentication protocol, not a copied token or unofficial app-login mimic.
 
 Detailed setup and validation instructions are in `docs/pcloud-setup.md`.
 The modern-player design is in `docs/ux-modernization.md`; metadata architecture,
@@ -65,8 +75,13 @@ privacy, and release boundaries are in `docs/metadata-suite.md`.
 
 ```yaml
 credentials:
-  password_collection: never
-  OAuth_token: Android_Keystore_AES_GCM
+  OAuth_password_handling: provider_only
+  interim_direct_password:
+    destination: selected_pCloud_regional_API_over_HTTPS
+    persisted: never
+    logged: never
+    form_cleared: immediately_on_submit
+  OAuth_or_auth_token: Android_Keystore_AES_GCM
   backup: excluded
 network:
   cleartext: disabled

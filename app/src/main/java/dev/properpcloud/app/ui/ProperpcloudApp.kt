@@ -93,7 +93,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.properpcloud.app.BuildConfig
-import dev.properpcloud.app.auth.PCloudOAuthConfiguration
 import dev.properpcloud.app.data.SourceKind
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
@@ -257,7 +256,7 @@ private fun SourceBanner(state: AppUiState, actions: AppActions) {
             Spacer(Modifier.width(10.dp))
             Text(
                 if (isDemo) "Playable local demo. Connect pCloud in Settings when ready."
-                else "Connected through pCloud OAuth; passwords are never collected.",
+                else "Connected to pCloud; account credentials are never stored.",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -684,10 +683,6 @@ private fun QueueRow(index: Int, track: AudioTrack, state: AppUiState, actions: 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreen(state: AppUiState, actions: AppActions, onAuthorizePCloud: (String) -> Unit) {
-    val oauth = PCloudOAuthConfiguration.resolve(BuildConfig.PCLOUD_CLIENT_ID, state.clientId)
-    var showAdvancedOAuth by remember(state.clientId, oauth.usesBundledClientId) {
-        mutableStateOf(state.clientId.isNotBlank() || !oauth.usesBundledClientId)
-    }
     LazyColumn(Modifier.fillMaxSize().testTag("settings-screen")) {
         item { TopAppBar(title = { Text("Settings") }) }
         item {
@@ -709,84 +704,7 @@ private fun SettingsScreen(state: AppUiState, actions: AppActions, onAuthorizePC
                 }
             }
         }
-        item {
-            SettingsSection("pCloud account") {
-                Text(
-                    "Sign-in opens pCloud's official authorization page. Your password is entered only there; properpcloud receives the approved access token automatically.",
-                )
-                if (oauth.usesBundledClientId) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.secondary)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Built-in properpcloud application identity is ready.",
-                            Modifier.weight(1f),
-                        )
-                    }
-                } else if (!oauth.isConfigured) {
-                    Text(
-                        "This developer build has no bundled pCloud application identity. Advanced setup is required until the maintainer configures the release client ID.",
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-                if (state.pCloudConnected) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.secondary)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Connected; token encrypted with Android Keystore.", Modifier.weight(1f))
-                        TextButton(onClick = actions.disconnectPCloud) {
-                            Icon(Icons.AutoMirrored.Filled.Logout, null)
-                            Text("Disconnect")
-                        }
-                    }
-                } else {
-                    Button(
-                        onClick = { onAuthorizePCloud(oauth.clientId) },
-                        enabled = oauth.isConfigured,
-                        modifier = Modifier.testTag("connect-pcloud"),
-                    ) {
-                        Icon(Icons.Default.Cloud, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Sign in to pCloud")
-                    }
-                }
-                TextButton(
-                    onClick = { showAdvancedOAuth = !showAdvancedOAuth },
-                    modifier = Modifier.testTag("toggle-advanced-oauth"),
-                ) {
-                    Text(if (showAdvancedOAuth) "Hide advanced setup" else "Advanced setup")
-                }
-                if (showAdvancedOAuth) {
-                    Text(
-                        "A client ID identifies an application, not a user account. Use an override only for personal builds or testing.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    OutlinedTextField(
-                        value = state.clientId,
-                        onValueChange = actions.updateClientId,
-                        label = { Text("Custom pCloud client ID") },
-                        supportingText = {
-                            Text("Redirect URI: ${PCloudOAuthConfiguration.redirectUri(BuildConfig.APPLICATION_ID)}")
-                        },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("client-id"),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = actions.openPCloudDeveloperConsole,
-                            modifier = Modifier.testTag("open-pcloud-console"),
-                        ) {
-                            Text("Open pCloud developer site")
-                        }
-                        if (state.clientId.isNotBlank() && BuildConfig.PCLOUD_CLIENT_ID.isNotBlank()) {
-                            TextButton(onClick = { actions.updateClientId("") }) {
-                                Text("Use built-in identity")
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        item { PCloudAccountSettings(state, actions, onAuthorizePCloud) }
         item {
             SettingsSection("Metadata tools") {
                 Bullet("Edit common embedded fields with visible originals and provenance")
@@ -809,14 +727,9 @@ private fun SettingsScreen(state: AppUiState, actions: AppActions, onAuthorizePC
         }
         item {
             SettingsSection("About") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    BadgerCloudMark(size = 54.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text("properpcloud ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
-                        Text("Folder-first cloud audio, badger-approved.")
-                    }
-                }
+                ProperpcloudWordmark(Modifier.fillMaxWidth().height(96.dp))
+                Text("properpcloud ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleMedium)
+                Text("Folder-first cloud audio, badger-approved.")
                 Text("Original code: MIT License")
                 Text("AndroidX, Kotlin, coroutines, Media3, and pCloud SDK: Apache License 2.0")
                 Text("jaudiotagger metadata adapter: LGPL 2.1 or later")
@@ -1071,6 +984,7 @@ data class AppActions(
     val toggleBatchCandidateField: (AudioTrack, dev.properpcloud.core.model.TagField) -> Unit,
     val stageBatchMetadata: () -> Unit,
     val shareMetadataArtifact: () -> Unit,
+    val signInWithPCloudPassword: (String, CharArray, dev.properpcloud.source.pcloud.PCloudAccountRegion) -> Unit,
     val updateClientId: (String) -> Unit,
     val openPCloudDeveloperConsole: () -> Unit,
     val selectSource: (SourceKind) -> Unit,

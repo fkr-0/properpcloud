@@ -126,6 +126,34 @@ use_cases:
         failure:
           - No half-created account or orphaned token remains.
       tests: [TEST-AUTH-CONFIG, TEST-AUTH-LOGIN, TEST-AUTH-CANCEL, TEST-AUTH-CALLBACK]
+    UC-AUTH-DIRECT-LOGIN:
+      traces: [REQ-AUTH]
+      title: Connect through the documented interim direct-login fallback
+      preconditions:
+        - No valid pCloud session exists.
+        - User knows the account's Europe or United States storage region.
+      trigger: User expands Interim direct sign-in and submits email and password.
+      flow:
+        - app: Explain that OAuth remains preferred and direct login is interim.
+        - user: Select exactly one regional API and enter credentials.
+        - app: Remove password text from form state before dispatch.
+        - app: POST username, password, getauth, logout, device, and bounded expiry parameters over HTTPS to regional userinfo.
+        - source: Return a legacy auth token and account identity, or a numeric rejection code.
+        - app: Clear mutable password buffers, persist only encrypted token plus token kind, and load root.
+      alternatives:
+        wrong_region_or_credentials:
+          result: Show a redacted message and optional numeric provider code; retain no password.
+        network_failure:
+          result: Show a retryable regional-network message; retain no password.
+        two_factor_required:
+          result: Explain that the public direct-login protocol may not support the challenge and recommend OAuth.
+      postconditions:
+        success:
+          - Legacy token is encrypted and SDK requests use HTTPS form authentication.
+          - No password exists in durable application state.
+        failure:
+          - No session or credential residue is created.
+      tests: [TEST-AUTH-DIRECT, TEST-AUTH-LEGACY-TRANSPORT, TEST-AUTH-DIRECT-UI]
     UC-BROWSE-FOLDER:
       traces: [REQ-BROWSE, REQ-RESILIENCE]
       title: Navigate folder hierarchy

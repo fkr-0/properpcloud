@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import urllib.request
@@ -92,6 +93,11 @@ def main() -> int:
         "compile_sdk": 37,
         "target_sdk": 36,
         "distribution_note": "Installable debug-signed demo build; production signing is intentionally external.",
+        "authentication": {
+            "oauth_client_id_bundled": bool(os.environ.get("PCLOUD_CLIENT_ID", "").strip()),
+            "interim_direct_login_available": True,
+            "password_persisted": False,
+        },
         "live_pcloud_validation": "requires maintainer sandbox credentials and is not performed in public CI",
     }
     (dist / "release-evidence.json").write_text(
@@ -110,7 +116,7 @@ def main() -> int:
         "\n\n## Artifact status\n\n"
         "The attached APK is an installable debug-signed demo build produced by the pinned "
         "Docker toolchain. Production signing remains an external maintainer boundary.\n\n"
-        "The deterministic demo source is fully exercised in public CI. Live pCloud OAuth and "
+        "The deterministic demo source is fully exercised in public CI. Live pCloud OAuth/direct-login and "
         "regional-account validation require maintainer-provided sandbox credentials and are "
         "reported separately rather than simulated.\n\n"
         "The exact jaudiotagger source archive used by the metadata adapter is attached under "

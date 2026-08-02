@@ -55,7 +55,7 @@ The official Android authorization module expects a registered pCloud applicatio
 pcloud-oauth://dev.properpcloud.app
 ```
 
-The source adapter itself depends on the portable `java-core` artifact. The Android authorization feature depends separately on the `android` artifact; pCloud does not publish the Android artifact with a transitive `java-core` dependency. The client ID is build configuration, not a secret. Access tokens are credentials and must be stored with Android Keystore-backed encryption. No password is required by the native API path.
+The source adapter itself depends on the portable `java-core` artifact. The Android OAuth feature depends separately on the `android` artifact; pCloud does not publish the Android artifact with a transitive `java-core` dependency. The OAuth client ID is build configuration, not a secret. OAuth and legacy `auth` tokens are credentials and must be stored with Android Keystore-backed encryption. OAuth requires no password exposure to properpcloud; the explicitly interim direct-login adapter handles a password only for one allowlisted regional HTTPS token request and never persists it.
 
 The WebDAV fallback uses the account email/password and therefore has a larger credential-handling surface. It should support Android credential storage but remain optional.
 
