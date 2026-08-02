@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -219,6 +220,15 @@ fun NowPlayingScreen(state: AppUiState, actions: AppActions) {
                     Spacer(Modifier.width(6.dp))
                     Text("Metadata")
                 }
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = { actions.openMetadataEditor(current) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Default.EditNote, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Edit embedded tags")
             }
             Spacer(Modifier.height(32.dp))
         }

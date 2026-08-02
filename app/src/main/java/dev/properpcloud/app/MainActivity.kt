@@ -1,11 +1,13 @@
 package dev.properpcloud.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.content.FileProvider
 import com.pcloud.sdk.AuthorizationActivity
 import com.pcloud.sdk.AuthorizationRequest
 import com.pcloud.sdk.AuthorizationResult
@@ -82,6 +84,25 @@ class MainActivity : ComponentActivity() {
                     openContainingFolder = viewModel::openContainingFolder,
                     inspect = viewModel::inspect,
                     closeInspection = viewModel::closeInspection,
+                    openMetadataEditor = viewModel::openMetadataEditor,
+                    toggleMetadataSelection = viewModel::toggleMetadataSelection,
+                    clearMetadataSelection = viewModel::clearMetadataSelection,
+                    openBatchMetadataEditor = viewModel::openBatchMetadataEditor,
+                    closeMetadataEditor = viewModel::closeMetadataEditor,
+                    updateMetadataField = viewModel::updateMetadataField,
+                    resetMetadataField = viewModel::resetMetadataField,
+                    searchMetadata = viewModel::searchMetadata,
+                    selectMetadataCandidate = viewModel::selectMetadataCandidate,
+                    toggleMetadataCandidateField = viewModel::toggleMetadataCandidateField,
+                    applyMetadataCandidate = viewModel::applyMetadataCandidate,
+                    stageMetadata = viewModel::stageMetadata,
+                    updateBatchField = viewModel::updateBatchField,
+                    updateBatchSequence = viewModel::updateBatchSequence,
+                    searchBatchMetadata = viewModel::searchBatchMetadata,
+                    selectBatchCandidate = viewModel::selectBatchCandidate,
+                    toggleBatchCandidateField = viewModel::toggleBatchCandidateField,
+                    stageBatchMetadata = viewModel::stageBatchMetadata,
+                    shareMetadataArtifact = ::shareMetadataArtifact,
                     updateClientId = viewModel::updateClientId,
                     selectSource = { kind ->
                         when (kind) {
@@ -112,6 +133,26 @@ class MainActivity : ComponentActivity() {
             .setClientId(clientId)
             .build()
         authorizationLauncher.launch(AuthorizationActivity.createIntent(this, request))
+    }
+
+    private fun shareMetadataArtifact() {
+        val artifact = viewModel.currentMetadataArtifact()
+        if (artifact == null || !artifact.file.isFile) {
+            viewModel.showMessage("No verified metadata export is available.")
+            return
+        }
+        val uri = FileProvider.getUriForFile(
+            this,
+            "$packageName.files",
+            artifact.file,
+        )
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            type = artifact.mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_TITLE, artifact.displayName)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(Intent.createChooser(sendIntent, "Share verified tag export"))
     }
 
 }

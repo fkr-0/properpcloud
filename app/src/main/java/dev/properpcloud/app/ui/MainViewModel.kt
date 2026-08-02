@@ -7,6 +7,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import dev.properpcloud.app.AppContainer
 import dev.properpcloud.app.data.SourceKind
+import dev.properpcloud.app.metadata.BatchFieldDraft
+import dev.properpcloud.app.metadata.LoadedMetadataItem
+import dev.properpcloud.app.metadata.MetadataDraftPlanner
+import dev.properpcloud.app.metadata.MetadataExportArtifact
 import dev.properpcloud.app.playback.PlaybackController
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
@@ -21,6 +25,7 @@ import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.QueueReducer
 import dev.properpcloud.core.model.ResumePolicy
+import dev.properpcloud.core.model.TagField
 import dev.properpcloud.core.model.TrackSortKey
 import dev.properpcloud.core.model.TrackSortPolicy
 import dev.properpcloud.source.pcloud.PCloudSession
@@ -43,6 +48,10 @@ class MainViewModel(
     private var queueJob: Job? = null
     private var lastSavedMediaId: String? = null
     private var lastSavedPosition = -1L
+    private var metadataJob: Job? = null
+    private var singleMetadataItem: LoadedMetadataItem? = null
+    private val batchMetadataItems = linkedMapOf<String, LoadedMetadataItem>()
+    private var metadataExportArtifact: MetadataExportArtifact? = null
 
     init {
         viewModelScope.launch {
@@ -71,6 +80,29 @@ class MainViewModel(
         }
     }
 
+    private fun beginMetadataWorkspace(title: String, total: Int = 1) {
+        metadataJob?.cancel()
+        discardMetadataSources()
+        metadataExportArtifact = null
+        val current = _state.value
+        _state.value = current.copy(
+            destination = AppDestination.METADATA,
+            metadataReturnDestination = current.destination.takeUnless { it == AppDestination.METADATA }
+                ?: current.metadataReturnDestination,
+            metadataEditor = MetadataEditorUiState.Loading(title, total = total),
+        )
+    }
+
+    private fun discardMetadataSources() {
+        val items = buildList {
+            singleMetadataItem?.let(::add)
+            addAll(batchMetadataItems.values)
+        }
+        container.metadata.discard(items)
+        singleMetadataItem = null
+        batchMetadataItems.clear()
+    }
+
     fun selectDestination(destination: AppDestination) {
         val current = _state.value
         _state.value = if (destination == AppDestination.PLAYER) {
@@ -80,10 +112,434 @@ class MainViewModel(
                     .takeUnless { it == AppDestination.PLAYER }
                     ?: current.playerReturnDestination,
             )
+        } else if (destination == AppDestination.METADATA) {
+            current.copy(
+                destination = destination,
+                metadataReturnDestination = current.destination
+                    .takeUnless { it == AppDestination.METADATA }
+                    ?: current.metadataReturnDestination,
+            )
         } else {
             current.copy(destination = destination)
         }
     }
+
+    fun openMetadataEditor(track: AudioTrack) {
+        beginMetadataWorkspace("Loading tags for ${track.name}")
+        metadataJob = viewModelScope.launch {
+            try {
+                val source = requireNotNull(container.sources.source(track.sourceId)) { "audio source is unavailable" }
+                val loaded = container.metadata.load(source, track)
+                singleMetadataItem = loaded
+                _state.value = _state.value.copy(
+                    metadataEditor = MetadataEditorUiState.Single(
+                        track = track,
+                        original = loaded.snapshot,
+                        draft = MetadataDraftPlanner.draft(loaded.snapshot),
+                        sourceRevision = loaded.prepared.expectedRevision,
+                        sourceHash = loaded.prepared.expectedContentHash,
+                    ),
+                )
+            } catch (_: CancellationException) {
+                Unit
+            } catch (error: Throwable) {
+                _state.value = _state.value.copy(
+                    metadataEditor = MetadataEditorUiState.Failure(track.name, error.userMessage("Could not prepare metadata editor")),
+                )
+            }
+        }
+    }
+
+    fun toggleMetadataSelection(track: AudioTrack) {
+        val current = _state.value.metadataSelection
+        val selected = current.any { it.sourceId == track.sourceId && it.id == track.id }
+        val updated = if (selected) {
+            current.filterNot { it.sourceId == track.sourceId && it.id == track.id }
+        } else {
+            if (current.size >= MAX_METADATA_BATCH_ITEMS) {
+                _state.value = _state.value.copy(message = "Tag batches are limited to $MAX_METADATA_BATCH_ITEMS files.")
+                return
+            }
+            current + track
+        }
+        _state.value = _state.value.copy(metadataSelection = updated)
+    }
+
+    fun clearMetadataSelection() {
+        _state.value = _state.value.copy(metadataSelection = emptyList())
+    }
+
+    fun openBatchMetadataEditor() {
+        val tracks = _state.value.metadataSelection
+        if (tracks.isEmpty()) {
+            _state.value = _state.value.copy(message = "Select at least one audio file first.")
+            return
+        }
+        beginMetadataWorkspace("Preparing ${tracks.size} files", total = tracks.size)
+        metadataJob = viewModelScope.launch {
+            val loaded = mutableListOf<LoadedMetadataItem>()
+            val failures = mutableListOf<String>()
+            tracks.forEachIndexed { index, track ->
+                _state.value = _state.value.copy(
+                    metadataEditor = MetadataEditorUiState.Loading(
+                        title = "Preparing ${track.name}",
+                        completed = index,
+                        total = tracks.size,
+                    ),
+                )
+                try {
+                    val source = requireNotNull(container.sources.source(track.sourceId)) { "audio source is unavailable" }
+                    loaded += container.metadata.load(source, track)
+                } catch (error: CancellationException) {
+                    container.metadata.discard(loaded)
+                    throw error
+                } catch (error: Throwable) {
+                    failures += "${track.name}: ${error.message.orEmpty()}"
+                }
+            }
+            batchMetadataItems.clear()
+            loaded.forEach { batchMetadataItems[it.track.metadataKey()] = it }
+            if (loaded.isEmpty()) {
+                _state.value = _state.value.copy(
+                    metadataEditor = MetadataEditorUiState.Failure(
+                        "Batch metadata",
+                        failures.firstOrNull() ?: "No selected file could be prepared.",
+                    ),
+                )
+                return@launch
+            }
+            _state.value = _state.value.copy(
+                metadataEditor = MetadataEditorUiState.Batch(
+                    items = loaded.map { MetadataEditorUiState.BatchItem(it.track, it.snapshot) },
+                    commonFields = MetadataDraftPlanner.commonBatchFields.associateWith { BatchFieldDraft() },
+                    status = failures.takeIf(List<String>::isNotEmpty)?.let {
+                        "Prepared ${loaded.size}; ${it.size} file(s) were skipped."
+                    },
+                ),
+            )
+        }
+    }
+
+    fun closeMetadataEditor() {
+        metadataJob?.cancel()
+        discardMetadataSources()
+        val current = _state.value
+        _state.value = current.copy(
+            destination = current.metadataReturnDestination,
+            metadataEditor = null,
+        )
+    }
+
+    fun updateMetadataField(field: TagField, value: String) {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Single ?: return
+        _state.value = _state.value.copy(
+            metadataEditor = editor.copy(
+                draft = editor.draft + (field to value),
+                phase = MetadataPhase.READY,
+                artifact = null,
+                status = null,
+            ),
+        )
+        metadataExportArtifact = null
+    }
+
+    fun resetMetadataField(field: TagField) {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Single ?: return
+        updateMetadataField(field, editor.original.fields[field]?.value.orEmpty())
+    }
+
+    fun searchMetadata() {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Single ?: return
+        val loaded = singleMetadataItem ?: return
+        metadataJob?.cancel()
+        _state.value = _state.value.copy(metadataEditor = editor.copy(phase = MetadataPhase.SEARCHING, status = null))
+        metadataJob = viewModelScope.launch {
+            try {
+                val candidates = container.metadata.search(loaded, editor.draft)
+                val current = _state.value.metadataEditor as? MetadataEditorUiState.Single ?: return@launch
+                _state.value = _state.value.copy(
+                    metadataEditor = current.copy(
+                        phase = MetadataPhase.READY,
+                        candidates = candidates,
+                        selectedCandidateId = null,
+                        acceptedCandidateFields = emptySet(),
+                        status = if (candidates.isEmpty()) "MusicBrainz returned no matching recordings." else null,
+                    ),
+                )
+            } catch (_: CancellationException) {
+                Unit
+            } catch (error: Throwable) {
+                val current = _state.value.metadataEditor as? MetadataEditorUiState.Single ?: return@launch
+                _state.value = _state.value.copy(
+                    metadataEditor = current.copy(
+                        phase = MetadataPhase.READY,
+                        status = error.userMessage("MusicBrainz search failed"),
+                    ),
+                )
+            }
+        }
+    }
+
+    fun selectMetadataCandidate(candidateId: String?) {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Single ?: return
+        val candidate = editor.candidates.firstOrNull { it.id == candidateId }
+        _state.value = _state.value.copy(
+            metadataEditor = editor.copy(
+                selectedCandidateId = candidate?.id,
+                acceptedCandidateFields = candidate?.fields?.keys
+                    ?.intersect(MetadataDraftPlanner.onlineCandidateFields)
+                    .orEmpty(),
+            ),
+        )
+    }
+
+    fun toggleMetadataCandidateField(field: TagField) {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Single ?: return
+        val accepted = editor.acceptedCandidateFields.toMutableSet().apply {
+            if (!add(field)) remove(field)
+        }
+        _state.value = _state.value.copy(metadataEditor = editor.copy(acceptedCandidateFields = accepted))
+    }
+
+    fun applyMetadataCandidate() {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Single ?: return
+        val candidate = editor.candidates.firstOrNull { it.id == editor.selectedCandidateId } ?: return
+        _state.value = _state.value.copy(
+            metadataEditor = editor.copy(
+                draft = MetadataDraftPlanner.applyCandidate(editor.draft, candidate, editor.acceptedCandidateFields),
+                artifact = null,
+                phase = MetadataPhase.READY,
+                status = "Applied ${editor.acceptedCandidateFields.size} proposed field(s) to the draft.",
+            ),
+        )
+        metadataExportArtifact = null
+    }
+
+    fun stageMetadata() {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Single ?: return
+        val loaded = singleMetadataItem ?: return
+        val patch = MetadataDraftPlanner.patch(editor.original, editor.draft)
+        if (patch.changedFields(editor.original).isEmpty()) {
+            _state.value = _state.value.copy(metadataEditor = editor.copy(status = "The draft contains no tag changes."))
+            return
+        }
+        metadataJob?.cancel()
+        _state.value = _state.value.copy(metadataEditor = editor.copy(phase = MetadataPhase.STAGING, status = null))
+        metadataJob = viewModelScope.launch {
+            try {
+                val result = container.metadata.stage(loaded, patch)
+                val artifact = container.metadata.artifact(result)
+                metadataExportArtifact = artifact
+                val current = _state.value.metadataEditor as? MetadataEditorUiState.Single ?: return@launch
+                _state.value = _state.value.copy(
+                    metadataEditor = current.copy(
+                        phase = MetadataPhase.STAGED,
+                        artifact = artifact.toUi(),
+                        status = "Verified ${result.changedFields.size} changed field(s) on a separate candidate file.",
+                    ),
+                )
+            } catch (_: CancellationException) {
+                Unit
+            } catch (error: Throwable) {
+                val current = _state.value.metadataEditor as? MetadataEditorUiState.Single ?: return@launch
+                _state.value = _state.value.copy(
+                    metadataEditor = current.copy(
+                        phase = MetadataPhase.READY,
+                        status = error.userMessage("Could not stage tag changes"),
+                    ),
+                )
+            }
+        }
+    }
+
+    fun updateBatchField(field: TagField, edit: BatchFieldDraft) {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Batch ?: return
+        _state.value = _state.value.copy(
+            metadataEditor = editor.copy(
+                commonFields = editor.commonFields + (field to edit),
+                phase = MetadataPhase.READY,
+                artifact = null,
+            ),
+        )
+        metadataExportArtifact = null
+    }
+
+    fun updateBatchSequence(enabled: Boolean, start: String, includeTotal: Boolean) {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Batch ?: return
+        _state.value = _state.value.copy(
+            metadataEditor = editor.copy(
+                sequenceTracks = enabled,
+                sequenceStart = start,
+                includeTrackTotal = includeTotal,
+                phase = MetadataPhase.READY,
+                artifact = null,
+            ),
+        )
+        metadataExportArtifact = null
+    }
+
+    fun searchBatchMetadata() {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Batch ?: return
+        metadataJob?.cancel()
+        _state.value = _state.value.copy(
+            metadataEditor = editor.copy(
+                phase = MetadataPhase.SEARCHING,
+                progressCompleted = 0,
+                progressTotal = editor.items.size,
+                status = "MusicBrainz receives title, artist, album, ISRC, and duration—not audio bytes.",
+            ),
+        )
+        metadataJob = viewModelScope.launch {
+            var items = editor.items
+            items.forEachIndexed { index, item ->
+                val loaded = batchMetadataItems[item.track.metadataKey()] ?: return@forEachIndexed
+                val result = try {
+                    Result.success(container.metadata.search(loaded, MetadataDraftPlanner.draft(loaded.snapshot)).take(3))
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    Result.failure(error)
+                }
+                items = items.map { current ->
+                    if (current.track.metadataKey() != item.track.metadataKey()) current else current.copy(
+                        candidates = result.getOrDefault(emptyList()),
+                        selectedCandidateId = null,
+                        acceptedCandidateFields = emptySet(),
+                        status = result.exceptionOrNull()?.userMessage("Search failed")
+                            ?: if (result.getOrDefault(emptyList()).isEmpty()) "No suggestion" else null,
+                    )
+                }
+                val current = _state.value.metadataEditor as? MetadataEditorUiState.Batch ?: return@launch
+                _state.value = _state.value.copy(
+                    metadataEditor = current.copy(items = items, progressCompleted = index + 1),
+                )
+            }
+            val current = _state.value.metadataEditor as? MetadataEditorUiState.Batch ?: return@launch
+            _state.value = _state.value.copy(
+                metadataEditor = current.copy(
+                    phase = MetadataPhase.READY,
+                    status = "Suggestions are review-only until selected per file.",
+                ),
+            )
+        }
+    }
+
+    fun selectBatchCandidate(track: AudioTrack, candidateId: String?) {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Batch ?: return
+        val items = editor.items.map { item ->
+            if (item.track.metadataKey() != track.metadataKey()) item else {
+                val candidate = item.candidates.firstOrNull { it.id == candidateId }
+                item.copy(
+                    selectedCandidateId = candidate?.id,
+                    acceptedCandidateFields = candidate?.fields?.keys
+                        ?.intersect(MetadataDraftPlanner.onlineCandidateFields)
+                        .orEmpty(),
+                )
+            }
+        }
+        _state.value = _state.value.copy(metadataEditor = editor.copy(items = items, artifact = null))
+        metadataExportArtifact = null
+    }
+
+    fun toggleBatchCandidateField(track: AudioTrack, field: TagField) {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Batch ?: return
+        val items = editor.items.map { item ->
+            if (item.track.metadataKey() != track.metadataKey()) item else item.copy(
+                acceptedCandidateFields = item.acceptedCandidateFields.toMutableSet().apply {
+                    if (!add(field)) remove(field)
+                },
+            )
+        }
+        _state.value = _state.value.copy(metadataEditor = editor.copy(items = items, artifact = null))
+        metadataExportArtifact = null
+    }
+
+    fun stageBatchMetadata() {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Batch ?: return
+        val startAt = editor.sequenceStart.toIntOrNull()
+        if (editor.sequenceTracks && (startAt == null || startAt <= 0)) {
+            _state.value = _state.value.copy(metadataEditor = editor.copy(status = "Track sequence must start with a positive number."))
+            return
+        }
+        metadataJob?.cancel()
+        _state.value = _state.value.copy(
+            metadataEditor = editor.copy(
+                phase = MetadataPhase.STAGING,
+                progressCompleted = 0,
+                progressTotal = editor.items.size,
+                status = null,
+            ),
+        )
+        metadataJob = viewModelScope.launch {
+            val results = mutableListOf<dev.properpcloud.metadata.tags.StagedTagResult>()
+            var artifact: MetadataExportArtifact? = null
+            var committed = false
+            try {
+            var items = editor.items
+            val total = startAt?.let { it + editor.items.size - 1 }
+            editor.items.forEachIndexed { index, item ->
+                val loaded = batchMetadataItems[item.track.metadataKey()]
+                val candidate = item.candidates.firstOrNull { it.id == item.selectedCandidateId }
+                val outcome = try {
+                    requireNotNull(loaded) { "prepared source is unavailable" }
+                    val patch = MetadataDraftPlanner.batchPatch(
+                        snapshot = loaded.snapshot,
+                        candidate = candidate,
+                        acceptedCandidateFields = item.acceptedCandidateFields,
+                        commonFields = editor.commonFields,
+                        sequenceNumber = if (editor.sequenceTracks) startAt!! + index else null,
+                        sequenceTotal = if (editor.sequenceTracks && editor.includeTrackTotal) total else null,
+                    )
+                    Result.success(
+                        if (patch.changedFields(loaded.snapshot).isEmpty()) null else container.metadata.stage(loaded, patch),
+                    )
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    Result.failure(error)
+                }
+                outcome.getOrNull()?.let(results::add)
+                items = items.map { current ->
+                    if (current.track.metadataKey() != item.track.metadataKey()) current else current.copy(
+                        status = outcome.exceptionOrNull()?.userMessage("Staging failed")
+                            ?: if (outcome.getOrNull() == null) "No changes" else "Verified candidate",
+                    )
+                }
+                val current = _state.value.metadataEditor as? MetadataEditorUiState.Batch ?: return@launch
+                _state.value = _state.value.copy(
+                    metadataEditor = current.copy(items = items, progressCompleted = index + 1),
+                )
+            }
+            artifact = when (results.size) {
+                0 -> null
+                1 -> container.metadata.artifact(results.single())
+                else -> container.metadata.bundle(results)
+            }
+            val current = _state.value.metadataEditor as? MetadataEditorUiState.Batch ?: return@launch
+            metadataExportArtifact = artifact
+            _state.value = _state.value.copy(
+                metadataEditor = current.copy(
+                    items = items,
+                    phase = if (artifact == null) MetadataPhase.READY else MetadataPhase.STAGED,
+                    artifact = artifact?.toUi(),
+                    status = if (artifact == null) {
+                        "No selected file produced a changed candidate."
+                    } else {
+                        "Verified ${results.size} candidate file(s); originals and pCloud objects are unchanged."
+                    },
+                ),
+            )
+            committed = true
+            } finally {
+                if (!committed) {
+                    artifact?.file?.delete()
+                    results.forEach { it.stagedFile.delete() }
+                }
+            }
+        }
+    }
+
+    fun currentMetadataArtifact(): MetadataExportArtifact? = metadataExportArtifact
 
     fun openRoot() = loadFolder(container.sources.current.value.root, replaceHistory = true)
 
@@ -422,7 +878,21 @@ class MainViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             MainViewModel(application, container, playbackConnection) as T
     }
+
+    private companion object {
+        const val MAX_METADATA_BATCH_ITEMS = 20
+    }
 }
+
+private fun AudioTrack.metadataKey(): String = "${sourceId.value}:${id.value}"
+
+private fun MetadataExportArtifact.toUi() = MetadataArtifactUi(
+    displayName = displayName,
+    mimeType = mimeType,
+    sizeBytes = file.length(),
+    itemCount = itemCount,
+    sha256 = sha256,
+)
 
 private fun Throwable.userMessage(prefix: String): String =
     "$prefix: ${message?.takeIf { it.isNotBlank() } ?: this::class.simpleName.orEmpty()}"

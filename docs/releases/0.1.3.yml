@@ -1,0 +1,55 @@
+release:
+  version: 0.1.3
+  tag: v0.1.3
+  date: 2026-08-02
+  status: local_release_candidate
+  license: MIT
+  scope:
+    - in-app single-file Tag studio with original values and provenance
+    - bounded reviewed batch editing and deterministic track sequencing
+    - field-level MusicBrainz candidate acceptance
+    - exact pCloud download-to-staging with SHA-256 and revision checks
+    - verified audio and ZIP plus CSV-manifest exports
+    - scoped FileProvider sharing and bounded private-file retention
+  verification:
+    command: make ci
+    result: passed
+    specifications:
+      documents: 11
+      requirements: 19
+      use_cases: 18
+    tests:
+      suites: 14
+      total: 43
+      failures: 0
+      errors: 0
+      skipped: 0
+    lint:
+      errors: 0
+      warnings: 0
+      informational_hints: 2
+    Gradle:
+      actionable_tasks: 284
+  artifact:
+    path: app/build/outputs/apk/debug/app-debug.apk
+    package: dev.properpcloud.app
+    version_code: 1003
+    version_name: 0.1.3
+    production_signed: false
+    size_bytes: 24559765
+    sha256: 8e175af59ccd0400f778dfc66120b8397c21e5a71a0f4e073be0831046a25b8a
+  third_party_sources:
+    path: third-party/jaudiotagger-3.0.1-sources.jar
+    license: LGPL-2.1-or-later
+    size_bytes: 1031461
+    sha256: d9c79a145944e6bc37579403843c9da84cd81459e42c9877351802ee284f5858
+  external_validation:
+    live_pCloud_credentials_available: false
+    production_signing_available: false
+    physical_device_accessibility: outstanding
+    guarded_remote_metadata_replace: blocked_no_atomic_provider_primitive
+    publication_authorized: false
+    required_checklists:
+      - docs/pcloud-setup.md
+      - docs/ux-modernization.md
+      - docs/metadata-suite.md

@@ -198,6 +198,20 @@ testing:
         TEST-METADATA-XML-SECURITY:
           inject: XML document type and external entity
           expect: parser rejects without external access
+        TEST-PCLOUD-METADATA-DOWNLOAD:
+          expect: exact size and SHA-256 plus identical pre/post revision evidence
+        TEST-PCLOUD-METADATA-CONFLICT:
+          inject: revision changes during download
+          expect: local candidate deleted and no edit begins
+        TEST-METADATA-DRAFT:
+          expect: Set, Clear, and Keep are calculated from original versus draft
+        TEST-METADATA-BATCH-BLANK:
+          expect: blank enabled input preserves values unless Clear is explicit
+        TEST-METADATA-EDITOR-UI:
+          expect: original value, provenance, editable field, selection bar, and stage action are accessible
+        TEST-METADATA-EXPORT:
+          fixture: deterministic demo WAV files
+          expect: source copies remain unchanged and verified audio or ZIP plus CSV manifest is produced
     mutation:
       cases:
         TEST-MUTATION-DRY-RUN:
@@ -262,6 +276,10 @@ testing:
       - Rate limiting is deterministic under virtual time.
       - Candidates retain provider and confidence.
       - Malicious XML cannot resolve external entities.
+    MetadataContentSource:
+      - Prepared bytes match the reported hash and size.
+      - pCloud revision or checksum drift deletes the candidate.
+      - Source/provider objects are never modified.
   fault_injection:
     network: [offline, mid-list disconnect, mid-range disconnect, DNS failure, TLS failure, timeout, rate limit]
     process: [Activity recreation, app kill, service restart, reboot during pin]

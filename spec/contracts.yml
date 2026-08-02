@@ -272,6 +272,17 @@ contracts:
         - Source file bytes are not changed.
         - Incomplete staged candidates are removed on failure.
         - Set and Clear mutations are reread and verified before success.
+    IF-METADATA-CONTENT-SOURCE:
+      optional: true
+      methods:
+        prepare_metadata_source:
+          input: stable node ID and unused app-private destination file
+          output: local file, original filename, expected revision when available, SHA-256, size
+      guarantees:
+        - Source or provider bytes are not changed.
+        - Returned local bytes match the reported SHA-256.
+        - pCloud implementations compare provider revision and checksum before and after download.
+        - Failed, mismatched, or conflicted downloads leave no destination file.
     IF-ONLINE-METADATA-PROVIDER:
       methods:
         search:
@@ -325,6 +336,10 @@ contracts:
       input: approved TagEditPlan and exact local source bytes
       output: verified staged candidate and hashes
       commit_rule: Original source remains unchanged; staged candidate is not remote success.
+    ExportStagedMetadata:
+      input: one or more reread-verified staged candidates
+      output: one audio file or ZIP with manifest, SHA-256, item count, and scoped content URI
+      commit_rule: Export creates no provider mutation and exposes no app-private source path.
     SearchOnlineMetadata:
       input: consented MetadataSearchQuery and enabled provider
       output: candidates with provenance and confidence

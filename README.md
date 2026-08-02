@@ -6,7 +6,7 @@
 
 Folder-first Android audio playback for pCloud and other file-oriented sources.
 
-[![Version](https://img.shields.io/badge/version-0.1.2-59636e)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.3-59636e)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
 
 Audio libraries are often already organized correctly in folders. properpcloud
@@ -15,7 +15,7 @@ artist/album/song tags.
 
 > Independent software. Not affiliated with or endorsed by pCloud AG.
 
-## What `0.1.2` provides
+## What `0.1.3` provides
 
 - adaptive Material 3 Android UI with compact and expanded layouts;
 - stable-ID folder navigation and breadcrumbs;
@@ -28,9 +28,12 @@ artist/album/song tags.
 - just-in-time pCloud stream-link resolution with one bounded expiry retry;
 - encrypted pCloud OAuth token storage using Android Keystore AES-GCM;
 - raw provider/identity inspection without exposing secrets;
-- canonical tag/provenance models, deterministic batch plans, and real copy-on-write
-  local tag staging with post-write verification;
-- opt-in MusicBrainz matching foundations plus Cover Art Archive and AcoustID contracts;
+- a complete in-app Tag studio with original/provenance display, field drafts, explicit
+  MusicBrainz review, common-field batch edits, and deterministic track sequencing;
+- exact pCloud download-to-staging guarded by provider SHA-256 and pre/post revision checks;
+- real copy-on-write tag staging with post-write reread and verification;
+- single-file export and multi-file ZIP/CSV-manifest export through scoped content URIs;
+- Cover Art Archive and AcoustID contracts retained for future reviewed extensions;
 - a deterministic built-in demo library with generated WAV audio.
 
 The demo source is not a screenshot mode. It exercises the real browser, queue,
@@ -40,7 +43,8 @@ network access, or private fixtures.
 ## First run
 
 1. Install the APK and open **Demo library**.
-2. Browse folders and play tracks immediately.
+2. Browse folders and play tracks immediately. Open a track's menu and choose
+   **Edit tags**, or select several tracks for **Edit batch**.
 3. To use pCloud, create a pCloud application, copy its client ID, and enter it
    under **Settings → pCloud OAuth**.
 4. Authorize on pCloud's trusted surface. properpcloud never asks for the account
@@ -84,6 +88,8 @@ Public CI validates:
 - SemVer, changelog, license, and Android package agreement;
 - queue, traversal, cancellation, progress, identity, and provider contracts;
 - deterministic demo-source and generated-WAV behavior;
+- exact pCloud metadata-download conflict handling, real staged tag exports, batch
+  planning, and Tag studio Compose behavior;
 - DataStore queue/progress round trips;
 - Robolectric Compose compact navigation and rendering;
 - Android lint with zero errors and zero warnings;

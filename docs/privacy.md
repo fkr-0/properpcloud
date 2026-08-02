@@ -36,6 +36,13 @@ AcoustID lookup may transmit a locally derived Chromaprint fingerprint and
 duration when an application key is configured. These lookup paths do not upload
 audio bytes. Candidate results remain proposals and cannot trigger a remote write.
 
+Tag studio source copies stay in app-private cache and are removed when the editor
+closes; stale copies are additionally bounded by age and count. Verified exports
+stay in app-private files until the user shares or saves them through a temporary
+read-only `FileProvider` grant. ZIP manifests contain filenames, changed fields,
+and hashes—not OAuth tokens, signed URLs, app-private paths, fingerprints, or
+unrestricted provider responses.
+
 ## Data not collected
 
 properpcloud does not collect:
@@ -54,7 +61,7 @@ properpcloud does not collect:
 - **Use demo** switches to an entirely local source.
 - **Disconnect** removes the encrypted pCloud session from this device.
 - Clearing app storage removes preferences, queue/progress records, generated
-  demo media, and local credential material.
+  demo media, metadata source copies and exports, and local credential material.
 
 ## External services
 

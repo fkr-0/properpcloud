@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Folder
@@ -126,7 +127,11 @@ fun ProperpcloudApp(
                     snackbarHost = { SnackbarHost(snackbarHostState) },
                     bottomBar = {
                         Column {
-                            if (state.queue.current != null && state.destination != AppDestination.PLAYER) {
+                            if (
+                                state.queue.current != null &&
+                                state.destination != AppDestination.PLAYER &&
+                                state.destination != AppDestination.METADATA
+                            ) {
                                 MiniPlayer(state, actions)
                             }
                             if (!expanded) {
@@ -144,6 +149,7 @@ fun ProperpcloudApp(
                             AppDestination.LIBRARY -> LibraryScreen(state, actions, expanded)
                             AppDestination.PLAYER -> NowPlayingScreen(state, actions)
                             AppDestination.QUEUE -> QueueScreen(state, actions)
+                            AppDestination.METADATA -> MetadataEditorScreen(state, actions)
                             AppDestination.SETTINGS -> SettingsScreen(state, actions, onAuthorizePCloud)
                         }
                     }
@@ -156,6 +162,25 @@ fun ProperpcloudApp(
                 fields = inspection.fields,
                 onDismiss = actions.closeInspection,
             )
+        }
+    }
+}
+
+@Composable
+private fun MetadataSelectionBar(state: AppUiState, actions: AppActions) {
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        modifier = Modifier.fillMaxWidth().testTag("metadata-selection-bar"),
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.EditNote, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("${state.metadataSelection.size} selected for tags", Modifier.weight(1f))
+            TextButton(onClick = actions.clearMetadataSelection) { Text("Clear") }
+            Button(onClick = actions.openBatchMetadataEditor) { Text("Edit batch") }
         }
     }
 }
@@ -269,11 +294,14 @@ private fun FolderContent(state: AppUiState, actions: AppActions, modifier: Modi
             state.errorMessage != null -> ErrorState(state.errorMessage, actions.refresh, Modifier.align(Alignment.Center))
             state.nodes.isEmpty() -> EmptyFolderState(state.currentFolder, actions, Modifier.align(Alignment.Center))
             else -> LazyColumn(Modifier.fillMaxSize().testTag("library-list")) {
+                if (state.metadataSelection.isNotEmpty()) {
+                    item { MetadataSelectionBar(state, actions) }
+                }
                 item {
                     FolderQuickActions(state.currentFolder, actions)
                 }
                 items(state.nodes, key = { it.sourceId.value + ":" + it.id.value }) { node ->
-                    MediaNodeRow(node, actions)
+                    MediaNodeRow(node, state, actions)
                     HorizontalDivider(Modifier.padding(start = 72.dp))
                 }
             }
@@ -302,9 +330,12 @@ private fun FolderQuickActions(folder: AudioFolder?, actions: AppActions) {
 }
 
 @Composable
-private fun MediaNodeRow(node: MediaNode, actions: AppActions) {
+private fun MediaNodeRow(node: MediaNode, state: AppUiState, actions: AppActions) {
     var menuOpen by remember(node.id) { mutableStateOf(false) }
     val isFolder = node is AudioFolder
+    val selectedForMetadata = node is AudioTrack && state.metadataSelection.any {
+        it.sourceId == node.sourceId && it.id == node.id
+    }
     ListItem(
         modifier = Modifier
             .fillMaxWidth()
@@ -337,9 +368,17 @@ private fun MediaNodeRow(node: MediaNode, actions: AppActions) {
         },
         leadingContent = {
             Icon(
-                if (isFolder) Icons.Default.Folder else Icons.Default.AudioFile,
+                when {
+                    selectedForMetadata -> Icons.Default.CheckCircle
+                    isFolder -> Icons.Default.Folder
+                    else -> Icons.Default.AudioFile
+                },
                 contentDescription = if (isFolder) "Folder" else "Audio file",
-                tint = if (isFolder) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                tint = when {
+                    selectedForMetadata -> MaterialTheme.colorScheme.secondary
+                    isFolder -> MaterialTheme.colorScheme.tertiary
+                    else -> MaterialTheme.colorScheme.primary
+                },
             )
         },
         trailingContent = {
@@ -382,6 +421,22 @@ private fun MediaNodeRow(node: MediaNode, actions: AppActions) {
                             },
                         )
                     } else if (node is AudioTrack) {
+                        DropdownMenuItem(
+                            text = { Text("Edit tags") },
+                            leadingIcon = { Icon(Icons.Default.EditNote, null) },
+                            onClick = {
+                                menuOpen = false
+                                actions.openMetadataEditor(node)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (selectedForMetadata) "Remove from tag batch" else "Add to tag batch") },
+                            leadingIcon = { Icon(if (selectedForMetadata) Icons.Default.Delete else Icons.Default.CheckCircle, null) },
+                            onClick = {
+                                menuOpen = false
+                                actions.toggleMetadataSelection(node)
+                            },
+                        )
                         DropdownMenuItem(
                             text = { Text("Play next") },
                             leadingIcon = { Icon(Icons.Default.Add, null) },
@@ -595,6 +650,14 @@ private fun QueueRow(index: Int, track: AudioTrack, state: AppUiState, actions: 
                             },
                         )
                         DropdownMenuItem(
+                            text = { Text("Edit tags") },
+                            leadingIcon = { Icon(Icons.Default.EditNote, null) },
+                            onClick = {
+                                menuOpen = false
+                                actions.openMetadataEditor(track)
+                            },
+                        )
+                        DropdownMenuItem(
                             text = { Text("Inspect metadata") },
                             leadingIcon = { Icon(Icons.Default.Info, null) },
                             onClick = {
@@ -676,12 +739,12 @@ private fun SettingsScreen(state: AppUiState, actions: AppActions, onAuthorizePC
         }
         item {
             SettingsSection("Metadata tools") {
-                Bullet("Foundation: inspect and edit embedded tags on a staged local copy")
-                Bullet("Foundation: batch plans preserve stable IDs and require revision or hash")
-                Bullet("Foundation: identified, rate-limited MusicBrainz matching client")
-                Bullet("Foundation: opt-in AcoustID fingerprint lookup contract")
+                Bullet("Edit common embedded fields with visible originals and provenance")
+                Bullet("Stage one file or a reviewed batch without modifying the source")
+                Bullet("Review MusicBrainz candidates field by field before applying them")
+                Bullet("Verify exact pCloud downloads with SHA-256 and pre/post revision checks")
                 Text(
-                    "Remote replacement stays disabled until the source can verify revision, upload, reread, and recovery evidence.",
+                    "Cloud replacement remains disabled because the current pCloud SDK has no atomic expected-revision overwrite operation.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -939,6 +1002,25 @@ data class AppActions(
     val openContainingFolder: (AudioTrack) -> Unit,
     val inspect: (MediaNode) -> Unit,
     val closeInspection: () -> Unit,
+    val openMetadataEditor: (AudioTrack) -> Unit,
+    val toggleMetadataSelection: (AudioTrack) -> Unit,
+    val clearMetadataSelection: () -> Unit,
+    val openBatchMetadataEditor: () -> Unit,
+    val closeMetadataEditor: () -> Unit,
+    val updateMetadataField: (dev.properpcloud.core.model.TagField, String) -> Unit,
+    val resetMetadataField: (dev.properpcloud.core.model.TagField) -> Unit,
+    val searchMetadata: () -> Unit,
+    val selectMetadataCandidate: (String?) -> Unit,
+    val toggleMetadataCandidateField: (dev.properpcloud.core.model.TagField) -> Unit,
+    val applyMetadataCandidate: () -> Unit,
+    val stageMetadata: () -> Unit,
+    val updateBatchField: (dev.properpcloud.core.model.TagField, dev.properpcloud.app.metadata.BatchFieldDraft) -> Unit,
+    val updateBatchSequence: (Boolean, String, Boolean) -> Unit,
+    val searchBatchMetadata: () -> Unit,
+    val selectBatchCandidate: (AudioTrack, String?) -> Unit,
+    val toggleBatchCandidateField: (AudioTrack, dev.properpcloud.core.model.TagField) -> Unit,
+    val stageBatchMetadata: () -> Unit,
+    val shareMetadataArtifact: () -> Unit,
     val updateClientId: (String) -> Unit,
     val selectSource: (SourceKind) -> Unit,
     val disconnectPCloud: () -> Unit,

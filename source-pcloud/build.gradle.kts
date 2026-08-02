@@ -22,4 +22,5 @@ dependencies {
     implementation(libs.pcloud.java.core)
     implementation(libs.coroutines.core)
     testImplementation(libs.junit4)
+    testImplementation(libs.coroutines.test)
 }

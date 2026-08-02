@@ -6,17 +6,20 @@ import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioSource
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.MediaNode
+import dev.properpcloud.core.model.MetadataContentSource
 import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.NodeInspection
+import dev.properpcloud.core.model.PreparedMetadataSource
 import dev.properpcloud.core.model.SourceId
 import dev.properpcloud.core.model.StreamHandle
 import java.io.BufferedOutputStream
 import java.io.DataOutputStream
 import java.io.File
+import java.security.MessageDigest
 import kotlin.math.PI
 import kotlin.math.sin
 
-class DemoAudioSource(context: Context) : AudioSource {
+class DemoAudioSource(context: Context) : AudioSource, MetadataContentSource {
     override val id = SourceId("demo")
     override val root = AudioFolder(id, NodeId("demo:folder:root"), null, "Demo library")
 
@@ -55,6 +58,26 @@ class DemoAudioSource(context: Context) : AudioSource {
             put(root.id, root)
             children.values.flatten().forEach { put(it.id, it) }
         }
+    }
+
+    override suspend fun prepareMetadataSource(nodeId: NodeId, destinationFile: File): PreparedMetadataSource {
+        val track = load(nodeId) as? AudioTrack ?: error("track required")
+        val source = toneStore.fileFor(track)
+        require(destinationFile.parentFile?.let { it.exists() || it.mkdirs() } != false) {
+            "could not create metadata staging directory"
+        }
+        require(!destinationFile.exists()) { "metadata destination already exists" }
+        source.copyTo(destinationFile, overwrite = false)
+        val hash = destinationFile.sha256()
+        return PreparedMetadataSource(
+            sourceId = id,
+            nodeId = nodeId,
+            localFile = destinationFile,
+            originalFilename = track.name,
+            expectedRevision = "sha256:$hash",
+            expectedContentHash = hash,
+            sizeBytes = destinationFile.length(),
+        )
     }
 
     override suspend fun list(folderId: NodeId): List<MediaNode> = children[folderId].orEmpty()
@@ -102,6 +125,19 @@ class DemoAudioSource(context: Context) : AudioSource {
         taggedTitle = name.substringBeforeLast('.').substringAfter(" - "),
         durationMillis = durationMillis,
     )
+}
+
+private fun File.sha256(): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    inputStream().use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            if (read > 0) digest.update(buffer, 0, read)
+        }
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
 private class DemoToneStore(context: Context) {

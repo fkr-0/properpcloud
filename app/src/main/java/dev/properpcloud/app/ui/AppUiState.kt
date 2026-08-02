@@ -3,6 +3,7 @@ package dev.properpcloud.app.ui
 import dev.properpcloud.app.data.SourceKind
 import dev.properpcloud.app.playback.PlaybackUiState
 import dev.properpcloud.core.model.AudioFolder
+import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.NodeInspection
 import dev.properpcloud.core.model.PlaybackQueue
@@ -13,12 +14,14 @@ enum class AppDestination {
     LIBRARY,
     PLAYER,
     QUEUE,
+    METADATA,
     SETTINGS,
 }
 
 data class AppUiState(
     val destination: AppDestination = AppDestination.LIBRARY,
     val playerReturnDestination: AppDestination = AppDestination.LIBRARY,
+    val metadataReturnDestination: AppDestination = AppDestination.LIBRARY,
     val sourceKind: SourceKind = SourceKind.DEMO,
     val sourceName: String = "Demo library",
     val pCloudConnected: Boolean = false,
@@ -36,5 +39,7 @@ data class AppUiState(
     val playback: PlaybackUiState = PlaybackUiState(),
     val inspection: NodeInspection? = null,
     val inspectedNodeName: String? = null,
+    val metadataSelection: List<AudioTrack> = emptyList(),
+    val metadataEditor: MetadataEditorUiState? = null,
     val message: String? = null,
 )

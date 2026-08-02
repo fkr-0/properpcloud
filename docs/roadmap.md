@@ -173,7 +173,7 @@ Status: **released, tagged, validated, and published**.
 
 ## `0.1.2` — modern player and metadata foundations
 
-Status: **release candidate**.
+Status: **released, tagged, validated, and published**.
 
 - dedicated seekable now-playing destination while preserving folder-first identity;
 - compact queue actions and grouped metadata inspection;
@@ -188,11 +188,23 @@ Remote pCloud file replacement is not enabled in this release. It remains gated
 on exact-revision download, conditional replace, provider readback, audit, and
 indeterminate-state reconciliation.
 
+## `0.1.3` — reviewed Tag studio and safe export
+
+Status: **local release candidate**.
+
+- in-app single-file editor with original values and provenance;
+- bounded 20-file batch selection, common fields, explicit clears, and sequencing;
+- field-level MusicBrainz proposal review;
+- exact pCloud source preparation with provider SHA-256 and pre/post revision checks;
+- reread-verified single audio export or ZIP plus CSV manifest;
+- scoped FileProvider sharing and bounded private-file retention;
+- no remote overwrite because the current pCloud SDK lacks atomic expected-revision replacement.
+
 ### Deferred beyond `0.1.0`
 
 - verified offline file pinning and storage quotas;
 - saved-root tabs and whitelist/blacklist policy editor;
-- in-app metadata proposal/editor workflow and guarded pCloud replacement;
+- guarded pCloud replacement only after an atomic provider primitive exists;
 - Android Auto browse hierarchy;
 - bookmarks, sleep timer, variable speed policy, and aggregate book progress;
 - cross-device progress synchronization.

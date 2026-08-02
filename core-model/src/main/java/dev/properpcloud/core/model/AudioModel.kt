@@ -1,5 +1,7 @@
 package dev.properpcloud.core.model
 
+import java.io.File
+
 @JvmInline
 value class SourceId(val value: String) {
     init {
@@ -56,6 +58,26 @@ data class StreamHandle(
 data class NodeInspection(
     val fields: Map<String, String>,
 )
+
+data class PreparedMetadataSource(
+    val sourceId: SourceId,
+    val nodeId: NodeId,
+    val localFile: File,
+    val originalFilename: String,
+    val expectedRevision: String? = null,
+    val expectedContentHash: String,
+    val sizeBytes: Long,
+) {
+    init {
+        require(originalFilename.isNotBlank()) { "metadata source filename must not be blank" }
+        require(expectedContentHash.isNotBlank()) { "metadata source content hash must not be blank" }
+        require(sizeBytes > 0) { "metadata source must not be empty" }
+    }
+}
+
+interface MetadataContentSource {
+    suspend fun prepareMetadataSource(nodeId: NodeId, destinationFile: File): PreparedMetadataSource
+}
 
 interface AudioSource {
     val id: SourceId

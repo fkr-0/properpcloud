@@ -14,6 +14,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Verified offline pinning, saved roots, long-form controls, and Android Auto after
   cross-platform queue/progress semantics stabilize.
 
+## [0.1.3] - 2026-08-02
+
+### Added
+
+- First-class **Tag studio** for editing title, artist, album, album artist, genre,
+  year, track/disc values, composer, comments, ISRC, MusicBrainz IDs, and lyrics while
+  displaying the original embedded value and provenance beside every draft field.
+- Folder, queue, and now-playing entry points for single-file editing plus a bounded
+  20-file selection workflow for common-field updates and deterministic track sequencing.
+- Explicit MusicBrainz candidate review with confidence, per-field acceptance, and
+  disclosure of the textual fields and duration sent to the provider.
+- Exact pCloud download-to-staging using provider SHA-256 checksums and matching
+  pre/post revision snapshots before any tag work begins.
+- Verified single-file exports and multi-file ZIP bundles with SHA-256 evidence and a
+  CSV manifest, shared through a narrowly scoped Android `FileProvider` URI.
+- Bounded retention for app-private metadata source copies and verified exports.
+
+### Changed
+
+- Metadata batch cancellation now propagates immediately instead of being converted
+  into an ordinary per-file failure.
+- Empty batch inputs preserve existing values; clearing a field requires an explicit
+  clear action.
+- Settings now distinguish implemented inspection/edit/export capabilities from the
+  deliberately disabled cloud-overwrite boundary.
+
+### Security
+
+- Original local/demo bytes and pCloud objects remain unchanged; jaudiotagger writes
+  only to separate app-private candidates and rereads every requested mutation.
+- pCloud preparation rejects size/hash mismatches or a source revision change during
+  download and removes incomplete local copies.
+- The current pCloud SDK exposes ordinary overwrite but no atomic expected-revision
+  replacement primitive, so remote metadata overwrite remains unavailable rather than
+  introducing a check-then-write race.
+
+### Testing
+
+- Added real demo-WAV editor/export and ZIP-manifest integration tests, metadata draft
+  and batch precedence tests, pCloud stable-download/conflict tests, and Tag studio UI tests.
+
+### Known limitations
+
+- Artwork mutation, Android Chromaprint generation, AcoustID configuration UI, and
+  atomic remote replacement are not enabled.
+- Live pCloud account validation, production signing, physical-device accessibility,
+  and Android 17 runtime validation remain external gates.
+
 ## [0.1.2] - 2026-08-02
 
 ### Added
@@ -185,7 +233,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/fkr-0/properpcloud/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/fkr-0/properpcloud/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/fkr-0/properpcloud/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/fkr-0/properpcloud/compare/v0.0.1...v0.1.0

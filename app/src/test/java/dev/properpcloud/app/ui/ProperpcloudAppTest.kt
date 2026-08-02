@@ -1,6 +1,7 @@
 package dev.properpcloud.app.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -19,6 +20,10 @@ import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.SourceId
+import dev.properpcloud.core.model.MetadataProvenance
+import dev.properpcloud.core.model.MetadataValue
+import dev.properpcloud.core.model.TagField
+import dev.properpcloud.core.model.TagSnapshot
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -39,6 +44,59 @@ class ProperpcloudAppTest {
         compose.onNodeWithText("Audiobooks").assertIsDisplayed()
         compose.onNodeWithText("A Door in the Rain").assertIsDisplayed()
         compose.onNodeWithTag("library-list").assertIsDisplayed()
+    }
+
+    @Test
+    fun libraryShowsBatchSelectionBar() {
+        val state = sampleState()
+        val track = state.nodes.filterIsInstance<AudioTrack>().single()
+        compose.setContent {
+            ProperpcloudApp(
+                state = state.copy(metadataSelection = listOf(track)),
+                actions = noOpActions(),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithTag("metadata-selection-bar").assertIsDisplayed()
+        compose.onNodeWithText("1 selected for tags").assertIsDisplayed()
+        compose.onNodeWithText("Edit batch").assertIsDisplayed()
+    }
+
+    @Test
+    fun singleMetadataEditorShowsOriginalAndChangedDraft() {
+        val state = sampleState()
+        val track = state.nodes.filterIsInstance<AudioTrack>().single()
+        val original = TagSnapshot(
+            format = "WAV",
+            fields = mapOf(
+                TagField.TITLE to MetadataValue("Original title", MetadataProvenance.EMBEDDED),
+            ),
+        )
+        compose.setContent {
+            ProperpcloudApp(
+                state = state.copy(
+                    destination = AppDestination.METADATA,
+                    metadataEditor = MetadataEditorUiState.Single(
+                        track = track,
+                        original = original,
+                        draft = mapOf(TagField.TITLE to "Changed title"),
+                        sourceRevision = "revision-1",
+                        sourceHash = "abcdef0123456789abcdef0123456789",
+                    ),
+                ),
+                actions = noOpActions(),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithTag("metadata-editor").assertIsDisplayed()
+        compose.onNodeWithText("Tag studio").assertIsDisplayed()
+        compose.onNodeWithTag("metadata-editor-list").performScrollToNode(hasTestTag("metadata-field-TITLE"))
+        compose.onNodeWithTag("metadata-field-TITLE").assertIsDisplayed()
+        compose.onNodeWithText("Original: Original title · EMBEDDED").assertIsDisplayed()
+        compose.onNodeWithTag("metadata-editor-list").performScrollToNode(hasTestTag("stage-metadata"))
+        compose.onNodeWithTag("stage-metadata").assertIsDisplayed()
     }
 
     private fun samplePlayingState(): AppUiState {
@@ -137,6 +195,25 @@ class ProperpcloudAppTest {
         openContainingFolder = {},
         inspect = {},
         closeInspection = {},
+        openMetadataEditor = {},
+        toggleMetadataSelection = {},
+        clearMetadataSelection = {},
+        openBatchMetadataEditor = {},
+        closeMetadataEditor = {},
+        updateMetadataField = { _, _ -> },
+        resetMetadataField = {},
+        searchMetadata = {},
+        selectMetadataCandidate = {},
+        toggleMetadataCandidateField = {},
+        applyMetadataCandidate = {},
+        stageMetadata = {},
+        updateBatchField = { _, _ -> },
+        updateBatchSequence = { _, _, _ -> },
+        searchBatchMetadata = {},
+        selectBatchCandidate = { _, _ -> },
+        toggleBatchCandidateField = { _, _ -> },
+        stageBatchMetadata = {},
+        shareMetadataArtifact = {},
         updateClientId = {},
         selectSource = {},
         disconnectPCloud = {},

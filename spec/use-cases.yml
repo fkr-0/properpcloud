@@ -59,6 +59,38 @@ use_cases:
         provider_unavailable: Keep manual and filename-derived workflow available.
         ambiguous: Require user choice and leave low-confidence fields unselected.
       tests: [TEST-METADATA-QUERY, TEST-METADATA-RATE, TEST-METADATA-XML-SECURITY]
+    UC-EDIT-AND-EXPORT-METADATA:
+      traces: [REQ-METADATA-FOUNDATION]
+      title: Review, edit, verify, and export one file's embedded tags
+      trigger: User selects Edit tags from a folder row, queue row, or now playing.
+      flow:
+        - app: Prepare exact app-private source bytes and revision/hash evidence.
+        - app: Inspect embedded fields and show originals with provenance.
+        - user: Edit fields or explicitly search MusicBrainz.
+        - user: Select a candidate and accept individual proposed fields.
+        - app: Apply only the reviewed draft to a separate candidate file.
+        - app: Reread every changed field and calculate candidate SHA-256.
+        - user: Share or save the verified candidate through a scoped content URI.
+      failure:
+        source_changed: Delete local source copy and show a conflict without editing.
+        unsupported_format: Preserve source and explain that no candidate was produced.
+        provider_unavailable: Keep manual editing available.
+      tests: [TEST-PCLOUD-METADATA-DOWNLOAD, TEST-METADATA-DRAFT, TEST-TAG-STAGING, TEST-METADATA-EDITOR-UI]
+    UC-BATCH-TAG-EXPORT:
+      traces: [REQ-METADATA-FOUNDATION]
+      title: Review and export a bounded batch of tag corrections
+      trigger: User selects up to twenty audio files and opens Edit batch.
+      flow:
+        - app: Prepare and inspect each selected item independently.
+        - user: Enable common fields, explicit clears, and optional track sequencing.
+        - user: Optionally search and accept candidate fields per file.
+        - app: Stage every changed item with cancellation-safe per-item status.
+        - app: Package multiple verified candidates with a CSV manifest and SHA-256 evidence.
+      constraints:
+        - Blank common values never imply deletion.
+        - Selection order controls sequence numbering.
+        - Cloud objects remain unchanged.
+      tests: [TEST-METADATA-BATCH-BLANK, TEST-TAG-SEQUENCE, TEST-METADATA-EXPORT, TEST-MUTATION-DRY-RUN]
     UC-AUTH-LOGIN:
       traces: [REQ-AUTH]
       title: Connect a pCloud account

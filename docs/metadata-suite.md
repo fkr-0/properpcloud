@@ -19,9 +19,10 @@ The complete workflow covers:
 9. replace the remote file only with an expected revision/hash;
 10. reread remote state and record audit/recovery evidence.
 
-`0.1.2` implements the domain, batch-planning, local staging, tag verification,
-and MusicBrainz lookup foundations. It deliberately does not enable remote file
-replacement yet.
+`0.1.3` adds the complete local review/edit/export loop: Tag studio, bounded batch
+editing, field-level MusicBrainz acceptance, exact pCloud download-to-staging,
+verified single-file or ZIP exports, and scoped Android sharing. It deliberately
+does not enable remote file replacement.
 
 ## Modules
 
@@ -50,16 +51,16 @@ metadata-online/
     Cover Art Archive URL contract
     AcoustID fingerprint/lookup contracts
 
-source-pcloud/ (future mutation capability)
-  exact-revision download
-  expected-revision replace
-  post-upload readback
+source-pcloud/
+  provider checksum lookup
+  exact download with pre/post revision comparison
+  no overwrite until an atomic expected-revision primitive exists
 
-app/ (future proposal UI)
-  layered inspector
-  field diff and candidate review
-  batch plan confirmation
-  apply progress, conflict, and recovery UI
+app/
+  Tag studio with original values and provenance
+  field-level MusicBrainz review
+  bounded common-field and sequencing batch editor
+  verified file or ZIP/CSV export through FileProvider
 ```
 
 ## Canonical fields
@@ -207,7 +208,20 @@ Cover Art Archive candidate
 Candidate confidence does not equal permission to write. Low-confidence fields
 remain unselected.
 
-## Future pCloud mutation adapter
+## pCloud source preparation and future mutation adapter
+
+`0.1.3` safely prepares remote source bytes:
+
+```text
+provider metadata + SHA-256
+  → exact app-private download
+  → local size/hash verification
+  → provider metadata + SHA-256 reread
+  → accept only when revision and checksum are unchanged
+```
+
+Any mismatch deletes the local candidate and no edit begins. This is sufficient
+for safe local staging/export, but not for safe cloud overwrite.
 
 Remote maintenance will not be enabled until `source-pcloud` exposes a separate
 mutable capability with these operations:
@@ -238,19 +252,18 @@ A remote upload response alone is insufficient evidence. Success requires
 provider readback. An ambiguous network failure after the upload boundary becomes
 `indeterminate`, not `failed`, until reconciliation.
 
-## UI workflow
+## Implemented UI workflow
 
-The proposal UI is specified as five steps:
+The local proposal UI follows five steps:
 
 1. **Selection** — files, source capability, download/upload estimate.
 2. **Candidates** — current and proposed values, provider, confidence, warnings.
 3. **Review** — exact approved field diff and original revision/hash.
-4. **Apply** — per-file download, stage, validate, revision check, upload, verify.
-5. **Result** — verified, skipped, conflicted, failed, indeterminate, recovery reference.
+4. **Stage** — exact source preparation, candidate write, tag reread, and hash.
+5. **Export** — one verified file or a ZIP with `metadata-manifest.csv`.
 
-Selection of a candidate and confirmation of remote replacement are separate user
-actions. The final confirmation must state that cloud media bytes will be
-replaced.
+Candidate selection and field acceptance are separate actions. Export grants a
+read-only URI to the chosen target. Cloud media bytes are never replaced.
 
 ## Privacy and security
 
@@ -303,6 +316,16 @@ MusicBrainz lookup foundation, and comprehensive contracts.
 
 Not delivered: in-app field editor, pCloud remote replacement, fingerprint
 binary, artwork writes, unattended online matching.
+
+### `0.1.3`
+
+Delivered: Tag studio, original/provenance display, explicit field-level
+MusicBrainz review, bounded batch common-field edits, deterministic sequencing,
+exact pCloud source preparation, reread-verified candidates, single-file sharing,
+and ZIP plus CSV-manifest export.
+
+Not delivered: atomic pCloud replacement, artwork writes, Chromaprint generation,
+AcoustID configuration UI, or unattended candidate acceptance.
 
 ### `0.4.0`
 

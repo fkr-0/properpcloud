@@ -86,6 +86,10 @@ product:
       requirements:
         - REQ-MODERN-PLAYER
         - REQ-METADATA-FOUNDATION
+    v0_1_3:
+      name: reviewed-tag-studio-and-safe-export
+      requirements:
+        - REQ-METADATA-FOUNDATION
     v0_2:
       name: native-linux-feature-parity
       requirements: [REQ-LINUX-PARITY]
@@ -113,7 +117,7 @@ product:
         - Unknown or non-seekable duration disables scrubbing without disabling playback.
     REQ-METADATA-FOUNDATION:
       priority: must
-      release: v0_1_2
+      release: v0_1_3
       title: Safe tag maintenance foundation
       behaviors:
         - Represent canonical tag fields, provenance, confidence, snapshots, patches, and batch plans in core-model.
@@ -121,8 +125,12 @@ product:
         - Inspect and edit a local staged copy through a replaceable jaudiotagger adapter.
         - Reread and verify intended tag changes while proving original bytes remain unchanged.
         - Search MusicBrainz through an identified, rate-limited, HTTPS client.
+        - Present original values, provenance, editable drafts, and field-level candidate acceptance in Tag studio.
+        - Support bounded batch common-field edits and deterministic track sequencing.
+        - Prepare exact pCloud source bytes with provider SHA-256 and matching pre/post revision evidence.
+        - Export verified candidates as one file or a ZIP plus manifest through scoped Android content URIs.
         - Model Cover Art Archive and opt-in AcoustID lookup without embedding service keys.
-        - Disclose that pCloud remote replacement remains disabled until conditional write and readback exist.
+        - Disclose that pCloud remote replacement remains disabled because the SDK lacks atomic expected-revision overwrite.
       forbidden:
         - automatic remote metadata writes
         - online candidate acceptance without field-level review
