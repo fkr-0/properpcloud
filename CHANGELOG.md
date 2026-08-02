@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Release workflow tag validation now runs on the GitHub host where Git is
+  available, and manual dispatch can rebuild an existing immutable tag.
+
 ### Planned
 
 - Native Linux desktop feature parity through Compose Multiplatform, mpv JSON IPC,

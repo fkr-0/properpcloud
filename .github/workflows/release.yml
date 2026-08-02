@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing immutable tag to rebuild, attest, and publish
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -14,6 +19,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-24.04
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     timeout-minutes: 60
 
     steps:
@@ -21,6 +28,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4
@@ -54,13 +62,7 @@ jobs:
       - name: Validate tag metadata
         run: |
           make release-check
-          docker run --rm \
-            --user "$(id -u):$(id -g)" \
-            --entrypoint python3 \
-            --volume "$PWD:/workspace:ro" \
-            --workdir /workspace \
-            properpcloud/android-build:2026.08 \
-            scripts/validate-release.py --expect-tag --require-clean
+          python3 scripts/validate-release.py --expect-tag --require-clean
 
       - name: Verify and build
         run: make ci
@@ -76,7 +78,7 @@ jobs:
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: properpcloud-${{ github.ref_name }}
+          name: properpcloud-${{ env.RELEASE_TAG }}
           if-no-files-found: error
           path: dist/
 
@@ -90,4 +92,4 @@ jobs:
             dist/release-evidence.json
           fail_on_unmatched_files: true
           generate_release_notes: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
