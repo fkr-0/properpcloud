@@ -264,20 +264,32 @@ will become a fallback-only option once OAuth application registration succeeds.
 
 ## `0.2.0` — native Linux desktop parity
 
-Status: **specified; implementation starts after Android `0.1.x` semantics are stable**.
+Status: **functional native implementation complete; packaging and protected live validation remain release gates**.
 
-Implementation sequence:
+Completed implementation:
 
-1. **Started:** `core-model` now builds as a pure Kotlin/JVM 17-compatible JAR with no
-   Android package linkage; split into finer KMP modules only when desktop needs justify it;
-2. freeze and replay Android `0.1.5` queue/progress/source fixtures on JVM and Linux;
-3. add Secret Service/KWallet storage and system-browser OAuth callback handling;
-4. supervise mpv JSON IPC with JIT pCloud link resolution and bounded renewal;
-5. add Compose Desktop library/queue/player UI plus MPRIS/media keys;
-6. ship reproducible Arch and Flatpak evaluation packages after GNOME/KDE/i3 validation.
+1. [x] `core-model`, pCloud, WebDAV, metadata-online, and metadata-tags build as plain JVM modules without Android linkage.
+2. [x] Compose Desktop three-pane library, inspector, queue, and bottom-player shell.
+3. [x] deterministic direct and recursive folder queues with shared sorting/reducer semantics.
+4. [x] SQLite settings, queue, and progress persistence under XDG data paths.
+5. [x] freedesktop Secret Service session-token storage with no plaintext fallback.
+6. [x] mpv child-process supervision over private Unix JSON IPC with `--no-config`.
+7. [x] fresh pCloud stream resolution, play/pause/seek/next/previous, and smart resume.
+8. [x] MPRIS root/player service and media-state publication.
+9. [x] deterministic generated-WAV demo source and real-host mpv/SQLite smoke entry point.
+10. [x] Compose Desktop application-image plus `.deb`/`.rpm` packaging configuration.
+
+Remaining release sequence:
+
+1. [ ] protected EU and US pCloud account playback, expiry, disconnect, and restart evidence;
+2. [ ] browser OAuth after the desktop redirect registration is confirmed with pCloud;
+3. [ ] GNOME, KDE Plasma, and i3 Secret Service/MPRIS validation;
+4. [ ] keyboard-only, high-contrast, font-scaling, and accessibility review;
+5. [ ] reproducible Arch and broad-distribution artifacts with license review;
+6. [ ] long-duration playback and forced mpv crash/recovery soak tests.
 
 `0.2.0` is not an Android feature bucket. It delivers a native Linux desktop
-client with parity for the complete `0.1.0` semantic contract.
+client over the shared source-neutral contract; only the listed release evidence remains.
 
 ### Reuse boundary
 

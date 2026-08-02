@@ -1,6 +1,6 @@
 version: 1
 name: properpcloud
-description: Folder-first Android audio playback for pCloud and extensible file-oriented sources.
+description: Folder-first Android and Linux audio playback for pCloud and extensible file-oriented sources.
 defaultTrack: local
 shell: true
 syncDir:
@@ -17,8 +17,9 @@ agent:
     - Add artwork and optional local Chromaprint/AcoustID adapters after provider-term review.
     - Implement remote replacement only when pCloud exposes an atomic expected-revision primitive.
     - Run physical-device TalkBack, large-font, codec, and process-death validation.
-    - Continue extracting application and persistence contracts into pure JVM/KMP boundaries for native Linux 0.2.0 parity.
-    - Implement native Linux 0.2.0 parity using shared Kotlin contracts and mpv.
+    - Run protected Linux EU/US pCloud playback, expiry, disconnect, and restart validation.
+    - Validate Secret Service and MPRIS across GNOME, KDE Plasma, and i3 sessions.
+    - Add reproducible Arch and broad-distribution desktop release artifacts.
   changelog:
     - Released and tagged the verified architecture bootstrap as 0.0.1.
     - Implemented the adaptive Compose Android 0.1.0 client with deterministic demo media.
@@ -31,7 +32,9 @@ agent:
     - Prepared 0.1.3 with Tag studio, reviewed batch editing, exact pCloud staging, and verified exports.
     - Prepared 0.1.4 with bundled application identity, one-tap OAuth, and local-first remote token revocation.
     - Prepared 0.1.5 with lifecycle progress durability, bounded link retry, visible restoration failures, and Linux parity fixtures.
-    - Converted core-model from an Android library to a JVM 17-compatible shared JAR as the first 0.2.0 implementation boundary.
+    - Converted the core, provider, WebDAV, and metadata adapters to portable JVM modules.
+    - Implemented native Compose Desktop browsing, queueing, SQLite, Secret Service, mpv JSON IPC, MPRIS, and host smoke verification.
+    - Added a Markdown user manual and developer API reference rendered by Astro Starlight for GitHub Pages.
 
 commands:
   image:
@@ -64,6 +67,36 @@ commands:
     cwd: .
     timeoutMs: 900000
     run: ["make", "build"]
+  desktop-test:
+    description: Run native Linux adapter, generated-media, and SQLite tests
+    category: test
+    cwd: .
+    timeoutMs: 900000
+    run: ["make", "desktop-test"]
+  desktop-smoke:
+    description: Exercise a real host mpv process, Unix JSON IPC, and SQLite state
+    category: test
+    cwd: .
+    timeoutMs: 900000
+    run: ["make", "desktop-smoke"]
+  desktop-package:
+    description: Build the Compose Desktop Linux application image
+    category: build
+    cwd: .
+    timeoutMs: 1200000
+    run: ["make", "desktop-package"]
+  desktop-mpris-smoke:
+    description: Verify packaged MPRIS properties over an isolated D-Bus session
+    category: test
+    cwd: .
+    timeoutMs: 1200000
+    run: ["make", "desktop-mpris-smoke"]
+  docs-build:
+    description: Validate Markdown and build the Astro Starlight Pages artifact
+    category: build
+    cwd: .
+    timeoutMs: 600000
+    run: ["make", "docs-build"]
   lint:
     description: Run Android lint in Docker
     category: lint

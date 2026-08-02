@@ -29,7 +29,7 @@ class PCloudDirectLoginClientTest {
         assertEquals("credential with spaces", values["password"])
         assertEquals("1", values["getauth"])
         assertEquals("1", values["logout"])
-        assertEquals("properpcloud-android", values["device"])
+        assertEquals("properpcloud", values["device"])
         assertEquals("7776000", values["authexpire"])
         assertEquals("2592000", values["authinactiveexpire"])
         assertTrue(!plan.toString().contains("credential with spaces"))

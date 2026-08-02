@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.astro/
+src/content/docs/
+src/assets/logo.png
+public/favicon.png
+public/CNAME

@@ -1,188 +1,148 @@
-# Linux client design
+# Linux client
 
-The Linux client should **reuse the JVM core rather than reuse the Android application**. Android UI, lifecycle, credential, and playback adapters are platform-specific; the product semantics and pCloud integration are not.
+The Linux client is implemented as native desktop software over the shared Kotlin/JVM core. It does not reuse the Android application, require Waydroid, or depend on a mounted pCloud filesystem.
 
-The normative desktop specification is [`../spec/linux-client.yml`](../spec/linux-client.yml).
+The normative contract remains [`../spec/linux-client.yml`](../spec/linux-client.yml). Installation and daily use are covered in the [Linux user manual](user-manual/linux-installation.md); class-level details are in the [desktop API reference](api/desktop.md).
 
-## Recommended stack
-
-```text
-Compose Multiplatform Desktop
-        │
-core-application + core-domain + core-metadata
-        │
-        ├── pCloud java-core adapter
-        ├── SQLite persistence adapter
-        ├── Secret Service credential adapter
-        └── mpv JSON IPC playback adapter
-                │
-              MPRIS
-```
-
-This is the shortest credible path to a desktop client with the same folder, queue, progress, saved-root, inspection, and cache semantics.
-
-## What is reusable
-
-The following code should be shared unchanged or with JVM-only abstractions:
-
-- stable source, node, parent, and revision records;
-- natural filename and tag-aware sorting;
-- queue commands, snapshots, omissions, duplicate handling, and concurrency generation;
-- progress, completion, smart rewind, and long-form policies;
-- saved-root filter and grouping policies;
-- metadata normalization, provenance, proposal, and repair-plan logic;
-- application use cases and ports;
-- pCloud adapter built against the official `java-core` artifact;
-- WebDAV adapter;
-- schema-level persistence records and migration fixtures;
-- fake sources, contract tests, and provider sandbox fixtures.
-
-The Android-only pCloud authorization Activity is replaced by a desktop OAuth adapter. The SDK's Java core remains usable.
-
-## What should be rewritten as adapters
-
-| Concern | Android | Linux |
-|---|---|---|
-| UI | Jetpack Compose | Compose Desktop |
-| Playback | Media3 / ExoPlayer | mpv JSON IPC initially |
-| Media integration | MediaSession / Auto | MPRIS / media keys |
-| Relational data | Room | SQLite driver |
-| Preferences | DataStore | typed XDG config |
-| Secrets | Android Keystore vault | Secret Service / KWallet |
-| Durable jobs | WorkManager | application job scheduler + system integration later |
-| Files | app-private / SAF | XDG data and cache paths |
-| Notifications | Android notifications | freedesktop notifications |
-
-## Why mpv first
-
-mpv gives the desktop client mature codec and network behavior without a large JNI integration. The application starts one controlled child process with a private JSON IPC socket, observes position and state, and sends load, seek, pause, and speed commands.
-
-Security and correctness rules:
-
-- no shell interpolation of filenames or URLs;
-- no signed URL in a persistent playlist or log;
-- socket under `XDG_RUNTIME_DIR` with user-only permissions;
-- queue remains authoritative in the application database;
-- mpv crash preserves queue and progress and offers a bounded restart;
-- a refreshed pCloud link is loaded at the last confirmed position.
-
-libVLC or GStreamer can be added behind the same playback port if packaging or gapless behavior later justifies it.
-
-## OAuth
-
-The desktop client opens the system browser. The callback should use the redirect mechanism accepted by the registered pCloud application:
-
-1. custom URI scheme when supported for the desktop client; or
-2. a temporary loopback listener if pCloud permits that registered redirect form.
-
-The implementation validates a single-use state value and the regional hostname. The loopback server, when used, binds only to localhost and closes after one callback or timeout. The production redirect form must be confirmed in the pCloud application console before implementation.
-
-The token is stored in Secret Service. A KWallet adapter can provide equivalent behavior on KDE. A file-based fallback should be avoided; if implemented, it must be explicitly opt-in, encrypted with a user secret, and visibly less preferred.
-
-## Desktop UX
-
-A desktop client should not emulate the phone layout at a larger size.
+## Implemented runtime
 
 ```text
-┌───────────────┬───────────────────────────┬─────────────────────┐
-│ Account/roots │ Folder or search results  │ Queue / inspector   │
-│ Folder tree   │                           │                     │
-├───────────────┴───────────────────────────┴─────────────────────┤
-│ Now playing · path · timeline · transport · speed · bookmark  │
-└─────────────────────────────────────────────────────────────────┘
+Compose Desktop
+      |
+DesktopController
+      |
+      +-- shared core model, queue, sorting, progress, resume
+      +-- portable pCloud java-core adapter
+      +-- deterministic generated-WAV demo source
+      +-- SQLite queue, settings, and progress
+      +-- Secret Service session-token vault
+      +-- mpv child process over private JSON IPC
+      +-- MPRIS root/player interfaces over session D-Bus
 ```
 
-Desktop-specific strengths:
+## Current feature set
 
-- persistent folder tree;
-- drag a folder or selection into the queue;
-- context menus that mirror Android semantic commands;
-- multi-selection and batch inspection;
-- keyboard navigation and queue reordering;
-- visible path context in search;
-- detachable inspector or queue later;
-- MPRIS and media-key integration.
+- three-pane folder, library/inspection, and queue layout;
+- stable-ID folder navigation and breadcrumbs;
+- deterministic direct and recursive folder queues;
+- play-now, play-next, append, select, remove, and reorder operations;
+- fresh pCloud stream resolution before every playback load;
+- mpv play, pause, seek, next, previous, duration, and position state;
+- smart resume from durable SQLite progress;
+- queue and source restoration after restart;
+- pCloud direct sign-in with explicit EU/US region selection;
+- pCloud session token stored through freedesktop Secret Service;
+- MPRIS play, pause, next, previous, seek, status, and metadata;
+- XDG config, data, cache, and runtime locations;
+- deterministic headless smoke test with a real mpv process;
+- Compose Desktop application-image and `.deb`/`.rpm` packaging configuration.
 
-All drag operations have menu and keyboard equivalents. The containing folder remains one click from the player.
+## Shared versus platform-specific code
+
+| Concern | Shared | Android | Linux |
+| --- | --- | --- | --- |
+| Source/node identity | `core-model` | — | — |
+| Folder traversal and sorting | `core-model` | — | — |
+| Queue reducer and snapshot | `core-model` | — | — |
+| Progress and resume policy | `core-model` | — | — |
+| pCloud mapping and streams | `source-pcloud` | — | — |
+| User interface | — | Jetpack Compose | Compose Desktop |
+| Playback | port semantics | Media3 | mpv JSON IPC |
+| Durable state | logical records | DataStore | SQLite JDBC |
+| Credentials | session contract | encrypted app storage | Secret Service |
+| Media integration | state semantics | MediaSession | MPRIS |
+
+The pCloud, WebDAV, metadata-online, and metadata-tags modules compile as ordinary JVM modules. They contain no Android imports and can be reused by both clients.
+
+## mpv process contract
+
+The application owns one controlled child process:
+
+```text
+mpv
+  --no-config
+  --idle=yes
+  --terminal=no
+  --audio-display=no
+  --force-window=no
+  --input-ipc-server=$XDG_RUNTIME_DIR/properpcloud/mpv-<pid>.sock
+```
+
+Safety and correctness invariants:
+
+- `ProcessBuilder` receives an argument list; no shell interpolation is used;
+- user mpv configuration is ignored for deterministic behavior;
+- the socket lives below a private user runtime directory;
+- only `https:` and `file:` handles are accepted;
+- the provider URL exists only in memory and the IPC request;
+- mpv output is discarded so a signed URL cannot enter logs;
+- connect, write, and response waits are bounded;
+- queue and progress remain authoritative in SQLite;
+- closing the application terminates mpv and removes the socket.
+
+The smoke entry point adds `--ao=null`, allowing real IPC verification without an audio device.
 
 ## Persistence
 
-Logical records should match Android, but the physical schema need not copy Room's generated representation. Share:
-
-- record definitions;
-- serialized policy formats;
-- migration version model;
-- test fixtures;
-- transactional invariants.
-
-Use XDG paths:
+The desktop schema is intentionally small:
 
 ```text
-$XDG_CONFIG_HOME/properpcloud  non-secret settings
-$XDG_DATA_HOME/properpcloud    SQLite and durable user state
-$XDG_CACHE_HOME/properpcloud   verified media and rebuildable caches
-$XDG_RUNTIME_DIR/properpcloud  mpv IPC and ephemeral process state
+settings(key, value)
+queue_entries(position, source_id, node_id, origin_id)
+progress(source_id, node_id, position_ms, duration_ms, speed, observed_ms, completed)
 ```
 
-## The official pCloud console client
+It uses WAL mode and transactional full-queue replacement. Signed stream links, account passwords, and provider command lines are forbidden from all tables.
 
-The open-source pCloud console client is useful as an optional interoperability path:
+XDG locations:
 
-- it can expose pCloud through a FUSE mount;
-- a local-source adapter can browse that mount;
-- any local player can read mounted files.
+```text
+$XDG_CONFIG_HOME/properpcloud
+$XDG_DATA_HOME/properpcloud/properpcloud.db
+$XDG_CACHE_HOME/properpcloud
+$XDG_RUNTIME_DIR/properpcloud
+```
 
-It is not the preferred integrated architecture because a mount hides provider-specific IDs, revisions, direct-link lifecycle, change cursors, and precise cache state. It also makes the client dependent on a separately managed mount. Direct API access gives better player-to-folder navigation, diagnostics, offline accounting, and revision-safe mutation.
+## Account handling
 
-A practical fallback mode can still detect a configured mount and expose it as a local source.
+The current desktop account UI uses the same bounded direct sign-in client as Android. The user selects exactly one regional pCloud HTTPS endpoint. The password is supplied as a mutable array and overwritten by the authentication client. Only the returned session token and regional host are stored in Secret Service.
 
-## No custom backend initially
+Browser OAuth remains the preferred long-term route. Implementing it requires a confirmed desktop redirect registration in the pCloud application console; the desktop client does not invent or embed a client secret.
 
-A custom server would add authentication, deployment, data protection, synchronization, and availability costs before the core player is proven. Both clients can operate directly against pCloud.
+## Desktop interaction
 
-Cross-device progress can be added later through one of three deliberately separate designs:
+```text
+┌───────────────┬─────────────────────────────┬─────────────────────┐
+│ breadcrumbs   │ current folder              │ queue               │
+│ inspector     │ folder and track actions    │ reorder/remove      │
+├───────────────┴─────────────────────────────┴─────────────────────┤
+│ title · transport · ± seek · timeline · position                │
+└──────────────────────────────────────────────────────────────────┘
+```
 
-1. encrypted export/import;
-2. a sidecar state file in a user-selected pCloud application folder;
-3. a minimal synchronization service.
+The current UI provides menu equivalents for queue operations. Drag-and-drop, richer keyboard focus navigation, desktop notifications, saved roots, and a detachable mini-player remain post-parity refinements rather than prerequisites for the implemented playback path.
 
-The second option is attractive but should wait until progress and conflict semantics are stable. A naïve last-write-wins file can lose bookmarks, completion decisions, or deliberate rewinds.
+## Verification
 
-## Implementation path
+```bash
+make desktop-test
+make desktop-smoke
+make desktop-mpris-smoke
+make desktop-package
+```
 
-### Phase 1: shared extraction
+The unit suite covers XDG mapping, SQLite round trips, deterministic demo traversal and media generation, and mpv command encoding. The playback smoke covers the actual host Unix socket and mpv process. The MPRIS smoke verifies the packaged jlink runtime and externally queries root/player properties over an isolated session bus.
 
-- move portable records and policies into `core-domain`;
-- add `core-application` ports and commands;
-- build pCloud source against `java-core`;
-- keep Android auth and Media3 in Android modules;
-- run the same source and application contract suites on the JVM.
+## Remaining release gates
 
-### Phase 2: headless desktop proof
+Before declaring the Linux `0.2.0` release complete:
 
-Build a CLI that:
+1. run interactive pCloud tests against protected EU and US test accounts;
+2. verify Secret Service behavior under GNOME, KDE Plasma, and an i3 keyring session;
+3. exercise MPRIS through common media-key daemons;
+4. validate long playback, expired direct-link recovery, mpv crash recovery, and process restart;
+5. produce reproducible Arch and broad-distribution artifacts;
+6. perform keyboard-only, high-contrast, font-scaling, and accessibility review;
+7. add browser OAuth after provider redirect registration is confirmed.
 
-1. authorizes through a browser;
-2. lists a folder;
-3. builds and prints a deterministic queue;
-4. resolves and plays one item through mpv;
-5. persists and restores position through SQLite;
-6. prints a redacted metadata inspection.
-
-This validates every risky adapter before UI work.
-
-### Phase 3: Compose Desktop shell
-
-- implement three-pane browser and queue;
-- add bottom player and containing-folder navigation;
-- add keyboard-first interactions;
-- add MPRIS;
-- add saved roots and inspector.
-
-### Phase 4: packaging
-
-Start with a Gradle application distribution and an Arch package for the primary development environment. Add Flatpak for broader distribution once browser OAuth, Secret Service, mpv, and file access are tested inside the sandbox. AppImage can be a secondary portable format.
-
-### Phase 5: optional synchronization
-
-Specify a versioned encrypted progress format and conflict tests before any shared state is written. Never make the Android or Linux release depend on this feature.
+The implementation is therefore functional and tested locally, while distribution and protected live-provider evidence remain release gates.

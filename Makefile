@@ -6,10 +6,12 @@ ANDROID_CMDLINE_TOOLS_VERSION ?= 15859902
 ANDROID_CMDLINE_TOOLS_SHA256 ?= 4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583
 ANDROID_PLATFORM ?= 37.0
 ANDROID_BUILD_TOOLS ?= 37.0.0
+DESKTOP_JAVA_HOME ?= /opt/android-studio/jbr
+NPM ?= npm
 
 export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
 
-.PHONY: help toolchain-archive robolectric-runtime image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts dependencies test lint build check ci shell compose install clean
+.PHONY: help toolchain-archive robolectric-runtime image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts dependencies test desktop-test desktop-smoke desktop-mpris-smoke desktop-run desktop-package docs-install docs-build lint build check ci shell compose install clean
 
 help: ## Show available targets.
 	@awk 'BEGIN {FS = ":.*## "; printf "properpcloud targets:\n\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -83,6 +85,36 @@ dependencies: ## Resolve dependencies without compiling production code.
 test: robolectric-runtime ## Run JVM unit and module contract tests in Docker.
 	@bash ./scripts/docker-run.sh test
 
+desktop-test: ## Run the Linux desktop adapter and persistence tests in Docker.
+	@bash ./scripts/docker-run.sh :desktop-app:test
+
+desktop-smoke: ## Verify generated media, SQLite, and a real host mpv JSON-IPC process.
+	@command -v mpv >/dev/null || { echo "mpv is required" >&2; exit 1; }
+	@test -x "$(DESKTOP_JAVA_HOME)/bin/java" || { echo "JDK 21 not found at $(DESKTOP_JAVA_HOME)" >&2; exit 1; }
+	@mkdir -p .cache/gradle
+	@JAVA_HOME="$(DESKTOP_JAVA_HOME)" GRADLE_USER_HOME="$$PWD/.cache/gradle" \
+	  ./gradlew --no-daemon :desktop-app:run --args='--smoke'
+
+desktop-run: ## Launch the Compose Desktop client on the host.
+	@test -x "$(DESKTOP_JAVA_HOME)/bin/java" || { echo "JDK 21 not found at $(DESKTOP_JAVA_HOME)" >&2; exit 1; }
+	@mkdir -p .cache/gradle
+	@JAVA_HOME="$(DESKTOP_JAVA_HOME)" GRADLE_USER_HOME="$$PWD/.cache/gradle" \
+	  ./gradlew :desktop-app:run
+
+desktop-package: ## Build the Linux Compose Desktop application image in Docker.
+	@bash ./scripts/docker-run.sh :desktop-app:createDistributable
+
+desktop-mpris-smoke: desktop-package ## Verify packaged MPRIS properties over an isolated session bus.
+	@command -v dbus-run-session >/dev/null || { echo "dbus-run-session is required" >&2; exit 1; }
+	@command -v gdbus >/dev/null || { echo "gdbus is required" >&2; exit 1; }
+	@dbus-run-session -- bash scripts/desktop-mpris-smoke.sh
+
+docs-install: ## Install the pinned documentation renderer dependencies.
+	@cd website && $(NPM) ci
+
+docs-build: docs-install ## Validate Markdown content and build static GitHub Pages output.
+	@cd website && ASTRO_TELEMETRY_DISABLED=1 $(NPM) run build
+
 lint: ## Run Android lint in Docker.
 	@bash ./scripts/docker-run.sh lint
 
@@ -92,7 +124,7 @@ build: ## Build the debug APK in Docker.
 check: robolectric-runtime ## Run tests, lint, and debug assembly in one Gradle invocation.
 	@bash ./scripts/docker-run.sh test lint :app:assembleDebug
 
-ci: release-check robolectric-runtime ## Execute the complete hermetic CI verification set.
+ci: release-check robolectric-runtime docs-build ## Execute the complete repository verification set.
 	@bash ./scripts/docker-run.sh \
 	  --configuration-cache \
 	  --build-cache \

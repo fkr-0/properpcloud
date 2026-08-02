@@ -1,20 +1,17 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
-    id("com.android.library")
+    alias(libs.plugins.kotlin.jvm)
 }
 
-android {
-    namespace = "dev.properpcloud.metadata.online"
-    compileSdk = libs.versions.compile.sdk.get().toInt()
-    buildToolsVersion = libs.versions.build.tools.get()
+kotlin {
+    jvmToolchain(21)
+    compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
+}
 
-    defaultConfig {
-        minSdk = libs.versions.min.sdk.get().toInt()
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
 }
 
 dependencies {

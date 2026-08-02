@@ -2,8 +2,8 @@
 
 properpcloud's original source code is licensed under the MIT License.
 
-The Android application links to third-party libraries. Each library remains
-under its own license; the project license does not replace those terms.
+The Android and Linux applications link to third-party libraries. Each library
+remains under its own license; the project license does not replace those terms.
 
 ## Runtime dependencies
 
@@ -11,6 +11,9 @@ under its own license; the project license does not replace those terms.
 |---|---|---|
 | AndroidX Media3 | Playback and media sessions | Apache License 2.0 |
 | AndroidX libraries | Android UI and lifecycle integration | Apache License 2.0 |
+| JetBrains Compose Multiplatform | Linux desktop UI and packaging | Apache License 2.0 |
+| SQLite JDBC | Linux queue and progress persistence | Apache License 2.0 |
+| dbus-java | Linux MPRIS and session D-Bus transport | MIT License |
 | Kotlin standard library | Kotlin runtime | Apache License 2.0 |
 | kotlinx.coroutines | Structured concurrency | Apache License 2.0 |
 | pCloud Java/Android SDK | pCloud API and Android authorization | Apache License 2.0 |

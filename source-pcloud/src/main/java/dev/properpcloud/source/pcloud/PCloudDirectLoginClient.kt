@@ -205,7 +205,7 @@ private class HttpsPCloudDirectLoginTransport : PCloudDirectLoginTransport {
     }
 }
 
-private const val DIRECT_LOGIN_DEVICE_NAME = "properpcloud-android"
+private const val DIRECT_LOGIN_DEVICE_NAME = "properpcloud"
 private const val DIRECT_LOGIN_AUTH_EXPIRE_SECONDS = "7776000" // 90 days.
 private const val DIRECT_LOGIN_INACTIVE_EXPIRE_SECONDS = "2592000" // 30 days.
 

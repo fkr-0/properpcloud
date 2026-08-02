@@ -1,10 +1,36 @@
 linux_client:
   objective: Deliver the same folder, queue, progress, inspection, and cache semantics with desktop-native interaction at minimum duplicated implementation cost.
+  status:
+    implementation: functional
+    release: pending_protected_provider_packaging_and_desktop_matrix_evidence
+    implemented_on: 2026-08-03
+  current_implementation:
+    module: desktop-app
+    shared_jvm_modules:
+      - core-model
+      - source-pcloud
+      - source-webdav
+      - metadata-tags
+      - metadata-online
+    UI: Compose Desktop three-pane browser, inspector, queue, and bottom player
+    playback: mpv child process with private Unix JSON IPC and no-config
+    persistence: SQLite JDBC with WAL settings, queue, and progress tables
+    secrets: freedesktop Secret Service through secret-tool with no plaintext fallback
+    media_integration: MPRIS root and player interfaces over session D-Bus
+    paths: XDG config, data, cache, and runtime roots
+    verification:
+      - desktop unit tests for XDG, SQLite, deterministic media, and IPC encoding
+      - host smoke for generated WAV, recursive queue, SQLite, and real mpv IPC
+      - portable provider and metadata modules compile as JVM 17 bytecode
+    packaging:
+      - Compose application image
+      - deb configuration
+      - rpm configuration
   recommendation:
     architecture: Shared Kotlin/JVM domain, application, metadata, and pCloud adapter plus a Compose Desktop shell.
     playback: mpv child process controlled through JSON IPC.
     persistence: SQLite repository implementing the same persistence ports.
-    secrets: freedesktop Secret Service with KWallet-compatible fallback.
+    secrets: freedesktop Secret Service; a plaintext file fallback is forbidden.
     backend: Direct pCloud API through official Java core SDK; no Android runtime and no mandatory server.
   alternatives:
     reuse_android_UI_directly:
@@ -71,8 +97,9 @@ linux_client:
       persistence-linux:
         implementation: SQLite JDBC or another maintained JVM SQLite driver
       credential-linux:
-        primary: Secret Service D-Bus adapter
-        fallback: KWallet adapter or password-protected local vault with explicit warning
+        primary: Secret Service-compatible platform vault
+        current_adapter: secret-tool client over the session service
+        fallback: none; fail closed rather than persist an unencrypted token
       playback-mpv:
         implementation:
           - spawn mpv with no uncontrolled shell interpolation

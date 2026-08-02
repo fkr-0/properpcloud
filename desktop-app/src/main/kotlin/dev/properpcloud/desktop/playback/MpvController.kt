@@ -1,0 +1,189 @@
+package dev.properpcloud.desktop.playback
+
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import dev.properpcloud.core.model.StreamHandle
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.StandardProtocolFamily
+import java.net.UnixDomainSocketAddress
+import java.nio.ByteBuffer
+import java.nio.channels.SocketChannel
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.concurrent.TimeUnit
+
+data class MpvState(
+    val running: Boolean = false,
+    val paused: Boolean = true,
+    val positionMillis: Long = 0,
+    val durationMillis: Long? = null,
+    val idle: Boolean = true,
+    val error: String? = null,
+)
+
+class MpvController(
+    private val runtimeDirectory: Path,
+    private val scope: CoroutineScope,
+    private val executable: String = "mpv",
+    private val extraArguments: List<String> = emptyList(),
+) : AutoCloseable {
+    private val gson = Gson()
+    private val socketPath = runtimeDirectory.resolve("mpv-${ProcessHandle.current().pid()}.sock")
+    private var process: Process? = null
+    private var polling: Job? = null
+    private val mutableState = MutableStateFlow(MpvState())
+    val state: StateFlow<MpvState> = mutableState.asStateFlow()
+
+    suspend fun ensureStarted() = withContext(Dispatchers.IO) {
+        val current = process
+        if (current?.isAlive == true && Files.exists(socketPath)) return@withContext
+        polling?.cancel()
+        current?.destroyForcibly()
+        Files.createDirectories(runtimeDirectory)
+        runCatching { Files.deleteIfExists(socketPath) }
+        process = ProcessBuilder(buildList {
+            add(executable)
+            add("--no-config")
+            add("--idle=yes")
+            add("--terminal=no")
+            add("--audio-display=no")
+            add("--force-window=no")
+            add("--input-ipc-server=${socketPath.toAbsolutePath()}")
+            addAll(extraArguments)
+        })
+            .redirectInput(ProcessBuilder.Redirect.PIPE)
+            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            .redirectError(ProcessBuilder.Redirect.DISCARD)
+            .start()
+        for (attempt in 0 until 100) {
+            if (Files.exists(socketPath)) break
+            if (process?.isAlive != true) error("mpv exited before its IPC socket became ready")
+            Thread.sleep(25)
+        }
+        check(Files.exists(socketPath)) { "mpv IPC socket did not become ready" }
+        mutableState.value = MpvState(running = true)
+        polling = scope.launch(Dispatchers.IO) { pollState() }
+    }
+
+    suspend fun load(handle: StreamHandle, resumeMillis: Long = 0) {
+        ensureStarted()
+        require(handle.url.startsWith("https://") || handle.url.startsWith("file:")) { "unsupported playback URL scheme" }
+        command(listOf("loadfile", handle.url, "replace"))
+        if (resumeMillis > 0) {
+            delay(80)
+            command(listOf("seek", resumeMillis / 1_000.0, "absolute+exact"))
+        }
+        command(listOf("set_property", "pause", false))
+    }
+
+    suspend fun togglePause() {
+        ensureStarted()
+        command(listOf("cycle", "pause"))
+    }
+
+    suspend fun pause(value: Boolean) {
+        ensureStarted()
+        command(listOf("set_property", "pause", value))
+    }
+
+    suspend fun seekRelative(milliseconds: Long) {
+        ensureStarted()
+        command(listOf("seek", milliseconds / 1_000.0, "relative+exact"))
+    }
+
+    suspend fun seekAbsolute(milliseconds: Long) {
+        ensureStarted()
+        command(listOf("seek", milliseconds / 1_000.0, "absolute+exact"))
+    }
+
+    suspend fun setSpeed(speed: Float) {
+        require(speed in 0.5f..4f)
+        ensureStarted()
+        command(listOf("set_property", "speed", speed))
+    }
+
+    suspend fun stop() {
+        if (process?.isAlive == true) command(listOf("stop"))
+    }
+
+    internal fun commandJson(arguments: List<Any?>): String =
+        gson.toJson(mapOf("command" to arguments)) + "\n"
+
+    private suspend fun pollState() {
+        while (scope.isActive && process?.isAlive == true) {
+            runCatching {
+                val position = propertyDouble("time-pos")?.times(1_000)?.toLong() ?: 0
+                val duration = propertyDouble("duration")?.times(1_000)?.toLong()
+                val paused = propertyBoolean("pause") ?: true
+                val idle = propertyBoolean("idle-active") ?: true
+                mutableState.value = MpvState(true, paused, position, duration, idle)
+            }.onFailure { error ->
+                mutableState.value = mutableState.value.copy(error = error.message)
+            }
+            delay(500)
+        }
+        mutableState.value = mutableState.value.copy(running = false, paused = true)
+    }
+
+    private fun propertyDouble(name: String): Double? = command(listOf("get_property", name))
+        ?.get("data")?.takeUnless { it.isJsonNull }?.asDouble
+
+    private fun propertyBoolean(name: String): Boolean? = command(listOf("get_property", name))
+        ?.get("data")?.takeUnless { it.isJsonNull }?.asBoolean
+
+    private fun command(arguments: List<Any?>): JsonObject? {
+        val address = UnixDomainSocketAddress.of(socketPath)
+        SocketChannel.open(StandardProtocolFamily.UNIX).use { channel ->
+            channel.configureBlocking(false)
+            channel.connect(address)
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+            while (!channel.finishConnect()) {
+                check(System.nanoTime() < deadline) { "timed out connecting to mpv" }
+                Thread.sleep(5)
+            }
+            val request = ByteBuffer.wrap(commandJson(arguments).toByteArray(StandardCharsets.UTF_8))
+            while (request.hasRemaining()) {
+                check(System.nanoTime() < deadline) { "timed out writing to mpv" }
+                if (channel.write(request) == 0) Thread.sleep(5)
+            }
+            val bytes = ByteArray(65_536)
+            val buffer = ByteBuffer.wrap(bytes)
+            while (System.nanoTime() < deadline) {
+                val read = channel.read(buffer)
+                if (read < 0) break
+                val length = buffer.position()
+                val newline = bytes.indexOf('\n'.code.toByte(), 0, length)
+                if (newline >= 0) {
+                    val response = String(bytes, 0, newline, StandardCharsets.UTF_8)
+                    return gson.fromJson(response, JsonObject::class.java)
+                }
+                if (read == 0) Thread.sleep(5)
+            }
+            error("timed out waiting for mpv response")
+        }
+    }
+
+    override fun close() {
+        polling?.cancel()
+        process?.let { running ->
+            runCatching { if (running.isAlive) running.destroy() }
+            runCatching { if (!running.waitFor(2, TimeUnit.SECONDS)) running.destroyForcibly() }
+        }
+        Files.deleteIfExists(socketPath)
+    }
+}
+
+private fun ByteArray.indexOf(value: Byte, fromIndex: Int, toIndex: Int): Int {
+    for (index in fromIndex until toIndex) if (this[index] == value) return index
+    return -1
+}
