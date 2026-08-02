@@ -9,7 +9,7 @@ advertising SDK, analytics SDK, telemetry upload, or account database.
 - folder and filename metadata returned by the selected source;
 - queue order and containing-folder references;
 - playback position, duration, completion, and selected sort/source settings;
-- a user-entered pCloud application client ID;
+- a bundled or user-overridden public pCloud application client ID;
 - an OAuth access token after successful pCloud authorization.
 - local embedded-tag snapshots, approved patch plans, and staged-file hashes when
   the user invokes metadata tooling.
@@ -29,6 +29,11 @@ API host and temporary content hosts returned by pCloud. The app accepts only
 Temporary signed media links are capabilities. They are resolved immediately
 before playback, kept only in Media3 runtime state, and not written to DataStore,
 logs, queue snapshots, release evidence, or bug-report templates.
+
+Queue and progress persistence uses stable source/node identity, containing-folder
+identity, position, duration, playback speed, observation time, and completion.
+The frozen cross-platform fixture corpus contains the same non-secret fields and
+deliberately excludes stream URLs, tokens, provider responses, and local paths.
 
 Online metadata matching is opt-in. A MusicBrainz search may transmit the title,
 artist, album, ISRC, and approximate duration that the user approved. A future

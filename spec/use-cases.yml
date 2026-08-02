@@ -217,16 +217,18 @@ use_cases:
         - app: Publish media metadata and controls.
       recovery:
         expired_or_forbidden_link:
-          maximum_refreshes: 2
+          immediate_refreshes_per_window: 1
+          retry_cooldown: 60 seconds
           sequence:
             - discard capability URL
             - resolve new capability
             - resume from last confirmed position
+            - allow a later retry after cooldown
         transient_network:
           result: Bounded backoff with visible retry and cancel.
         unsupported_decoder:
           result: Fail item, preserve queue, offer inspect, download, external-open, or skip.
-      tests: [TEST-PLAY-REMOTE, TEST-PLAY-LINK-EXPIRY, TEST-PLAY-RANGE]
+      tests: [TEST-PLAY-REMOTE, TEST-PLAY-LINK-EXPIRY, TEST-SIGNED-LINK-RETRY-GATE, TEST-PLAY-RANGE]
     UC-SAVE-PROGRESS:
       traces: [REQ-PROGRESS]
       title: Persist and restore long-form position
@@ -242,11 +244,12 @@ use_cases:
         - app: Coalesce writes while preserving latest observation.
         - app: Apply completion policy.
         - app: Commit progress transactionally.
+        - app: Return an observable persistence job for forced lifecycle checkpoints.
       restore_flow:
         - app: Compare stored and current content revision.
         - app: Seek to stored position minus smart rewind when compatible.
         - app: Ask restart, retain, or discard when content materially changed.
-      tests: [TEST-PROGRESS-CHECKPOINT, TEST-PROGRESS-PROCESS-DEATH, TEST-PROGRESS-REVISION]
+      tests: [TEST-PROGRESS-CHECKPOINT, TEST-PROGRESS-LIFECYCLE-FLUSH, TEST-PROGRESS-POLICY, TEST-PROGRESS-PROCESS-DEATH, TEST-PROGRESS-REVISION]
     UC-CREATE-SAVED-ROOT:
       traces: [REQ-SAVED-ROOTS]
       title: Create a custom tab from folder
@@ -334,6 +337,7 @@ use_cases:
       title: Continue the same folder-first library on native Linux
       preconditions:
         - Android 0.1.x queue, progress, identity, and source contracts are stable.
+        - The unchanged spec/fixtures/0.1.5 corpus passes on Android and the Linux implementation.
         - mpv, Secret Service or KWallet, and a desktop browser are available.
       flow:
         - app: Load the same source-neutral contracts and pCloud java-core adapter.

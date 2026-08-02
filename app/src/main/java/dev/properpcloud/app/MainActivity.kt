@@ -125,6 +125,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        viewModel.flushPlaybackProgress()
+        super.onStop()
+    }
+
     private fun launchAuthorization(clientId: String) {
         if (clientId.isBlank()) {
             viewModel.showMessage("This build has no pCloud application identity. Open advanced setup to add a client ID.")

@@ -11,18 +11,21 @@ import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.ListenableFuture
 import dev.properpcloud.app.ProperpcloudApplication
 import dev.properpcloud.core.model.MediaIdentity
+import dev.properpcloud.core.model.PlaybackProgress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.guava.future
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private lateinit var player: ExoPlayer
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val refreshedMediaIds = mutableSetOf<String>()
+    private val retryGate = SignedLinkRetryGate()
 
     @UnstableApi
     override fun onCreate() {
@@ -30,13 +33,10 @@ class PlaybackService : MediaSessionService() {
         player = ExoPlayer.Builder(this).build()
         player.addListener(
             object : Player.Listener {
-                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                    refreshedMediaIds.clear()
-                }
-
                 override fun onPlayerError(error: PlaybackException) {
+                    checkpointCurrentProgressAsync()
                     val responseCode = (error.cause as? HttpDataSource.InvalidResponseCodeException)?.responseCode
-                    if (responseCode == 401 || responseCode == 403) refreshCurrentLinkOnce()
+                    if (responseCode == 401 || responseCode == 403) refreshCurrentLinkWhenAllowed()
                 }
             },
         )
@@ -48,6 +48,7 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
     override fun onDestroy() {
+        checkpointCurrentProgressBlocking()
         mediaSession?.release()
         mediaSession = null
         player.release()
@@ -55,9 +56,14 @@ class PlaybackService : MediaSessionService() {
         super.onDestroy()
     }
 
-    private fun refreshCurrentLinkOnce() {
+    override fun onTaskRemoved(rootIntent: android.content.Intent?) {
+        checkpointCurrentProgressAsync()
+        super.onTaskRemoved(rootIntent)
+    }
+
+    private fun refreshCurrentLinkWhenAllowed() {
         val item = player.currentMediaItem ?: return
-        if (!refreshedMediaIds.add(item.mediaId)) return
+        if (!retryGate.acquire(item.mediaId, System.currentTimeMillis())) return
         val index = player.currentMediaItemIndex
         val position = player.currentPosition
         val shouldPlay = player.playWhenReady
@@ -69,6 +75,40 @@ class PlaybackService : MediaSessionService() {
                 player.playWhenReady = shouldPlay
             }
         }
+    }
+
+    private fun checkpointCurrentProgressAsync() {
+        currentProgress()?.let { progress ->
+            (application as ProperpcloudApplication).container.applicationScope.launch {
+                (application as ProperpcloudApplication).container.preferences.saveProgress(progress)
+            }
+        }
+    }
+
+    private fun checkpointCurrentProgressBlocking() {
+        val progress = currentProgress() ?: return
+        runBlocking(Dispatchers.IO) {
+            withTimeoutOrNull(PROGRESS_FLUSH_TIMEOUT_MILLIS) {
+                (application as ProperpcloudApplication).container.preferences.saveProgress(progress)
+            }
+        }
+    }
+
+    private fun currentProgress(): PlaybackProgress? {
+        if (!::player.isInitialized) return null
+        val mediaId = player.currentMediaItem?.mediaId ?: return null
+        val (sourceId, nodeId) = runCatching { MediaIdentity.decode(mediaId) }.getOrNull() ?: return null
+        val duration = player.duration.takeIf { it > 0 }
+        val position = player.currentPosition.coerceAtLeast(0)
+        return PlaybackProgress(
+            sourceId = sourceId,
+            nodeId = nodeId,
+            positionMillis = position,
+            durationMillis = duration,
+            playbackSpeed = player.playbackParameters.speed,
+            observedAtEpochMillis = System.currentTimeMillis(),
+            completed = duration != null && position >= duration * 0.95,
+        )
     }
 
     private suspend fun resolve(item: MediaItem, force: Boolean = false): MediaItem {
@@ -106,5 +146,9 @@ class PlaybackService : MediaSessionService() {
                 startPositionMs,
             )
         }
+    }
+
+    private companion object {
+        const val PROGRESS_FLUSH_TIMEOUT_MILLIS = 1_500L
     }
 }

@@ -218,16 +218,19 @@ External gate: register the properpcloud pCloud application once, configure
 
 ## `0.1.5` — Android semantic freeze and lifecycle hardening
 
-Planned acceptance scope before Linux parity branches:
+Status: **local release candidate**.
 
 - direct `MainViewModel` orchestration tests through an injected playback-controller port;
-- explicit progress flush on app background, service teardown, queue switch, and process recreation;
-- retry budget reset after a later user action or connectivity recovery following signed-link failure;
+- explicit progress flush on app background, ViewModel/service teardown, queue switch,
+  manual transition, disconnect, playback error, and task removal;
+- one immediate signed-link retry plus a later retry after cooldown;
 - controller connection/restoration failures represented in UI state instead of silent fallback;
-- instrumentation evidence for process death during browse, recursive queue construction, playback,
-  metadata staging, OAuth return, and disconnect;
-- physical-device TalkBack, 200% font, media-key, headset, codec, and Android 17 checks;
-- Android queue/progress/source serialization fixtures frozen as the `0.2.0` compatibility corpus.
+- stale persisted queues repaired and rewritten with explicit user notice;
+- Android queue/progress serialization fixtures frozen and byte-replayed as the `0.2.0` corpus.
+
+External gates remain: physical-device process-death during browse, recursive queue
+construction, playback, metadata staging, OAuth return and disconnect; TalkBack,
+200% font, media keys, headset/codec behavior, and Android 17 runtime validation.
 
 ### Deferred beyond `0.1.0`
 

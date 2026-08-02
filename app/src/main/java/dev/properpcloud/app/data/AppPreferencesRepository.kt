@@ -14,8 +14,6 @@ import dev.properpcloud.core.model.TrackSortKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import org.json.JSONArray
-import org.json.JSONObject
 
 private val Context.properpcloudDataStore by preferencesDataStore(name = "properpcloud")
 
@@ -54,68 +52,33 @@ class AppPreferencesRepository(context: Context) {
     }
 
     suspend fun saveQueue(queue: PlaybackQueue) {
-        val array = JSONArray()
-        queue.entries.forEach { entry ->
-            array.put(
-                JSONObject()
-                    .put("source", entry.track.sourceId.value)
-                    .put("node", entry.track.id.value)
-                    .put("origin", entry.originFolderId.value),
-            )
-        }
+        val payload = AppPersistenceCodec.encodeQueue(queue)
         dataStore.edit {
-            it[QUEUE_JSON] = array.toString()
-            it[QUEUE_INDEX] = queue.currentIndex
+            it[QUEUE_JSON] = payload.json
+            it[QUEUE_INDEX] = payload.currentIndex
         }
     }
 
     suspend fun loadQueue(): StoredQueue {
         val preferences = dataStore.data.first()
-        val array = JSONArray(preferences[QUEUE_JSON] ?: "[]")
-        val entries = buildList {
-            for (index in 0 until array.length()) {
-                val item = array.getJSONObject(index)
-                add(
-                    StoredQueueReference(
-                        SourceId(item.getString("source")),
-                        NodeId(item.getString("node")),
-                        NodeId(item.getString("origin")),
-                    ),
-                )
-            }
-        }
-        return StoredQueue(entries, preferences[QUEUE_INDEX] ?: -1)
+        return AppPersistenceCodec.decodeQueue(
+            preferences[QUEUE_JSON].orEmpty(),
+            preferences[QUEUE_INDEX] ?: -1,
+        )
     }
 
     suspend fun saveProgress(progress: PlaybackProgress) {
         dataStore.edit { preferences ->
-            val root = JSONObject(preferences[PROGRESS_JSON] ?: "{}")
-            root.put(
-                progressKey(progress.sourceId, progress.nodeId),
-                JSONObject()
-                    .put("position", progress.positionMillis)
-                    .put("duration", progress.durationMillis ?: JSONObject.NULL)
-                    .put("speed", progress.playbackSpeed.toDouble())
-                    .put("observed", progress.observedAtEpochMillis)
-                    .put("completed", progress.completed),
+            preferences[PROGRESS_JSON] = AppPersistenceCodec.upsertProgress(
+                preferences[PROGRESS_JSON].orEmpty(),
+                progress,
             )
-            preferences[PROGRESS_JSON] = root.toString()
         }
     }
 
     suspend fun loadProgress(sourceId: SourceId, nodeId: NodeId): PlaybackProgress? {
         val preferences = dataStore.data.first()
-        val root = JSONObject(preferences[PROGRESS_JSON] ?: "{}")
-        val item = root.optJSONObject(progressKey(sourceId, nodeId)) ?: return null
-        return PlaybackProgress(
-            sourceId = sourceId,
-            nodeId = nodeId,
-            positionMillis = item.getLong("position"),
-            durationMillis = if (item.isNull("duration")) null else item.getLong("duration"),
-            playbackSpeed = item.getDouble("speed").toFloat(),
-            observedAtEpochMillis = item.getLong("observed"),
-            completed = item.optBoolean("completed"),
-        )
+        return AppPersistenceCodec.decodeProgress(preferences[PROGRESS_JSON].orEmpty(), sourceId, nodeId)
     }
 
     private fun decodeSettings(preferences: Preferences): StoredSettings = StoredSettings(
@@ -124,8 +87,6 @@ class AppPreferencesRepository(context: Context) {
         sortKey = TrackSortKey.entries.firstOrNull { it.name == preferences[SORT_KEY] }
             ?: TrackSortKey.DISC_THEN_TRACK,
     )
-
-    private fun progressKey(sourceId: SourceId, nodeId: NodeId): String = sourceId.value + "\u001f" + nodeId.value
 
     private companion object {
         val CLIENT_ID = stringPreferencesKey("pcloud_client_id")

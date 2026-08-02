@@ -238,6 +238,17 @@ contracts:
       write_policy:
         - Coalesce frequent samples.
         - Force flush on lifecycle boundaries.
+        - Stable source/node identity is resolved against the active queue before writing.
+        - A forced flush returns an observable completion handle to orchestration tests.
+    IF-PERSISTENCE-COMPATIBILITY-CORPUS:
+      fixtures: spec/fixtures/0.1.5
+      records: [queue_json, queue_index, progress_json]
+      guarantees:
+        - Android decodes and reproduces fixture bytes exactly.
+        - Queue fixtures contain stable source, node, and origin identity only.
+        - Progress fixtures contain stable identity, position, duration, speed, observation, and completion.
+        - Signed URLs, tokens, provider bodies, and local paths are forbidden.
+        - Linux 0.2.0 must replay the unchanged corpus before parity claims.
     IF-OFFLINE-CACHE:
       methods:
         status: stable media identity -> CacheEntry

@@ -94,6 +94,12 @@ product:
       name: ordinary-oauth-onboarding-and-revocation
       requirements:
         - REQ-AUTH
+    v0_1_5:
+      name: android-semantic-freeze-and-lifecycle-hardening
+      requirements:
+        - REQ-PLAYBACK
+        - REQ-PROGRESS
+        - REQ-RESILIENCE
     v0_2:
       name: native-linux-feature-parity
       requirements: [REQ-LINUX-PARITY]
@@ -210,6 +216,8 @@ product:
       retry_policy:
         idempotent_only: true
         bounded: true
+        immediate_refreshes_per_failure_window: 1
+        later_retry_after_cooldown: true
         categories: [link_resolution, transient_transport, provider_rate_limit]
     REQ-SORTING:
       priority: must
@@ -227,7 +235,7 @@ product:
         - Tie breaking is deterministic by natural filename then stable node ID.
     REQ-PROGRESS:
       priority: must
-      release: mvp_0_1
+      release: v0_1_5
       title: Long-form progress persistence
       record:
         - source_id
@@ -245,6 +253,9 @@ product:
         - item_transition
         - app_background
         - service_teardown
+        - queue_replacement
+        - playback_error
+        - task_removal
       policies:
         music_resume_default: disabled
         long_form_resume_default: enabled
@@ -282,7 +293,7 @@ product:
         - Signed URLs and credentials are redacted.
     REQ-RESILIENCE:
       priority: must
-      release: mvp_0_1
+      release: v0_1_5
       title: Honest degraded operation
       behaviors:
         - Provide a complete playable local demo while offline.
@@ -291,6 +302,8 @@ product:
         - Preserve queue and progress through process death.
         - Every asynchronous state has timeout, retry, cancellation, and stale-data semantics where applicable.
         - Infinite loading indicators are forbidden.
+        - Playback-controller and persisted-queue restoration failures are visible and actionable.
+        - Android queue/progress persistence is frozen as a replayable cross-platform fixture corpus.
     REQ-LINUX-PARITY:
       priority: must
       release: v0_2

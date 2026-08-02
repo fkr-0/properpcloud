@@ -10,6 +10,9 @@ import dev.properpcloud.app.security.EncryptedTokenVault
 import dev.properpcloud.metadata.online.MusicBrainzMetadataProvider
 import dev.properpcloud.metadata.tags.JAudioTaggerToolkit
 import dev.properpcloud.source.pcloud.PCloudSessionRevoker
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 class ProperpcloudApplication : Application() {
     lateinit var container: AppContainer
@@ -21,7 +24,10 @@ class ProperpcloudApplication : Application() {
     }
 }
 
-class AppContainer(application: Application) {
+class AppContainer(
+    application: Application,
+    val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+) {
     val preferences = AppPreferencesRepository(application)
     val tokenVault = EncryptedTokenVault(application)
     val sources = SourceRegistry(

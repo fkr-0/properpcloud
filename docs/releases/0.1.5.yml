@@ -1,0 +1,58 @@
+release:
+  version: 0.1.5
+  tag: v0.1.5
+  date: 2026-08-02
+  status: local_release_candidate
+  license: MIT
+  scope:
+    - source-neutral stable-identity progress checkpoint policy
+    - lifecycle and service-teardown progress durability
+    - visible playback-controller and persisted-queue restoration failures
+    - bounded signed-link retry with later cooldown recovery
+    - frozen queue/progress compatibility fixtures for Linux 0.2.0
+    - direct MainViewModel orchestration tests
+  verification:
+    command: make ci
+    result: passed
+    specifications:
+      documents: 11
+      requirements: 19
+      use_cases: 18
+    tests:
+      suites: 20
+      total: 65
+      failures: 0
+      errors: 0
+      skipped: 0
+    lint:
+      errors: 0
+      warnings: 0
+      informational_hints: 2
+    Gradle:
+      actionable_tasks: 284
+  artifact:
+    path: app/build/outputs/apk/debug/app-debug.apk
+    package: dev.properpcloud.app
+    version_code: 1005
+    version_name: 0.1.5
+    production_signed: false
+    bundled_pcloud_client_id: false
+    size_bytes: 24576208
+    sha256: 385ee2c5d9769cf9ddb0632b9fc1fad521073e201b3704e7d894e95083819ab8
+  compatibility_corpus:
+    path: spec/fixtures/0.1.5
+    android_exact_replay: passed
+    files:
+      README.md: 0ebe9554c902dae909dcb5d89dced28f51a06b332d6ca91f19546f8117398886
+      progress.json: e3a0fb0e05950fa038dacb19e09237d51196a9cba45dfccb77630d5cf99116fe
+      queue-index.txt: 4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865
+      queue.json: b701bd10536a760dc58d03dffd2ca680a5667f2703267381542aa18265f1e2db
+    linux_exact_replay: not_started
+  external_validation:
+    pcloud_application_registered: false
+    repository_client_id_configured: false
+    physical_device_process_death: outstanding
+    physical_device_accessibility: outstanding
+    android_17_runtime: outstanding
+    production_signing_available: false
+    publication_authorized: false

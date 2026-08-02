@@ -82,6 +82,7 @@ android {
 }
 
 tasks.withType<Test>().configureEach {
+    systemProperty("properpcloud.projectRoot", rootProject.projectDir.absolutePath)
     systemProperty("robolectric.offline", "true")
     systemProperty(
         "robolectric.dependency.dir",

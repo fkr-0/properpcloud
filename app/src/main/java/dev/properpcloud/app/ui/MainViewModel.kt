@@ -19,7 +19,9 @@ import dev.properpcloud.core.model.FolderQueueBuilder
 import dev.properpcloud.core.model.MediaIdentity
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.NodeId
-import dev.properpcloud.core.model.PlaybackProgress
+import dev.properpcloud.core.model.PlaybackCheckpointCursor
+import dev.properpcloud.core.model.PlaybackCheckpointPolicy
+import dev.properpcloud.core.model.PlaybackObservation
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.QueueOperation
@@ -31,6 +33,7 @@ import dev.properpcloud.core.model.TrackSortPolicy
 import dev.properpcloud.source.pcloud.PCloudSession
 import dev.properpcloud.source.pcloud.PCloudRevocationResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,8 +50,9 @@ class MainViewModel(
     val state: StateFlow<AppUiState> = _state.asStateFlow()
     private var folderJob: Job? = null
     private var queueJob: Job? = null
-    private var lastSavedMediaId: String? = null
-    private var lastSavedPosition = -1L
+    private val checkpointPolicy = PlaybackCheckpointPolicy()
+    private var checkpointCursor = PlaybackCheckpointCursor()
+    private var lastPlaybackError: String? = null
     private var metadataJob: Job? = null
     private var singleMetadataItem: LoadedMetadataItem? = null
     private val batchMetadataItems = linkedMapOf<String, LoadedMetadataItem>()
@@ -75,7 +79,13 @@ class MainViewModel(
         viewModelScope.launch {
             playbackConnection.state.collect { playback ->
                 val queue = synchronizeQueueSelection(_state.value.queue, playback.mediaId)
-                _state.value = _state.value.copy(playback = playback, queue = queue)
+                val newError = playback.error?.takeIf { it != lastPlaybackError }
+                lastPlaybackError = playback.error
+                _state.value = _state.value.copy(
+                    playback = playback,
+                    queue = queue,
+                    message = newError?.let { "Playback controller reported: $it" } ?: _state.value.message,
+                )
                 checkpointProgress(queue, playback)
             }
         }
@@ -630,6 +640,7 @@ class MainViewModel(
     }
 
     fun selectQueueItem(index: Int) {
+        flushPlaybackProgress()
         val queue = QueueReducer.select(_state.value.queue, index)
         _state.value = _state.value.copy(queue = queue)
         playbackConnection.select(index)
@@ -648,6 +659,7 @@ class MainViewModel(
     }
 
     fun clearQueue() {
+        flushPlaybackProgress()
         val queue = PlaybackQueue(generation = _state.value.queue.generation + 1)
         playbackConnection.clearQueue()
         _state.value = _state.value.copy(queue = queue, message = "Queue cleared")
@@ -729,6 +741,7 @@ class MainViewModel(
     fun disconnectPCloud() {
         val hadPCloudQueue = _state.value.queue.entries.any { it.track.sourceId.value == SourceKind.PCLOUD.id }
         if (hadPCloudQueue) {
+            flushPlaybackProgress()
             playbackConnection.clearQueue()
             val clearedQueue = PlaybackQueue(generation = _state.value.queue.generation + 1)
             _state.value = _state.value.copy(queue = clearedQueue)
@@ -769,8 +782,15 @@ class MainViewModel(
     }
 
     fun playPause() = playbackConnection.playPause()
-    fun skipNext() = playbackConnection.skipNext()
-    fun skipPrevious() = playbackConnection.skipPrevious()
+    fun skipNext() {
+        flushPlaybackProgress()
+        playbackConnection.skipNext()
+    }
+
+    fun skipPrevious() {
+        flushPlaybackProgress()
+        playbackConnection.skipPrevious()
+    }
     fun seekBy(deltaMillis: Long) = playbackConnection.seekBy(deltaMillis)
     fun seekTo(positionMillis: Long) = playbackConnection.seekTo(positionMillis)
 
@@ -832,6 +852,7 @@ class MainViewModel(
     }
 
     private fun applyQueue(queue: PlaybackQueue, play: Boolean) {
+        flushPlaybackProgress()
         _state.value = _state.value.copy(queue = queue)
         playbackConnection.setQueue(queue, play)
         viewModelScope.launch { container.preferences.saveQueue(queue) }
@@ -839,18 +860,43 @@ class MainViewModel(
 
     private suspend fun restoreQueue() {
         val stored = container.preferences.loadQueue()
+        var omitted = 0
         val entries = stored.entries.mapNotNull { reference ->
-            val source = container.sources.source(reference.sourceId) ?: return@mapNotNull null
-            val track = runCatching { source.load(reference.nodeId) as? AudioTrack }.getOrNull() ?: return@mapNotNull null
+            val source = container.sources.source(reference.sourceId)
+            if (source == null) {
+                omitted += 1
+                return@mapNotNull null
+            }
+            val track = runCatching { source.load(reference.nodeId) as? AudioTrack }.getOrNull()
+            if (track == null) {
+                omitted += 1
+                return@mapNotNull null
+            }
             QueueEntry(track, reference.originFolderId)
         }
-        if (entries.isEmpty()) return
+        if (entries.isEmpty()) {
+            if (stored.entries.isNotEmpty()) {
+                val empty = PlaybackQueue(generation = 1)
+                container.preferences.saveQueue(empty)
+                _state.value = _state.value.copy(
+                    message = "The saved queue could not be restored and was cleared. Reconnect its source or build a new queue.",
+                )
+            }
+            return
+        }
         val queue = PlaybackQueue(
             generation = 1,
             entries = entries,
             currentIndex = stored.currentIndex.coerceIn(0, entries.lastIndex),
         )
-        _state.value = _state.value.copy(queue = queue)
+        _state.value = _state.value.copy(
+            queue = queue,
+            message = if (omitted > 0) {
+                "Restored ${entries.size} queue item(s); $omitted unavailable item(s) were removed."
+            } else {
+                _state.value.message
+            },
+        )
         playbackConnection.setQueue(queue, play = false)
         queue.current?.track?.let { track ->
             container.preferences.loadProgress(track.sourceId, track.id)?.let { progress ->
@@ -867,27 +913,48 @@ class MainViewModel(
         return if (index >= 0 && index != queue.currentIndex) queue.copy(currentIndex = index) else queue
     }
 
+    fun flushPlaybackProgress(): Job? =
+        persistPlaybackProgress(
+            queue = _state.value.queue,
+            playback = _state.value.playback,
+            force = true,
+            scope = container.applicationScope,
+        )
+
     private fun checkpointProgress(queue: PlaybackQueue, playback: dev.properpcloud.app.playback.PlaybackUiState) {
-        val current = queue.current?.track ?: return
-        val mediaId = playback.mediaId ?: return
-        val shouldSave = mediaId != lastSavedMediaId ||
-            kotlin.math.abs(playback.positionMillis - lastSavedPosition) >= 10_000 ||
-            !playback.isPlaying
-        if (!shouldSave) return
-        lastSavedMediaId = mediaId
-        lastSavedPosition = playback.positionMillis
-        viewModelScope.launch {
-            container.preferences.saveProgress(
-                PlaybackProgress(
-                    sourceId = current.sourceId,
-                    nodeId = current.id,
-                    positionMillis = playback.positionMillis,
-                    durationMillis = playback.durationMillis.takeIf { it > 0 } ?: current.durationMillis,
-                    observedAtEpochMillis = System.currentTimeMillis(),
-                    completed = playback.durationMillis > 0 && playback.positionMillis >= playback.durationMillis * 0.95,
-                ),
-            )
+        persistPlaybackProgress(queue, playback, force = false, scope = viewModelScope)
+    }
+
+    private fun persistPlaybackProgress(
+        queue: PlaybackQueue,
+        playback: dev.properpcloud.app.playback.PlaybackUiState,
+        force: Boolean,
+        scope: CoroutineScope,
+    ): Job? {
+        val decision = checkpointPolicy.evaluate(
+            queue = queue,
+            observation = PlaybackObservation(
+                mediaId = playback.mediaId,
+                positionMillis = playback.positionMillis,
+                durationMillis = playback.durationMillis.takeIf { it > 0 },
+                isPlaying = playback.isPlaying,
+            ),
+            cursor = checkpointCursor,
+            observedAtEpochMillis = System.currentTimeMillis(),
+            force = force,
+        )
+        checkpointCursor = decision.cursor
+        return decision.progress?.let { progress ->
+            scope.launch { container.preferences.saveProgress(progress) }
         }
+    }
+
+    override fun onCleared() {
+        flushPlaybackProgress()
+        folderJob?.cancel()
+        queueJob?.cancel()
+        metadataJob?.cancel()
+        discardMetadataSources()
     }
 
     class Factory(

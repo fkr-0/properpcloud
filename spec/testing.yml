@@ -143,6 +143,8 @@ testing:
         TEST-PLAY-LINK-EXPIRY:
           inject: 403 after initial prepare
           expect: bounded re-resolution and resume
+        TEST-SIGNED-LINK-RETRY-GATE:
+          expect: [one immediate retry, no loop inside cooldown, later retry allowed]
         TEST-PLAY-RANGE:
           expect: correct range behavior or explicit unsupported-seek state
         TEST-PLAY-AUDIO-FOCUS:
@@ -157,6 +159,10 @@ testing:
       cases:
         TEST-PROGRESS-CHECKPOINT:
           expect: latest sample within configured loss window
+        TEST-PROGRESS-LIFECYCLE-FLUSH:
+          expect: sub-threshold latest position persists on explicit lifecycle force
+        TEST-PROGRESS-POLICY:
+          expect: [first sample saved, playing sub-threshold sample coalesced, pause forced, completion derived]
         TEST-PROGRESS-PROCESS-DEATH:
           kill_points: [playing, paused, seeking, transition]
           expect: policy-correct queue and position restore
@@ -165,6 +171,13 @@ testing:
           expect: explicit resume decision
         TEST-PROGRESS-COMPLETION:
           covers: [threshold, manual complete, manual reset, replay completed item]
+        TEST-PLAYBACK-CONTROLLER-ERROR:
+          expect: fixed redacted actionable UI message
+        TEST-QUEUE-RESTORE-REPAIR:
+          expect: unavailable entries omitted, repaired queue persisted, user informed
+        TEST-CROSS-PLATFORM-FIXTURES:
+          fixture: spec/fixtures/0.1.5
+          expect: exact queue/progress decode and byte reproduction
     cache:
       cases:
         TEST-CACHE-PIN:

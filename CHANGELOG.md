@@ -14,6 +14,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Verified offline pinning, saved roots, long-form controls, and Android Auto after
   cross-platform queue/progress semantics stabilize.
 
+## [0.1.5] - 2026-08-02
+
+### Added
+
+- A source-neutral playback-checkpoint policy keyed exclusively by stable source/node
+  identity, with coalesced periodic writes and explicit lifecycle flushes.
+- Durable progress checkpoints on app background, ViewModel teardown, queue replacement,
+  manual item transitions, disconnect, playback errors, task removal, and service teardown.
+- A bounded signed-link retry gate that permits one immediate refresh and a later retry
+  after cooldown instead of permanently exhausting a track for the process lifetime.
+- Direct `MainViewModel` orchestration tests with an injected playback-controller port.
+- Frozen `0.1.5` queue/progress JSON fixtures that Android reproduces byte-for-byte and
+  Linux `0.2.0` must replay before claiming semantic parity.
+
+### Changed
+
+- Playback-controller connection failures and stale persisted queues are surfaced as
+  actionable UI messages instead of silently degrading.
+- Queue restoration removes unavailable entries, persists the repaired queue, and reports
+  partial or complete restoration failure.
+- Persistence serialization is centralized in a tested codec that stores stable identity,
+  timing, completion, and speed—never signed stream capabilities.
+
+### Security
+
+- Controller connection failures use a fixed redacted message rather than arbitrary
+  exception text that could contain transport details.
+- Progress and compatibility fixtures exclude tokens, signed URLs, local paths, and
+  provider response bodies.
+
+### Testing
+
+- Added progress-threshold/force/completion tests, signed-link retry cooldown tests,
+  exact persistence fixture tests, and controller/progress/stale-queue orchestration tests.
+
+### Known limitations
+
+- Abrupt kernel/process termination can still lose the final sub-checkpoint interval when
+  Android invokes neither Activity nor service lifecycle callbacks.
+- Physical-device process-death, TalkBack, 200% font, codec, headset/media-key, and
+  Android 17 validation remain external release gates.
+
 ## [0.1.4] - 2026-08-02
 
 ### Added
@@ -276,7 +318,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/fkr-0/properpcloud/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/fkr-0/properpcloud/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/fkr-0/properpcloud/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/fkr-0/properpcloud/compare/v0.1.1...v0.1.2

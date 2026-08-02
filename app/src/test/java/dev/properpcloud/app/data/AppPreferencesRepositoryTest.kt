@@ -15,6 +15,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 class AppPreferencesRepositoryTest {
@@ -65,4 +66,61 @@ class AppPreferencesRepositoryTest {
         assertNotNull(restored)
         assertEquals(progress, restored)
     }
+
+    @Test
+    fun frozenQueueFixtureDecodesAndReencodesExactly() {
+        val fixtureDirectory = fixtureDirectory()
+        val json = fixtureDirectory.resolve("queue.json").readText().trim()
+        val currentIndex = fixtureDirectory.resolve("queue-index.txt").readText().trim().toInt()
+
+        val stored = AppPersistenceCodec.decodeQueue(json, currentIndex)
+        assertEquals(2, stored.entries.size)
+        assertEquals(SourceId("demo"), stored.entries[0].sourceId)
+        assertEquals(SourceId("pcloud"), stored.entries[1].sourceId)
+
+        val tracks = stored.entries.map { reference ->
+            QueueEntry(
+                AudioTrack(
+                    sourceId = reference.sourceId,
+                    id = reference.nodeId,
+                    parentId = reference.originFolderId,
+                    name = reference.nodeId.value,
+                ),
+                reference.originFolderId,
+            )
+        }
+        val encoded = AppPersistenceCodec.encodeQueue(
+            PlaybackQueue(generation = 1, entries = tracks, currentIndex = currentIndex),
+        )
+        assertEquals(json, encoded.json)
+        assertEquals(currentIndex, encoded.currentIndex)
+    }
+
+    @Test
+    fun frozenProgressFixtureDecodesAndReencodesExactly() {
+        val json = fixtureDirectory().resolve("progress.json").readText().trim()
+        val first = AppPersistenceCodec.decodeProgress(
+            json,
+            SourceId("demo"),
+            NodeId("demo:track:42"),
+        )
+        val second = AppPersistenceCodec.decodeProgress(
+            json,
+            SourceId("pcloud"),
+            NodeId("file:99"),
+        )
+
+        assertNotNull(first)
+        assertNotNull(second)
+        assertEquals(42_500L, first?.positionMillis)
+        assertEquals(true, second?.completed)
+        val reproduced = AppPersistenceCodec.upsertProgress(
+            AppPersistenceCodec.upsertProgress("{}", requireNotNull(first)),
+            requireNotNull(second),
+        )
+        assertEquals(json, reproduced)
+    }
+
+    private fun fixtureDirectory(): File =
+        File(requireNotNull(System.getProperty("properpcloud.projectRoot")), "spec/fixtures/0.1.5")
 }

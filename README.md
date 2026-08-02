@@ -6,7 +6,7 @@
 
 Folder-first Android audio playback for pCloud and other file-oriented sources.
 
-[![Version](https://img.shields.io/badge/version-0.1.4-59636e)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.5-59636e)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
 
 Audio libraries are often already organized correctly in folders. properpcloud
@@ -15,7 +15,7 @@ artist/album/song tags.
 
 > Independent software. Not affiliated with or endorsed by pCloud AG.
 
-## What `0.1.4` provides
+## What `0.1.5` provides
 
 - adaptive Material 3 Android UI with compact and expanded layouts;
 - stable-ID folder navigation and breadcrumbs;
@@ -30,6 +30,9 @@ artist/album/song tags.
 - normal pCloud OAuth sign-in using a release-bundled public application ID, with an
   advanced custom-ID override for personal builds;
 - local-first disconnect followed by typed provider-side token invalidation;
+- lifecycle-safe progress checkpoints and visible playback-controller/queue restoration failures;
+- bounded signed-link retry recovery rather than one process-lifetime attempt;
+- frozen queue/progress compatibility fixtures for the native Linux `0.2.0` client;
 - raw provider/identity inspection without exposing secrets;
 - a complete in-app Tag studio with original/provenance display, field drafts, explicit
   MusicBrainz review, common-field batch edits, and deterministic track sequencing;

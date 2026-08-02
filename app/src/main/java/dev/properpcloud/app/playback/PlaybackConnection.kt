@@ -67,7 +67,9 @@ class PlaybackConnection(context: Context) : PlaybackController, Player.Listener
                         updateState(it)
                         startProgressTicker()
                     }
-                    .onFailure { _state.value = _state.value.copy(error = it.message ?: "Playback unavailable") }
+                    .onFailure {
+                        _state.value = _state.value.copy(error = "Playback controller connection failed")
+                    }
             },
             ContextCompat.getMainExecutor(context),
         )
