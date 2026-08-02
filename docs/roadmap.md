@@ -7,7 +7,7 @@ determine publication.
 
 ## `0.0.1` — validated architecture bootstrap
 
-Status: **released locally and tagged**.
+Status: **released, tagged, and published on GitHub**.
 
 Completed:
 
@@ -24,7 +24,7 @@ The `v0.0.1` tag is the immutable baseline and must never be moved.
 
 ## `0.1.0` — first validated Android client
 
-Status: **implementation and release preparation in progress**.
+Status: **released, tagged, independently audited, attested, and published**.
 
 ### Product promise
 
@@ -56,7 +56,8 @@ their account.
 - [x] Natural filename, disc/track, tagged-title, and modified-time sorting.
 - [x] Loading, refresh, empty, error, demo, connected, and partial-result states.
 - [x] Metadata/identity inspection with secrets redacted.
-- [x] One-action navigation from player or queue to containing folder.
+- [x] One-action navigation from the player to the containing folder.
+- [ ] Add containing-folder and metadata-inspection actions directly to every queue row.
 - [x] Dynamic system color plus a custom badger/cloud visual identity.
 
 #### Queue semantics
@@ -141,6 +142,24 @@ application and disposable test account:
 
 Until this checklist has evidence, release notes must say **implementation
 validated with deterministic fakes; live pCloud account validation outstanding**.
+
+### `0.1.x` post-release hardening
+
+Independent read-only UI/UX and release-engineering audits found no blocker for
+`0.1.0`, but identified the following concrete patch-line work before Android
+semantics are considered frozen for Linux parity:
+
+- add direct `MainViewModel` orchestration tests with a fake playback controller;
+- flush playback progress explicitly on app background and service teardown;
+- allow a later retry when a transient failure prevents the one bounded signed-link refresh;
+- add containing-folder and metadata-inspection actions to each queue row;
+- surface controller-connection and stale-queue-restoration failures to the user;
+- convert `core-model` from an Android library to a pure JVM or multiplatform module;
+- verify the committed Gradle wrapper JAR checksum in the release gate;
+- pin third-party GitHub Actions by immutable commit SHA and let Dependabot update them.
+
+These are release-quality hardening items, not retroactive changes to the immutable
+`v0.1.0` tag. Product behavior changes ship under a new SemVer tag.
 
 ### Deferred beyond `0.1.0`
 

@@ -13,13 +13,16 @@ agent:
     VERSION is canonical; published tags are immutable. make ci is the merge/release gate.
   tasks:
     - Complete protected live pCloud US/EU account validation with disposable credentials.
+    - Implement the documented 0.1.x post-release audit hardening items.
     - Run physical-device TalkBack, large-font, codec, and process-death validation.
+    - Convert shared core modules to pure JVM/KMP boundaries for native Linux 0.2.0 parity.
     - Implement native Linux 0.2.0 parity using shared Kotlin contracts and mpv.
   changelog:
     - Released and tagged the verified architecture bootstrap as 0.0.1.
     - Implemented the adaptive Compose Android 0.1.0 client with deterministic demo media.
     - Added encrypted pCloud OAuth, durable queue/progress, JIT Media3 links, and expanded tests.
     - Added tag-driven GitHub releases, artifact evidence, attestations, and repository health files.
+    - Published v0.1.0 from its immutable tag and recorded independent post-release audits.
 
 commands:
   image:
