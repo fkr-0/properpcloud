@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
                     skipNext = viewModel::skipNext,
                     skipPrevious = viewModel::skipPrevious,
                     seekBy = viewModel::seekBy,
+                    seekTo = viewModel::seekTo,
                 ),
                 onAuthorizePCloud = ::launchAuthorization,
             )

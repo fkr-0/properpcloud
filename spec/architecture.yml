@@ -132,6 +132,34 @@ architecture:
           - credentials obtained through CredentialVault
           - capability detection for range, ETag, move, and overwrite
           - no assumption that provider-encrypted folders are exposed
+    metadata:
+      purpose: Inspect, normalize, propose, stage, and verify metadata without changing stable media identity.
+      modules:
+        metadata_tags:
+          path: metadata-tags
+          library: net.jthink:jaudiotagger
+          responsibilities:
+            - inspect supported local audio containers
+            - expose canonical fields and bounded artwork summaries
+            - copy source bytes to unique app-private staging
+            - apply approved Set and Clear operations only
+            - reread and verify staged tag changes
+          boundaries:
+            - No jaudiotagger type crosses into core-model or presentation.
+            - The original source file is never edited in place.
+            - Unsupported or malformed files fail without a mutation candidate.
+        metadata_online:
+          path: metadata-online
+          responsibilities:
+            - MusicBrainz recording search through an identified HTTPS client
+            - serialized request-rate enforcement
+            - secure XML parsing and candidate mapping
+            - Cover Art Archive URL validation
+            - AcoustID fingerprint and lookup contracts
+          boundaries:
+            - No online result is an approved mutation.
+            - API keys are supplied outside source control.
+            - Audio bytes are never uploaded to lookup services.
     persistence:
       purpose: Durable local state, indexes, snapshots, cache accounting, and migrations.
       android:
@@ -260,6 +288,10 @@ architecture:
         depends_on: [core-domain]
       core-metadata:
         depends_on: [core-domain]
+      metadata-tags:
+        depends_on: [core-model, jaudiotagger]
+      metadata-online:
+        depends_on: [core-model, coroutines, JDK-HTTP-and-XML]
       source-pcloud-jvm:
         depends_on: [core-domain, core-application, pcloud-java-core]
       source-webdav-jvm:
@@ -288,6 +320,8 @@ architecture:
           - source-pcloud-jvm
           - persistence-android
           - playback-android
+          - metadata-tags
+          - metadata-online
     linux:
       persistence-linux:
         depends_on: [core-application, persistence-schema, SQLite]
@@ -351,6 +385,18 @@ architecture:
       - MutableSource replaces using expected revision
       - Source metadata is re-read and compared
       - Audit is committed with recovery reference
+    metadata_candidate:
+      - User explicitly starts online matching.
+      - UI discloses title, artist, album, ISRC, duration, or fingerprint leaving the device.
+      - Application queries an enabled provider through a rate-limited adapter.
+      - Candidate values retain provider provenance and confidence.
+      - User selects fields before an immutable TagEditPlan exists.
+    metadata_stage:
+      - Application verifies expected source hash or revision.
+      - MetadataWriter copies exact source bytes to app-private staging.
+      - Only approved mutations are applied.
+      - Staged tags are reread and compared with the approved patch.
+      - Original bytes remain unchanged; staged hash becomes apply evidence.
   error_taxonomy:
     authentication:
       examples: [missing_token, rejected_token, wrong_region, callback_mismatch]

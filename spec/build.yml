@@ -141,6 +141,7 @@ build:
       - Use TLS with failure-on-error and bounded retries for downloads.
       - Keep GitHub Actions pinned to reviewed major or commit according to repository policy.
       - Pin every third-party GitHub Action to a reviewed full commit SHA.
+      - Attach checksum-verified corresponding source archives for redistributed copyleft libraries.
       - Generate SBOM before public release.
       - Scan container and dependencies before release.
     forbidden:
@@ -164,6 +165,7 @@ build:
         - Android_SDK_packages
         - dependency_verification_hash
         - artifact_SHA256
+        - redistributed_copyleft_source_archive_SHA256
   overlay_cam_review_mapping:
     retained_strengths:
       code_on_host_build_in_container:
@@ -211,4 +213,4 @@ build:
       - Use clean checkout and digest-pinned image.
       - Run all release gates and protected provider tests.
       - Build unsigned or signing-isolated artifact.
-      - Record evidence and artifact hash.
+      - Record evidence, artifact hash, and corresponding source hashes for redistributed copyleft libraries.

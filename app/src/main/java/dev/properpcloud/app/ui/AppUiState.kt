@@ -11,12 +11,14 @@ import dev.properpcloud.core.model.TrackSortKey
 
 enum class AppDestination {
     LIBRARY,
+    PLAYER,
     QUEUE,
     SETTINGS,
 }
 
 data class AppUiState(
     val destination: AppDestination = AppDestination.LIBRARY,
+    val playerReturnDestination: AppDestination = AppDestination.LIBRARY,
     val sourceKind: SourceKind = SourceKind.DEMO,
     val sourceName: String = "Demo library",
     val pCloudConnected: Boolean = false,

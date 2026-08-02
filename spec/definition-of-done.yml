@@ -55,6 +55,12 @@ definition_of_done:
       - Link expiry recovery is bounded and tested.
       - Audio focus, headset disconnect, process recreation, and service teardown are tested.
       - Progress loss window is measured.
+    modern_player:
+      - Mini-player opens a dedicated now-playing surface without rebuilding player state.
+      - Timeline represents elapsed and remaining time and handles unknown duration.
+      - Transport controls and queue, folder, and metadata navigation have accessible labels.
+      - Compact queue rows retain non-drag reorder and removal alternatives.
+      - Dynamic type and compact-width layouts preserve filename context and primary controls.
     progress:
       - Revision-compatible restore and changed-content decision are tested.
       - Completion threshold and explicit reset are tested.
@@ -78,6 +84,15 @@ definition_of_done:
       - Remote result is re-read and verified.
       - Conflict, failure, and indeterminate outcomes are auditable.
       - Recovery reference is recorded.
+    metadata_foundation:
+      - Canonical values retain provenance and confidence.
+      - Batch plans reject duplicate stable identities and require revision or hash evidence.
+      - Local edits are copy-on-write and never modify source bytes.
+      - Staged Set and Clear operations are reread and verified.
+      - MusicBrainz requests identify the application, use HTTPS, and obey a serialized rate gate.
+      - XML parsing rejects document types and external entities.
+      - External lookup is explicitly consented and never applies a write automatically.
+      - Third-party tag-library license and notices are included in source and APK.
   mvp_release:
     scope:
       required_requirements:

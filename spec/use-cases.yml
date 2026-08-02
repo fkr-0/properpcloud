@@ -10,6 +10,55 @@ use_cases:
       partial: useful subset completed and omissions are inspectable
       failure: no unsafe or ambiguous state change is committed
   cases:
+    UC-NOW-PLAYING:
+      traces: [REQ-MODERN-PLAYER, REQ-NAVIGATION, REQ-PLAYBACK]
+      title: Operate playback from a dedicated player surface
+      trigger: User taps the persistent mini-player.
+      flow:
+        - app: Open now playing without rebuilding the queue or player.
+        - app: Render effective title, filename context, progress, duration, and queue position.
+        - user: Scrub to a target position or use accessible transport controls.
+        - app: Forward typed seek and transport commands to the Media3 controller.
+        - user: Open queue, containing folder, or metadata inspection in one action.
+      alternatives:
+        no_selected_item: Show a calm empty state with Browse library action.
+        unknown_duration: Disable exact scrubbing while preserving transport controls.
+        controller_disconnected: Preserve queue context and surface reconnect state.
+      tests: [TEST-PLAYER-DESTINATION, TEST-PLAYER-SEEK, TEST-NAV-CONTAINING-FOLDER]
+    UC-STAGE-TAG-EDIT:
+      traces: [REQ-METADATA-FOUNDATION, REQ-METADATA-WRITE]
+      title: Create and verify a local metadata candidate
+      preconditions:
+        - Source bytes are available as a readable local staging input.
+        - A field-level patch was explicitly approved.
+      flow:
+        - app: Verify optional expected source SHA-256.
+        - app: Inspect original tags and calculate changed fields.
+        - app: Copy bytes to a unique app-private staging file.
+        - app: Apply only approved Set and Clear operations.
+        - app: Reread staged tags and verify every intended field.
+        - app: Return staged hash and snapshot without changing the source file.
+      failure:
+        changed_source: Abort before mutation.
+        unsupported_or_malformed: Delete incomplete candidate and preserve source.
+        verification_mismatch: Delete candidate and report invariant failure.
+      tests: [TEST-TAG-STAGING, TEST-TAG-SOURCE-HASH, TEST-MUTATION-DRY-RUN]
+    UC-MATCH-METADATA:
+      traces: [REQ-METADATA-FOUNDATION, REQ-METADATA-PROPOSAL]
+      title: Find reviewable external metadata candidates
+      trigger: User explicitly requests online matching.
+      flow:
+        - app: Disclose which textual metadata, duration, or fingerprint will leave the device.
+        - app: Prefer existing ISRC or MusicBrainz identifiers.
+        - app: Query MusicBrainz with identified User-Agent and serialized rate limit.
+        - app: Optionally map a configured AcoustID fingerprint result to MusicBrainz IDs.
+        - app: Resolve Cover Art Archive reference only after release selection.
+        - app: Return candidates with confidence and provenance; no patch is applied automatically.
+      failure:
+        rate_limited: Respect bounded retry and preserve local work.
+        provider_unavailable: Keep manual and filename-derived workflow available.
+        ambiguous: Require user choice and leave low-confidence fields unselected.
+      tests: [TEST-METADATA-QUERY, TEST-METADATA-RATE, TEST-METADATA-XML-SECURITY]
     UC-AUTH-LOGIN:
       traces: [REQ-AUTH]
       title: Connect a pCloud account

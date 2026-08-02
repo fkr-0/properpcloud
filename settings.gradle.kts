@@ -20,5 +20,7 @@ rootProject.name = "properpcloud"
 
 include(":app")
 include(":core-model")
+include(":metadata-online")
+include(":metadata-tags")
 include(":source-pcloud")
 include(":source-webdav")

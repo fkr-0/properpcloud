@@ -15,6 +15,11 @@ ux:
           visible_when: a selected media item exists
           actions: [play_pause, open_now_playing]
           content: [title_or_filename, containing_folder, progress]
+      contextual_destinations:
+        now_playing:
+          entry: tap mini-player
+          exit: back to prior primary destination
+          bottom_navigation_item: false
     expanded_android_tablet:
       panes:
         left: saved roots and folder tree
@@ -172,6 +177,13 @@ ux:
         reconnecting: retain controls, show attempt and cancel
         failed: show normalized reason, retry, inspect, skip
         expired_link: presented as reconnecting rather than provider-internal jargon
+      v0_1_2_delivery:
+        - Dedicated full-screen destination from mini-player.
+        - Large artwork fallback, effective title, and filename context.
+        - Seek slider with elapsed and remaining time.
+        - Previous, rewind, play or pause, forward, and next controls.
+        - Queue position, up-next preview, queue, folder, and metadata actions.
+        - Unknown duration disables exact scrubbing but not transport controls.
     inspector:
       tabs_or_sections:
         overview:
@@ -247,6 +259,18 @@ ux:
       destructive_language:
         - State clearly that media files will be replaced remotely.
         - Require a final confirmation distinct from proposal acceptance.
+      online_consent:
+        disclose:
+          - text fields and duration sent to MusicBrainz
+          - derived fingerprint and duration sent to AcoustID when enabled
+        never_send:
+          - OAuth tokens
+          - signed stream URLs
+          - audio bytes for metadata lookup
+        behavior:
+          - Candidates remain unselected proposals.
+          - Low-confidence fields remain unselected.
+          - Provider failure leaves manual editing and filename inference available.
   interaction_patterns:
     folder_quick_actions:
       compact:

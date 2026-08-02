@@ -13,7 +13,8 @@ agent:
     VERSION is canonical; published tags are immutable. make ci is the merge/release gate.
   tasks:
     - Complete protected live pCloud US/EU account validation with disposable credentials.
-    - Implement the documented 0.1.x post-release audit hardening items.
+    - Complete the remaining documented 0.1.x lifecycle and controller hardening items.
+    - Build the metadata proposal UI and guarded pCloud conditional-replacement adapter.
     - Run physical-device TalkBack, large-font, codec, and process-death validation.
     - Convert shared core modules to pure JVM/KMP boundaries for native Linux 0.2.0 parity.
     - Implement native Linux 0.2.0 parity using shared Kotlin contracts and mpv.
@@ -24,6 +25,8 @@ agent:
     - Added tag-driven GitHub releases, artifact evidence, attestations, and repository health files.
     - Published v0.1.0 from its immutable tag and recorded independent post-release audits.
     - Prepared 0.1.1 with immutable Action pins, exact-tag release dispatch, and wrapper integrity validation.
+    - Released v0.1.1 with green Android and release workflows.
+    - Prepared 0.1.2 with a first-class player, staged tag tooling, batch plans, and MusicBrainz foundations.
 
 commands:
   image:

@@ -72,7 +72,17 @@ class MainViewModel(
     }
 
     fun selectDestination(destination: AppDestination) {
-        _state.value = _state.value.copy(destination = destination)
+        val current = _state.value
+        _state.value = if (destination == AppDestination.PLAYER) {
+            current.copy(
+                destination = destination,
+                playerReturnDestination = current.destination
+                    .takeUnless { it == AppDestination.PLAYER }
+                    ?: current.playerReturnDestination,
+            )
+        } else {
+            current.copy(destination = destination)
+        }
     }
 
     fun openRoot() = loadFolder(container.sources.current.value.root, replaceHistory = true)

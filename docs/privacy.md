@@ -11,6 +11,8 @@ advertising SDK, analytics SDK, telemetry upload, or account database.
 - playback position, duration, completion, and selected sort/source settings;
 - a user-entered pCloud application client ID;
 - an OAuth access token after successful pCloud authorization.
+- local embedded-tag snapshots, approved patch plans, and staged-file hashes when
+  the user invokes metadata tooling.
 
 The token is encrypted with an Android Keystore AES-GCM key. App data, token
 storage, and preferences are excluded from Android cloud backup and device
@@ -28,6 +30,12 @@ Temporary signed media links are capabilities. They are resolved immediately
 before playback, kept only in Media3 runtime state, and not written to DataStore,
 logs, queue snapshots, release evidence, or bug-report templates.
 
+Online metadata matching is opt-in. A MusicBrainz search may transmit the title,
+artist, album, ISRC, and approximate duration that the user approved. A future
+AcoustID lookup may transmit a locally derived Chromaprint fingerprint and
+duration when an application key is configured. These lookup paths do not upload
+audio bytes. Candidate results remain proposals and cannot trigger a remote write.
+
 ## Data not collected
 
 properpcloud does not collect:
@@ -37,6 +45,8 @@ properpcloud does not collect:
 - contacts, location, camera, microphone, or phone state;
 - usage analytics or crash telemetry;
 - private media files for project-operated processing;
+- audio bytes for MusicBrainz, Cover Art Archive, or AcoustID lookup;
+- metadata provider API keys in source code or release artifacts;
 - credentials for public CI.
 
 ## User controls

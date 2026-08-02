@@ -47,7 +47,6 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.SubdirectoryArrowRight
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -63,6 +62,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
@@ -126,7 +126,7 @@ fun ProperpcloudApp(
                     snackbarHost = { SnackbarHost(snackbarHostState) },
                     bottomBar = {
                         Column {
-                            if (state.queue.current != null) {
+                            if (state.queue.current != null && state.destination != AppDestination.PLAYER) {
                                 MiniPlayer(state, actions)
                             }
                             if (!expanded) {
@@ -142,6 +142,7 @@ fun ProperpcloudApp(
                     ) {
                         when (state.destination) {
                             AppDestination.LIBRARY -> LibraryScreen(state, actions, expanded)
+                            AppDestination.PLAYER -> NowPlayingScreen(state, actions)
                             AppDestination.QUEUE -> QueueScreen(state, actions)
                             AppDestination.SETTINGS -> SettingsScreen(state, actions, onAuthorizePCloud)
                         }
@@ -150,20 +151,10 @@ fun ProperpcloudApp(
             }
         }
         state.inspection?.let { inspection ->
-            AlertDialog(
-                onDismissRequest = actions.closeInspection,
-                title = { Text(state.inspectedNodeName ?: "Inspection") },
-                text = {
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(inspection.fields.entries.toList()) { (key, value) ->
-                            Column {
-                                Text(key, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                                Text(value.ifBlank { "—" }, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    }
-                },
-                confirmButton = { TextButton(onClick = actions.closeInspection) { Text("Close") } },
+            MetadataInspectionSheet(
+                name = state.inspectedNodeName ?: "Metadata",
+                fields = inspection.fields,
+                onDismiss = actions.closeInspection,
             )
         }
     }
@@ -557,6 +548,7 @@ private fun NowPlayingCard(state: AppUiState, actions: AppActions) {
 @Composable
 private fun QueueRow(index: Int, track: AudioTrack, state: AppUiState, actions: AppActions, compact: Boolean) {
     val current = index == state.queue.currentIndex
+    var menuOpen by remember(track.id) { mutableStateOf(false) }
     ListItem(
         modifier = Modifier
             .fillMaxWidth()
@@ -571,18 +563,53 @@ private fun QueueRow(index: Int, track: AudioTrack, state: AppUiState, actions: 
         },
         trailingContent = {
             if (!compact) {
-                Row {
-                    IconButton(onClick = { actions.moveQueueItem(index, (index - 1).coerceAtLeast(0)) }, enabled = index > 0) {
-                        Icon(Icons.Default.ArrowUpward, "Move up")
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Queue actions for ${track.name}")
                     }
-                    IconButton(
-                        onClick = { actions.moveQueueItem(index, (index + 1).coerceAtMost(state.queue.entries.lastIndex)) },
-                        enabled = index < state.queue.entries.lastIndex,
-                    ) {
-                        Icon(Icons.Default.ArrowDownward, "Move down")
-                    }
-                    IconButton(onClick = { actions.removeQueueItem(index) }) {
-                        Icon(Icons.Default.Delete, "Remove")
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Move up") },
+                            leadingIcon = { Icon(Icons.Default.ArrowUpward, null) },
+                            enabled = index > 0,
+                            onClick = {
+                                menuOpen = false
+                                actions.moveQueueItem(index, index - 1)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Move down") },
+                            leadingIcon = { Icon(Icons.Default.ArrowDownward, null) },
+                            enabled = index < state.queue.entries.lastIndex,
+                            onClick = {
+                                menuOpen = false
+                                actions.moveQueueItem(index, index + 1)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Open containing folder") },
+                            leadingIcon = { Icon(Icons.Default.Folder, null) },
+                            onClick = {
+                                menuOpen = false
+                                actions.openContainingFolder(track)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Inspect metadata") },
+                            leadingIcon = { Icon(Icons.Default.Info, null) },
+                            onClick = {
+                                menuOpen = false
+                                actions.inspect(track)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Remove") },
+                            leadingIcon = { Icon(Icons.Default.Delete, null) },
+                            onClick = {
+                                menuOpen = false
+                                actions.removeQueueItem(index)
+                            },
+                        )
                     }
                 }
             }
@@ -648,6 +675,18 @@ private fun SettingsScreen(state: AppUiState, actions: AppActions, onAuthorizePC
             }
         }
         item {
+            SettingsSection("Metadata tools") {
+                Bullet("Foundation: inspect and edit embedded tags on a staged local copy")
+                Bullet("Foundation: batch plans preserve stable IDs and require revision or hash")
+                Bullet("Foundation: identified, rate-limited MusicBrainz matching client")
+                Bullet("Foundation: opt-in AcoustID fingerprint lookup contract")
+                Text(
+                    "Remote replacement stays disabled until the source can verify revision, upload, reread, and recovery evidence.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        item {
             SettingsSection("Privacy and resilience") {
                 Bullet("No mandatory properpcloud backend or analytics")
                 Bullet("OAuth token encrypted locally and excluded from backup")
@@ -667,6 +706,7 @@ private fun SettingsScreen(state: AppUiState, actions: AppActions, onAuthorizePC
                 }
                 Text("Original code: MIT License")
                 Text("AndroidX, Kotlin, coroutines, Media3, and pCloud SDK: Apache License 2.0")
+                Text("jaudiotagger metadata adapter: LGPL 2.1 or later")
                 Text("Full notices are bundled in the APK and repository.")
             }
         }
@@ -697,27 +737,89 @@ private fun Bullet(text: String) {
 @Composable
 private fun MiniPlayer(state: AppUiState, actions: AppActions) {
     val current = state.queue.current?.track ?: return
+    val duration = state.playback.durationMillis.takeIf { it > 0 } ?: current.durationMillis ?: 0L
+    val progress = if (duration > 0) state.playback.positionMillis.toFloat() / duration else 0f
     Surface(
         tonalElevation = 4.dp,
         shadowElevation = 4.dp,
-        modifier = Modifier.fillMaxWidth().clickable { actions.selectDestination(AppDestination.QUEUE) }.testTag("mini-player"),
+        modifier = Modifier.fillMaxWidth().clickable { actions.selectDestination(AppDestination.PLAYER) }.testTag("mini-player"),
     ) {
-        Row(
-            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BadgerCloudMark(size = 38.dp)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(state.playback.title.ifBlank { current.taggedTitle ?: current.filenameStem }, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(current.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column {
+            if (duration > 0) {
+                LinearProgressIndicator(
+                    progress = { progress.coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(3.dp),
+                )
             }
-            IconButton(onClick = actions.playPause) {
-                Icon(if (state.playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (state.playback.isPlaying) "Pause" else "Play")
+            Row(
+                Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BadgerCloudMark(size = 38.dp)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(state.playback.title.ifBlank { current.taggedTitle ?: current.filenameStem }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(current.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                IconButton(onClick = actions.playPause) {
+                    Icon(if (state.playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (state.playback.isPlaying) "Pause" else "Play")
+                }
+                IconButton(onClick = actions.skipNext) { Icon(Icons.Default.SkipNext, "Next") }
             }
-            IconButton(onClick = actions.skipNext) { Icon(Icons.Default.SkipNext, "Next") }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MetadataInspectionSheet(
+    name: String,
+    fields: Map<String, String>,
+    onDismiss: () -> Unit,
+) {
+    val groups = fields.entries.groupBy { metadataGroup(it.key) }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        LazyColumn(
+            Modifier.fillMaxWidth().fillMaxHeight(0.85f).padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            item {
+                Text(name, style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    "Provider identity and file facts. Secret tokens and signed links are excluded.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            groups.forEach { (group, entries) ->
+                item {
+                    Text(
+                        group,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                }
+                items(entries) { (key, value) ->
+                    Column(Modifier.fillMaxWidth()) {
+                        Text(key, style = MaterialTheme.typography.labelMedium)
+                        Text(value.ifBlank { "—" }, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+            item {
+                TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+                Spacer(Modifier.height(20.dp))
+            }
+        }
+    }
+}
+
+private fun metadataGroup(key: String): String = when {
+    key.contains("id", ignoreCase = true) || key.contains("hash", ignoreCase = true) -> "Identity"
+    key.contains("created", ignoreCase = true) || key.contains("modified", ignoreCase = true) -> "Timeline"
+    key.contains("size", ignoreCase = true) || key.contains("content", ignoreCase = true) -> "Media file"
+    key.startsWith("can") || key.startsWith("is") -> "Access"
+    else -> "Provider"
 }
 
 @Composable
@@ -845,4 +947,5 @@ data class AppActions(
     val skipNext: () -> Unit,
     val skipPrevious: () -> Unit,
     val seekBy: (Long) -> Unit,
+    val seekTo: (Long) -> Unit,
 )

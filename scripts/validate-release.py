@@ -74,6 +74,10 @@ def main() -> int:
         errors.append("LICENSE is not the selected MIT license")
     if "Apache License 2.0" not in notices_path.read_text(encoding="utf-8"):
         errors.append("third-party notices do not mention Apache License 2.0")
+    if "LGPL 2.1 or later" not in notices_path.read_text(encoding="utf-8"):
+        errors.append("third-party notices do not mention jaudiotagger's LGPL terms")
+    if not (root / "LICENSES" / "LGPL-2.1-or-later.txt").is_file():
+        errors.append("LGPL 2.1 license text is missing")
 
     if not wrapper_checksum_path.is_file():
         errors.append("Gradle wrapper checksum file is missing")

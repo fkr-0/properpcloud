@@ -103,6 +103,37 @@ contracts:
         source: provider | embedded | filename | path | external | user
         confidence: decimal from 0 to 1
         warnings: list of parser or conflict codes
+    TagSnapshot:
+      fields:
+        format: non-empty container and tag-format description
+        fields: canonical TagField to MetadataValue map
+        artwork: bounded descriptors without mandatory image decoding
+        warnings: parser and compatibility warnings
+    TagPatch:
+      mutations:
+        Keep: preserve current field
+        Clear: delete field when present
+        Set: replace with a non-empty value
+      invariants:
+        - A patch contains at least one mutation.
+        - Changed fields are calculated against a concrete TagSnapshot.
+    TagEditPlan:
+      fields:
+        - plan_id
+        - source_id
+        - node_id
+        - expected_revision or expected_content_hash
+        - original TagSnapshot
+        - TagPatch
+        - optional external candidate ID
+      invariants:
+        - Remotely targetable plans require revision or content-hash evidence.
+        - Candidate selection and write approval remain separate decisions.
+    BatchTagEditPlan:
+      fields: ordered TagEditPlan list, warnings, changed item count, changed field count
+      invariants:
+        - Stable media identities are unique within a batch.
+        - Selection order is retained for deterministic sequencing.
     RepairPlan:
       fields:
         id: UUID
@@ -229,6 +260,36 @@ contracts:
       guarantees:
         - PlaybackState always contains stable media identity when an item is selected.
         - Ephemeral URI is not exposed to presentation.
+    IF-AUDIO-TAG-TOOLKIT:
+      methods:
+        inspect:
+          input: readable local audio file
+          output: TagSnapshot
+        stage_patch:
+          input: source file, staging directory, TagPatch, optional expected source SHA-256
+          output: source hash, staged file, staged hash, verified TagSnapshot, changed fields
+      guarantees:
+        - Source file bytes are not changed.
+        - Incomplete staged candidates are removed on failure.
+        - Set and Clear mutations are reread and verified before success.
+    IF-ONLINE-METADATA-PROVIDER:
+      methods:
+        search:
+          input: title, artist, album, ISRC, optional duration, bounded result limit
+          output: ordered MetadataCandidate list
+      guarantees:
+        - HTTPS only.
+        - Provider identification and rate limits are enforced.
+        - Candidates carry provenance and confidence.
+        - Lookup has no mutation side effect.
+    IF-ACOUSTIC-METADATA-PROVIDER:
+      methods:
+        lookup:
+          input: configured application key, duration, encoded Chromaprint fingerprint
+          output: MetadataCandidate list
+      guarantees:
+        - Application key is never committed or logged.
+        - Audio bytes are not transmitted by lookup.
   application_commands:
     BrowseFolder:
       input: source ID, folder ID, freshness policy
@@ -256,6 +317,18 @@ contracts:
     InspectMetadata:
       input: stable media ID and depth basic | embedded | complete
       output: layered inspection with warnings and provenance
+    PlanBatchTagEdit:
+      input: ordered stable media identities, source revisions or hashes, transform or accepted candidate fields
+      output: immutable BatchTagEditPlan with changed-field summary
+      commit_rule: Produces no local or remote media mutation.
+    StageTagEdit:
+      input: approved TagEditPlan and exact local source bytes
+      output: verified staged candidate and hashes
+      commit_rule: Original source remains unchanged; staged candidate is not remote success.
+    SearchOnlineMetadata:
+      input: consented MetadataSearchQuery and enabled provider
+      output: candidates with provenance and confidence
+      commit_rule: No field is accepted and no source is changed automatically.
     ApplyMetadataRepair:
       input: approved RepairPlan ID
       output: per-item verified, failed, conflicted, or indeterminate results

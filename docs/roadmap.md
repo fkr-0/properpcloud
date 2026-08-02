@@ -163,7 +163,7 @@ These are release-quality hardening items, not retroactive changes to the immuta
 
 ## `0.1.1` — release-pipeline integrity patch
 
-Status: **release candidate**.
+Status: **released, tagged, validated, and published**.
 
 - rebuild and publication are bound to one explicit immutable tag;
 - all third-party GitHub Actions are pinned to reviewed commit SHAs;
@@ -171,11 +171,28 @@ Status: **release candidate**.
 - release validation rejects floating actions, wrapper drift, and missing release evidence;
 - no user-facing playback or library behavior changes.
 
+## `0.1.2` — modern player and metadata foundations
+
+Status: **release candidate**.
+
+- dedicated seekable now-playing destination while preserving folder-first identity;
+- compact queue actions and grouped metadata inspection;
+- canonical tag snapshots, provenance, confidence, patches, and batch edit plans;
+- real jaudiotagger-backed local inspection and copy-on-write staged mutation;
+- SHA-256 source guard plus staged reread and field verification;
+- identified, HTTPS, serialized MusicBrainz search with secure XML parsing;
+- Cover Art Archive and AcoustID/Chromaprint contracts without embedded keys;
+- comprehensive UX and guarded remote metadata-maintenance specifications.
+
+Remote pCloud file replacement is not enabled in this release. It remains gated
+on exact-revision download, conditional replace, provider readback, audit, and
+indeterminate-state reconciliation.
+
 ### Deferred beyond `0.1.0`
 
 - verified offline file pinning and storage quotas;
 - saved-root tabs and whitelist/blacklist policy editor;
-- embedded-tag parsing and safe metadata mutation;
+- in-app metadata proposal/editor workflow and guarded pCloud replacement;
 - Android Auto browse hierarchy;
 - bookmarks, sleep timer, variable speed policy, and aggregate book progress;
 - cross-device progress synchronization.

@@ -81,6 +81,11 @@ product:
         - REQ-PROGRESS
         - REQ-INSPECTION
         - REQ-RESILIENCE
+    v0_1_2:
+      name: modern-player-and-metadata-foundation
+      requirements:
+        - REQ-MODERN-PLAYER
+        - REQ-METADATA-FOUNDATION
     v0_2:
       name: native-linux-feature-parity
       requirements: [REQ-LINUX-PARITY]
@@ -91,6 +96,38 @@ product:
       name: controlled-library-maintenance
       requirements: [REQ-METADATA-PROPOSAL, REQ-METADATA-WRITE, REQ-CHANGEFEED]
   requirements:
+    REQ-MODERN-PLAYER:
+      priority: must
+      release: v0_1_2
+      title: First-class Android now-playing experience
+      behaviors:
+        - Mini-player opens a dedicated now-playing destination.
+        - Now playing exposes title, filename context, seekable timeline, elapsed and remaining time.
+        - Previous, rewind, play or pause, forward, and next controls remain accessible.
+        - Queue position, next item, containing folder, and metadata inspection are one action away.
+        - Queue rows use compact progressive disclosure while retaining non-drag reorder alternatives.
+        - Metadata inspection uses a structured adaptive sheet rather than an oversized blocking dialog.
+      invariants:
+        - Playback remains owned by MediaSessionService.
+        - The player never hides stable filename or containing-folder navigation.
+        - Unknown or non-seekable duration disables scrubbing without disabling playback.
+    REQ-METADATA-FOUNDATION:
+      priority: must
+      release: v0_1_2
+      title: Safe tag maintenance foundation
+      behaviors:
+        - Represent canonical tag fields, provenance, confidence, snapshots, patches, and batch plans in core-model.
+        - Require expected revision or content hash for remotely targetable edit plans.
+        - Inspect and edit a local staged copy through a replaceable jaudiotagger adapter.
+        - Reread and verify intended tag changes while proving original bytes remain unchanged.
+        - Search MusicBrainz through an identified, rate-limited, HTTPS client.
+        - Model Cover Art Archive and opt-in AcoustID lookup without embedding service keys.
+        - Disclose that pCloud remote replacement remains disabled until conditional write and readback exist.
+      forbidden:
+        - automatic remote metadata writes
+        - online candidate acceptance without field-level review
+        - audio-byte upload to metadata lookup services
+        - credentials or fingerprints in logs and release evidence
     REQ-AUTH:
       priority: must
       release: mvp_0_1

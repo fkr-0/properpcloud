@@ -52,6 +52,10 @@ android {
             "META-INF/LGPL2.1",
         )
     }
+
+    sourceSets {
+        getByName("main").assets.directories.add(rootProject.file("LICENSES").path)
+    }
 }
 
 tasks.withType<Test>().configureEach {
@@ -68,6 +72,8 @@ dependencies {
     testImplementation(platform(libs.compose.bom))
 
     implementation(projects.coreModel)
+    implementation(projects.metadataOnline)
+    implementation(projects.metadataTags)
     implementation(projects.sourcePcloud)
     implementation(projects.sourceWebdav)
     implementation(libs.pcloud.android)

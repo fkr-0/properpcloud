@@ -1,0 +1,214 @@
+metadata:
+  version: 0.1.2
+  purpose: >-
+    Provide transparent metadata inspection, deterministic batch planning, optional
+    online matching, and revision-safe remote maintenance without weakening the
+    folder-first identity model.
+  invariants:
+    - Stable source and node IDs remain authoritative even when every embedded tag changes.
+    - Filename, path, provider metadata, embedded tags, online candidates, and user edits remain distinct provenance layers.
+    - Online results are proposals, never implicit writes.
+    - Every remote write is based on an expected revision or content hash and a user-approved field diff.
+    - Source media bytes are never edited in place; all edits occur on an app-private staged copy.
+    - A staged candidate is reread and tag-verified before it becomes eligible for upload.
+    - Remote upload is followed by provider metadata and revision readback before success is reported.
+    - Cancellation stops at a defined safe boundary and never reports an indeterminate upload as success.
+  release_slices:
+    v0_1_2_foundation:
+      implemented:
+        - canonical tag fields and provenance records in core-model
+        - deterministic common-field, candidate, and track-sequence batch planners
+        - jaudiotagger-backed inspection and staged local mutation adapter
+        - post-write tag reread and verification on the staged copy
+        - MusicBrainz recording search client with identified User-Agent and serialized rate gate
+        - Cover Art Archive release-front URL contract
+        - AcoustID fingerprint and lookup contracts without embedded API keys
+        - user-visible disclosure that guarded remote replacement is not yet enabled
+      explicitly_not_claimed:
+        - pCloud file download-to-staging orchestration
+        - conditional pCloud remote replacement
+        - Chromaprint generation on Android
+        - artwork mutation
+        - unattended online batch matching
+        - undo through provider revision history
+    v0_4_proposal_ui:
+      target:
+        - layered inspector with embedded raw frames and normalized values
+        - multi-select proposal workflow
+        - MusicBrainz, Cover Art Archive, and opt-in AcoustID candidate review
+        - field-level confidence, source, and conflicts
+        - saved proposal drafts and redacted exports
+    v0_5_guarded_write:
+      target:
+        - exact-revision download and content verification
+        - staged mutation and decoder validation
+        - expected-revision remote replace
+        - remote reread, audit record, and recovery reference
+  canonical_fields:
+    text:
+      - title
+      - artist
+      - album
+      - album_artist
+      - genre
+      - year
+      - comment
+      - composer
+      - lyrics
+      - isrc
+      - musicbrainz_recording_id
+      - musicbrainz_release_id
+    numeric_text:
+      - track_number
+      - track_total
+      - disc_number
+      - disc_total
+    artwork:
+      descriptors: [mime_type, byte_count, width, height, description, picture_type]
+      binary_policy: Never load unbounded image bytes merely to render inspection summaries.
+  provenance:
+    provider:
+      authority: stable IDs, revision, hash, permissions, timestamps, filename, parent identity
+    embedded:
+      authority: raw frames or atoms present in the audio container
+    filename:
+      authority: reversible parser inference only
+    path:
+      authority: containing-folder inference only
+    musicbrainz:
+      authority: external recording and release candidate
+    acoustid:
+      authority: fingerprint-to-recording candidate
+    user:
+      authority: explicit approved override
+    rules:
+      - A normalized value carries its provenance and confidence.
+      - Conflicting values are retained until the user selects an effective value.
+      - Low-confidence external values are unselected by default.
+      - Provider and embedded raw values are never silently rewritten during normalization.
+  batch_planning:
+    supported_transforms:
+      - set or clear one common field across selected items
+      - deterministic track sequencing with optional track total
+      - apply selected fields from one reviewed candidate
+      - preserve unchanged fields through explicit Keep mutations
+    validation:
+      - reject duplicate stable identities in one plan
+      - require revision or content hash for every remotely targetable item
+      - calculate changed item and changed field counts before confirmation
+      - preserve selection order for sequencing
+      - forbid blank Set values; use Clear for deletion
+    future_transforms:
+      - parse artist-title or track-title from filename patterns
+      - infer album and disc from folder structure
+      - normalize whitespace, Unicode, date, and numeric forms
+      - copy selected values between raw tag variants
+      - artwork assignment with size and format policy
+  local_tag_adapter:
+    implementation: metadata-tags/JAudioTaggerToolkit
+    library: net.jthink:jaudiotagger:3.0.1
+    license: LGPL-2.1-or-later
+    supported_container_policy: >-
+      Capability is determined by jaudiotagger at runtime; unsupported or malformed
+      containers fail without changing the original file.
+    stage_flow:
+      - validate source is a readable non-empty regular file
+      - compute source SHA-256 and compare optional expected SHA-256
+      - inspect original tags
+      - copy bytes into a unique app-private staging filename
+      - apply only non-Keep mutations
+      - commit staged tags
+      - reread staged tags
+      - verify every Set and Clear mutation
+      - compute staged SHA-256
+      - return staged result while leaving source bytes unchanged
+    failure:
+      - delete incomplete staged candidate
+      - retain original file
+      - return typed failure in the application orchestration layer
+  online_matching:
+    consent:
+      - Disabled until the user invokes matching or enables a metadata provider.
+      - Show which title, artist, album, ISRC, duration, or fingerprint leaves the device.
+      - Never upload audio bytes to MusicBrainz, Cover Art Archive, or AcoustID lookup.
+    hierarchy:
+      1_existing_ids: Prefer valid MusicBrainz IDs or ISRC already embedded.
+      2_fingerprint: Use opt-in Chromaprint plus AcoustID when an application key is configured.
+      3_text_duration: Search MusicBrainz by title, artist, album, and bounded duration.
+      4_artwork: Resolve Cover Art Archive only after a release is selected.
+    musicbrainz:
+      endpoint: https://musicbrainz.org/ws/2/recording/
+      transport: HTTPS XML
+      identification: properpcloud/version plus maintainer contact URL
+      rate_gate_ms: 1100
+      limits:
+        maximum_results_per_request: 100
+        retries: bounded and respectful of Retry-After or 503
+      parser_security:
+        - reject DOCTYPE
+        - disable external general entities
+        - disable external parameter entities
+        - disable external DTD and schema access when parser supports it
+    cover_art_archive:
+      endpoint_template: https://coverartarchive.org/release/{release_id}/front-{250|500|1200}
+      validation: Release ID must be a UUID and URL must remain HTTPS.
+      mutation: Artwork is not written in v0.1.2.
+    acoustid:
+      endpoint: https://api.acoustid.org/v2/lookup
+      prerequisites:
+        - application API key supplied outside source control
+        - Chromaprint-compatible duration and fingerprint
+      policy:
+        - no embedded production key
+        - no user submission API in the initial implementation
+        - provider-specific commercial terms must be reviewed before commercial distribution
+  remote_write_state_machine:
+    states:
+      draft: proposals may change and no media bytes are touched
+      approved: field diff and original revision are immutable
+      downloading: exact source revision is acquired into staging
+      staged: tag mutations were applied locally
+      validated: tags and media decoding passed
+      uploading: expected revision conditional replace is in progress
+      verifying: provider revision, hash, and tags are reread
+      verified: audit and recovery reference are complete
+      conflicted: source changed before replacement; no overwrite occurred
+      failed: no ambiguous remote side effect occurred
+      indeterminate: upload boundary was crossed but final provider state is unknown
+    transitions:
+      - draft -> approved requires explicit field selection and confirmation
+      - approved -> downloading requires source mutation capability and modify permission
+      - validated -> uploading requires immediate revision revalidation
+      - uploading -> verifying cannot be cancelled as ordinary failure
+      - indeterminate -> verified|failed|conflicted requires reconciliation
+    forbidden:
+      - direct in-place remote editing
+      - overwrite without expected revision or hash
+      - declaring success from upload response alone
+      - deleting the original as rollback
+      - representing remote recovery as a trivial snackbar undo
+  audit:
+    required_fields:
+      - plan_id
+      - stable source and node identity
+      - original revision and hash
+      - approved field diff
+      - staged hash
+      - resulting revision and hash when known
+      - state and timestamps
+      - recovery reference when provider supports one
+    prohibited_fields:
+      - OAuth token
+      - signed content URL
+      - private audio bytes
+      - unrestricted online response bodies
+  accessibility:
+    - Every current and proposed value is readable without relying on color.
+    - Batch selection and field acceptance have keyboard and TalkBack alternatives.
+    - Progress announces phase changes, not every file or byte update.
+    - Conflict and indeterminate states use explicit text and next actions.
+  privacy:
+    - Online matching is opt-in and separately disclosed from pCloud access.
+    - Query cache is local, bounded, and user-clearable.
+    - Fingerprints are treated as derived media identifiers and excluded from diagnostics by default.
+    - No metadata provider credential is committed, logged, exported, or placed in release artifacts.

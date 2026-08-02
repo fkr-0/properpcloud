@@ -14,6 +14,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Verified offline pinning, saved roots, long-form controls, and Android Auto after
   cross-platform queue/progress semantics stabilize.
 
+## [0.1.2] - 2026-08-02
+
+### Added
+
+- Dedicated now-playing destination with large artwork fallback, title and filename
+  context, seekable elapsed/remaining timeline, transport controls, queue position,
+  up-next preview, and one-tap queue/folder/metadata navigation.
+- Canonical metadata domain records for provenance, confidence, tag snapshots,
+  `Keep`/`Clear`/`Set` patches, revision-or-hash-guarded edit plans, and deterministic
+  common-field, candidate, and track-sequencing batch operations.
+- `metadata-tags` module using a replaceable jaudiotagger adapter for real local tag
+  inspection, copy-on-write staging, SHA-256 guarding, tag reread, and field verification.
+- `metadata-online` module with an identified, HTTPS MusicBrainz recording client,
+  serialized request-rate gate, secure XML parser, Cover Art Archive references, and
+  opt-in AcoustID/Chromaprint lookup contracts without embedded service keys.
+- Comprehensive Android UX modernization and metadata maintenance specifications,
+  including the guarded pCloud remote-replacement state machine and audit boundaries.
+
+### Changed
+
+- Mini-player now opens the first-class player and displays thin playback progress.
+- Queue rows use one compact overflow menu while retaining move-up/down alternatives,
+  containing-folder navigation, metadata inspection, and removal.
+- Provider inspection uses a grouped adaptive bottom sheet instead of an oversized
+  blocking dialog.
+- Settings disclose the exact metadata-tool status and the fact that remote file
+  replacement remains disabled until conditional upload and readback are implemented.
+
+### Security
+
+- Local metadata edits never modify source bytes in place; failed candidates are
+  removed and intended fields must pass reread verification.
+- MusicBrainz XML parsing rejects document types and external entities, and online
+  matching remains explicit, rate-limited, provenance-preserving, and non-mutating.
+- Added jaudiotagger's LGPL 2.1-or-later notice and complete license text to the
+  repository and APK asset set.
+
+### Testing
+
+- Added metadata plan, sequencing, revision/hash guard, real WAV staged-edit,
+  MusicBrainz query/parser, rate-gate, and dedicated now-playing Compose tests.
+
+### Known limitations
+
+- The metadata editor UI, Android Chromaprint implementation, artwork writes, and
+  expected-revision pCloud replacement are specified but intentionally not enabled.
+- Live pCloud account validation, production signing, physical-device accessibility,
+  and Android 17 runtime validation remain external release gates.
+
 ## [0.1.1] - 2026-08-02
 
 ### Fixed
@@ -136,7 +185,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/fkr-0/properpcloud/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/fkr-0/properpcloud/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/fkr-0/properpcloud/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/fkr-0/properpcloud/releases/tag/v0.0.1

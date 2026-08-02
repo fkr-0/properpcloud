@@ -1,9 +1,9 @@
 specification:
   id: properpcloud
   title: properpcloud product and system specification
-  version: 0.1.0
+  version: 0.1.2
   status: draft-implementable
-  snapshot_date: 2026-08-01
+  snapshot_date: 2026-08-02
   normative_language:
     must: mandatory for the named release or contract
     should: expected unless a documented ADR justifies deviation
@@ -19,6 +19,8 @@ specification:
       owns: interfaces, commands, events, persistence records, error taxonomy
     - file: ux.yml
       owns: navigation, screens, interactions, accessibility, state presentation
+    - file: metadata.yml
+      owns: metadata provenance, batch planning, online matching, staged edits, guarded remote mutation
     - file: testing.yml
       owns: test strategy, fixtures, matrices, fault injection, release gates
     - file: definition-of-done.yml

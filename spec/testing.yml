@@ -142,6 +142,10 @@ testing:
           scenarios: [transient_loss, duck, permanent_loss, headset_disconnect]
         TEST-PLAY-PROCESS-RECREATE:
           expect: UI reconnects and authoritative queue remains
+        TEST-PLAYER-DESTINATION:
+          expect: mini-player opens dedicated now-playing without changing queue or playback
+        TEST-PLAYER-SEEK:
+          expect: elapsed and remaining timeline forwards exact seek intent when duration is known
     progress:
       cases:
         TEST-PROGRESS-CHECKPOINT:
@@ -175,6 +179,25 @@ testing:
           expect: tokens and signed URLs absent from UI, logs, export, and snapshots
         TEST-INSPECT-HUGE-ARTWORK:
           expect: bounded memory and skipped-artwork warning
+    metadata_foundation:
+      cases:
+        TEST-TAG-PLAN:
+          expect: candidate fields and common patches calculate only real changes
+        TEST-TAG-SEQUENCE:
+          expect: track numbering preserves selection order and deterministic total
+        TEST-TAG-STAGING:
+          fixture: generated valid PCM WAV
+          expect: approved tags exist on staged copy and original tags remain unchanged
+        TEST-TAG-SOURCE-HASH:
+          inject: wrong expected SHA-256
+          expect: abort before staged mutation
+        TEST-METADATA-QUERY:
+          expect: escaped MusicBrainz recording query and candidate provenance mapping
+        TEST-METADATA-RATE:
+          expect: requests are serialized at the configured interval
+        TEST-METADATA-XML-SECURITY:
+          inject: XML document type and external entity
+          expect: parser rejects without external access
     mutation:
       cases:
         TEST-MUTATION-DRY-RUN:
@@ -229,6 +252,16 @@ testing:
       - Hash mismatch is rejected.
       - Eviction cannot call source deletion.
       - Reconciliation handles orphan temporary files.
+    AudioTagToolkit:
+      - Inspection never changes source bytes.
+      - Staged mutation verifies Set and Clear fields through reread.
+      - Source hash mismatch aborts before mutation.
+      - Failure removes incomplete staged output.
+    OnlineMetadataProvider:
+      - Requests use HTTPS and an identified User-Agent.
+      - Rate limiting is deterministic under virtual time.
+      - Candidates retain provider and confidence.
+      - Malicious XML cannot resolve external entities.
   fault_injection:
     network: [offline, mid-list disconnect, mid-range disconnect, DNS failure, TLS failure, timeout, rate limit]
     process: [Activity recreation, app kill, service restart, reboot during pin]

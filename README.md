@@ -6,7 +6,7 @@
 
 Folder-first Android audio playback for pCloud and other file-oriented sources.
 
-[![Version](https://img.shields.io/badge/version-0.1.1-59636e)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.2-59636e)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
 
 Audio libraries are often already organized correctly in folders. properpcloud
@@ -15,7 +15,7 @@ artist/album/song tags.
 
 > Independent software. Not affiliated with or endorsed by pCloud AG.
 
-## What `0.1.0` provides
+## What `0.1.2` provides
 
 - adaptive Material 3 Android UI with compact and expanded layouts;
 - stable-ID folder navigation and breadcrumbs;
@@ -24,9 +24,13 @@ artist/album/song tags.
 - atomic replace/play-next/append semantics with cancellation and partial-result reporting;
 - queue reorder, removal, selection, persistence, and containing-folder navigation;
 - Media3 background playback, system controls, seeking, and smart resume;
+- a first-class now-playing screen with seek timeline, queue context, and folder reveal;
 - just-in-time pCloud stream-link resolution with one bounded expiry retry;
 - encrypted pCloud OAuth token storage using Android Keystore AES-GCM;
 - raw provider/identity inspection without exposing secrets;
+- canonical tag/provenance models, deterministic batch plans, and real copy-on-write
+  local tag staging with post-write verification;
+- opt-in MusicBrainz matching foundations plus Cover Art Archive and AcoustID contracts;
 - a deterministic built-in demo library with generated WAV audio.
 
 The demo source is not a screenshot mode. It exercises the real browser, queue,
@@ -43,6 +47,8 @@ network access, or private fixtures.
    password.
 
 Detailed setup and validation instructions are in `docs/pcloud-setup.md`.
+The modern-player design is in `docs/ux-modernization.md`; metadata architecture,
+privacy, and release boundaries are in `docs/metadata-suite.md`.
 
 ## Security and privacy model
 
@@ -141,6 +147,8 @@ make release-artifacts
 properpcloud/
 ├── app/                    Compose UI, encrypted credentials, persistence, Media3
 ├── core-model/             source-neutral identity, queue, progress, sorting
+├── metadata-tags/          staged local tag inspection/editing adapter
+├── metadata-online/        MusicBrainz and acoustic lookup contracts
 ├── source-pcloud/          official pCloud java-core adapter
 ├── source-webdav/          optional interoperability boundary
 ├── docs/                   design, setup, privacy, roadmap, releases
@@ -186,6 +194,7 @@ See `docs/linux-client.md`, `spec/linux-client.yml`, and `docs/roadmap.md`.
 - `spec/architecture.yml` — layers, dependencies, data flows, security
 - `spec/contracts.yml` — ports, records, persistence, events, errors
 - `spec/ux.yml` — Android and Linux interaction/accessibility behavior
+- `spec/metadata.yml` — provenance, online matching, staging, guarded mutation
 - `spec/testing.yml` — fixtures, fault injection, and release gates
 - `spec/definition-of-done.yml` — feature/release completion rules
 - `spec/build.yml` — Docker, Gradle, CI, cache, and supply chain
@@ -195,5 +204,7 @@ See `docs/linux-client.md`, `spec/linux-client.yml`, and `docs/roadmap.md`.
 ## Licensing
 
 Original code is licensed under MIT. Dependencies retain their own licenses,
-including Apache-2.0 components listed in `THIRD_PARTY_NOTICES.md` and bundled
-with the APK. No copyleft player code is copied into this repository.
+including Apache-2.0 components and the LGPL-2.1-or-later jaudiotagger adapter
+listed in `THIRD_PARTY_NOTICES.md`; complete redistributed license texts are
+bundled with the APK. Dependency types do not cross the source-neutral domain
+contracts.
