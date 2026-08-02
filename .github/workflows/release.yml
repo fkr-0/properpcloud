@@ -85,6 +85,7 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           body_path: dist/RELEASE_NOTES.md
           files: |
             dist/properpcloud-*.apk

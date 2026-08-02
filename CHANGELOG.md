@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Release workflow tag validation now runs on the GitHub host where Git is
-  available, and manual dispatch can rebuild an existing immutable tag.
+  available, manual dispatch can rebuild an existing immutable tag, and release
+  publication receives that tag explicitly instead of inheriting the workflow ref.
 
 ### Planned
 
