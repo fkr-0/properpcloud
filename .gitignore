@@ -10,6 +10,9 @@
 .gradle/
 .cache/
 .ws-bridge/
+__pycache__/
+*.py[cod]
+dist/
 build/
 **/build/
 local.properties

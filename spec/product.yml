@@ -70,7 +70,7 @@ product:
         - Share semantics and optionally progress without a mandatory custom server.
   release_slices:
     mvp_0_1:
-      name: folder-player
+      name: validated-android-folder-player
       requirements:
         - REQ-AUTH
         - REQ-BROWSE
@@ -82,9 +82,12 @@ product:
         - REQ-INSPECTION
         - REQ-RESILIENCE
     v0_2:
+      name: native-linux-feature-parity
+      requirements: [REQ-LINUX-PARITY]
+    v0_3:
       name: long-form-roots-offline
       requirements: [REQ-LONGFORM, REQ-SAVED-ROOTS, REQ-OFFLINE, REQ-AUTO]
-    v0_3:
+    v0_4:
       name: controlled-library-maintenance
       requirements: [REQ-METADATA-PROPOSAL, REQ-METADATA-WRITE, REQ-CHANGEFEED]
   requirements:
@@ -107,12 +110,12 @@ product:
       title: Folder-first browser
       behaviors:
         - Browse root and nested folders using stable provider IDs.
-        - Show breadcrumb, filename, type, size, cache state, and optional progress.
-        - Preserve scroll anchor, sort, grouping, and selection per folder.
-        - Render cached snapshots immediately and refresh without blanking content.
+        - Show breadcrumb, filename, type, optional duration, and source state.
+        - Preserve active sort and stable folder identity while navigating.
+        - Refresh without replacing stable identity with display paths.
         - Optionally show non-audio children while excluding them from audio queues.
       scalability:
-        - Incrementally render or paginate folders above 500 direct children.
+        - Lazily render folders above 500 direct children.
         - Never recursively enumerate on the main thread.
     REQ-QUEUE:
       priority: must
@@ -122,14 +125,13 @@ product:
         - play_folder_replace
         - append_folder
         - play_folder_next
-        - shuffle_folder
         - play_subtree_replace
         - append_subtree
       rules:
-        - Deterministic enumeration precedes optional shuffle.
-        - Queue snapshots record source folder, recursion, sort, grouping, and duplicate policy.
+        - Deterministic enumeration precedes every queue mutation.
+        - Queue entries record source folder and stable source/node identity.
         - Recursive operations expose progress, cancellation, partial acceptance, and omissions.
-        - Duplicate policy supports preserve, stable-node collapse, and content-hash collapse.
+        - Duplicate policy supports preserve and stable-node collapse.
         - An empty result never silently clears an existing queue.
     REQ-NAVIGATION:
       priority: must
@@ -138,8 +140,8 @@ product:
       behaviors:
         - Now playing exposes open-containing-folder in one action.
         - Queue rows expose open-containing-folder and inspect.
-        - Folder rows expose capability-appropriate play, append, next, inspect, pin, and save-root actions.
-        - Opening a folder from playback highlights the current file without interrupting playback.
+        - Folder rows expose capability-appropriate play, append, next, subtree, and inspect actions.
+        - Opening a folder from playback does not interrupt playback.
     REQ-PLAYBACK:
       priority: must
       release: mvp_0_1
@@ -164,14 +166,6 @@ product:
         - disc_then_track
         - tagged_title
         - modified_time
-        - duration
-        - manual_queue_order
-      grouping_keys:
-        - none
-        - containing_folder
-        - saved_root
-        - disc
-        - inferred_book
       invariants:
         - Numeric filename segments sort 2 before 10.
         - Unknown disc or track numbers sort after known values unless filename-only is selected.
@@ -219,22 +213,15 @@ product:
         provider:
           fields:
             - stable IDs and parent ID
-            - resolved path
-            - MIME type and size
-            - created and modified timestamps
-            - content hash or revision
-            - permissions and sharing state
-        embedded:
-          fields:
-            - raw frames or atoms
-            - normalized title, artist, album, disc, track, genre, and date
-            - parser warnings and unsupported fields
+            - parent identity
+            - filename, MIME type, and optional size
+            - provider timestamps and permissions when available
         effective:
           fields:
             - display title
             - active sort values
-            - inferred book or album
-            - provenance and confidence per derived field
+            - active filename or tagged-title display choice
+            - source and generated-demo provenance
       constraints:
         - Inspection is read-only.
         - Raw values remain available.
@@ -244,15 +231,30 @@ product:
       release: mvp_0_1
       title: Honest degraded operation
       behaviors:
-        - Browse cached folders while offline.
-        - Play verified cached files while offline.
+        - Provide a complete playable local demo while offline.
+        - Preserve durable queue/progress references through process death.
         - Distinguish auth, network, provider, media, and storage failures.
         - Preserve queue and progress through process death.
         - Every asynchronous state has timeout, retry, cancellation, and stale-data semantics where applicable.
         - Infinite loading indicators are forbidden.
+    REQ-LINUX-PARITY:
+      priority: must
+      release: v0_2
+      title: Native Linux desktop feature parity
+      behaviors:
+        - Reuse source identity, sorting, queue, progress, inspection, and pCloud Java-core semantics.
+        - Provide native desktop folder, queue, now-playing, settings, and diagnostics surfaces.
+        - Use system-browser OAuth and Secret Service or KWallet credential storage.
+        - Use mpv JSON IPC with bounded process restart and expiring-link renewal.
+        - Integrate MPRIS, media keys, notifications, and XDG paths.
+        - Provide mouse, context-menu, and complete keyboard alternatives.
+      validation:
+        - Run shared contract fixtures unchanged on Android and desktop.
+        - Validate GNOME, KDE Plasma, and i3 workflows.
+        - Publish Gradle/Arch artifacts and a reviewed Flatpak package.
     REQ-LONGFORM:
       priority: should
-      release: v0_2
+      release: v0_3
       title: Audiobook and lecture controls
       features:
         - variable speed with per-root and per-folder memory
@@ -263,7 +265,7 @@ product:
         - folder and subtree progress aggregation
     REQ-SAVED-ROOTS:
       priority: should
-      release: v0_2
+      release: v0_3
       title: Custom tabs and directory policies
       behaviors:
         - Create named tabs from a folder plus recursion, filter, sort, grouping, resume, and cache policy.
@@ -281,7 +283,7 @@ product:
           sort: modified_descending
     REQ-OFFLINE:
       priority: should
-      release: v0_2
+      release: v0_3
       title: Explicit offline cache
       behaviors:
         - Pin a file, folder, subtree, or saved root.
@@ -291,7 +293,7 @@ product:
         - Distinguish local eviction from cloud deletion in language and iconography.
     REQ-AUTO:
       priority: should
-      release: v0_2
+      release: v0_3
       title: Android Auto and external media browsing
       behaviors:
         - Expose saved roots and a shallow folder hierarchy.
@@ -299,7 +301,7 @@ product:
         - Keep browse IDs stable across service restarts.
     REQ-METADATA-PROPOSAL:
       priority: should
-      release: v0_3
+      release: v0_4
       title: Metadata proposal pipeline
       stages:
         - scan existing tags and provider metadata
@@ -315,7 +317,7 @@ product:
         - External queries disclose which metadata leaves the device.
     REQ-METADATA-WRITE:
       priority: should
-      release: v0_3
+      release: v0_4
       title: Revision-safe tag writing
       pipeline:
         - download exact revision to staging
@@ -329,7 +331,7 @@ product:
         - Offer rebase, skip, or rescan; never force silently.
     REQ-CHANGEFEED:
       priority: should
-      release: v0_3
+      release: v0_4
       title: Incremental provider synchronization
       behaviors:
         - Persist provider change cursor.

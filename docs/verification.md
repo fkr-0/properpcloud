@@ -1,144 +1,105 @@
 # Verification evidence
 
-Snapshot: 2026-08-01.
+Current release candidate: `0.1.0` on 2026-08-02.
 
-## Result
+Machine-readable release evidence is stored in:
 
-The current uncommitted bootstrap passes the complete local Docker-backed CI command:
+- `docs/releases/0.0.1.yml`
+- `docs/releases/0.1.0.yml`
+
+## Complete release gate
 
 ```text
 make ci
-  → validate YAML specifications
-  → run JVM tests
-  → run Android lint
-  → assemble debug APK
 
-BUILD SUCCESSFUL in 3m 40s
-181 actionable tasks: 174 executed, 7 from cache
+spec: validated 10 documents, 17 requirements, and 13 use cases
+release: version=0.1.0 tag=v0.1.0 metadata=ok
+BUILD SUCCESSFUL in 39s
+192 actionable tasks
 ```
 
-The repository also passes `git diff --check`.
+The same tree passes `git diff --check`.
 
-## Specification evidence
-
-```yaml
-documents_parsed: 10
-requirements_validated: 16
-use_cases_validated: 12
-duplicate_mapping_keys: rejected
-unknown_release_requirement_references: rejected
-unknown_use_case_requirement_traces: rejected
-untraced_must_requirements: rejected
-```
-
-## Test evidence
+## Tests
 
 ```yaml
-test_suites: 2
-tests: 4
+suites: 8
+tests: 21
 failures: 0
 errors: 0
 skipped: 0
-covered_bootstrap_logic:
-  - natural filename ordering
-  - disc and track ordering
-  - pCloud folder-ID round trip
-  - pCloud file-ID round trip
 ```
 
-The larger test matrix under `spec/testing.yml` is a release contract, not a claim that all production features already exist.
+Covered behavior includes:
 
-## Lint evidence
+- natural filename and disc/track sorting;
+- pCloud file/folder identity and accepted regional hosts;
+- atomic queue replacement, play-next, append, reorder, removal, and selection;
+- recursive folder traversal, omissions, and previous-queue preservation;
+- progress completion and smart rewind;
+- deterministic demo folders and generated valid WAV media;
+- DataStore queue/progress round trips without signed-link persistence;
+- compact Compose navigation, library rendering, and OAuth settings controls.
 
-Android lint succeeds with no error or warning-level findings.
+## Lint
 
-Five informational findings remain:
+Android lint completes with:
 
 ```yaml
-GradleDependency:
-  count: 4
-  reason: API level 37 is available for compilation.
-OldTargetApi:
-  count: 1
-  reason: target SDK 36 is below API level 37.
+errors: 0
+warnings: 0
+informational:
+  NewerVersionAvailable: 1
+  OldTargetApi: 1
 ```
 
-This is intentional for the bootstrap. Android 16/API 36 is the current stable platform package and meets the Google Play requirement taking effect on 2026-08-31. Android 17/API 37 is still distributed as Beta 4.1 at this snapshot. API 37 belongs in the compatibility-test matrix before it becomes the production compile/target baseline.
+The informational target notice is intentional: current AndroidX is compiled
+against API 37 while runtime behavior remains targeted to stable API 36 until
+the Android 17 compatibility matrix is completed.
 
-References:
-
-- <https://developer.android.com/tools/releases/platforms>
-- <https://developer.android.com/about/versions/17/release-notes>
-- <https://developer.android.com/google/play/requirements/target-sdk>
-
-## Toolchain evidence
+## Toolchain
 
 ```yaml
-java:
-  distribution: Eclipse Temurin
-  major: 17
-  base_image_digest: sha256:b04a8c5d46e210873ffd1af6ad5f4d62c69ed3a6736993556eae60bba1373a23
-gradle:
-  version: 9.6.1
-  wrapper_jar_sha256: 497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7
-android:
-  command_line_tools: 15859902
-  command_line_tools_sha256: 4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583
-  compile_sdk: 36
-  target_sdk: 36
-  build_tools: 36.0.0
-build:
-  Android_Gradle_Plugin: 9.3.1
-  Media3: 1.10.1
-  pCloud_SDK: 1.11.0
-  coroutines: 1.11.0
+Java: Eclipse Temurin 21
+Gradle: 9.6.1
+Android_Gradle_Plugin: 9.3.1
+compile_sdk: 37
+target_sdk: 36
+build_tools: 37.0.0
+toolchain_image_id: sha256:93420ccd18a67c7e3a72868111b7dcc24cd51e5dafb0a8003b41b10fe0d7d43a
+Gradle_wrapper_sha256: 497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7
+Android_tools_sha256: 4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583
+Robolectric_runtime_sha256: 16f1f751643d1d3d5592008846bbdfc1e57cff15e6ec303d26584de3b6ac25ec
 ```
 
-## Container evidence
-
-```yaml
-image_tag: properpcloud/android-build:2026.08
-image_id: sha256:e1c27856056622503e78c716cc1653102cca9eef4de5e54d4ec0906f0f797b7a
-image_size_bytes: 1136743686
-contains:
-  - JDK 17
-  - Android command-line tools
-  - platform tools
-  - Android platform 36
-  - build tools 36.0.0
-omits:
-  - emulator
-  - NDK
-  - CMake
-  - second Gradle installation
-```
-
-## APK evidence
+## APK
 
 ```yaml
 path: app/build/outputs/apk/debug/app-debug.apk
-size_bytes: 6165709
-sha256: f2fe30b68f7fca838e1597f4384ac897c8681f2609d9c2a2fbdcc8522169ac99
 package: dev.properpcloud.app
-version_code: 1
-version_name: 0.1.0-dev
+version_code: 1000
+version_name: 0.1.0
 minimum_sdk: 26
+compile_sdk: 37
 target_sdk: 36
-compile_sdk: 36
+size_bytes: 23822451
+sha256: c24832c85b9e0c57f7579a0ed4a46e28ee5e403b8a3bf6b54dddd66ba1440558
+signing: Android debug key
 ```
 
-The APK is a bootstrap shell, not a production-ready pCloud client. It proves the build, module boundaries, pCloud source adapter compilation, Media3 service integration, resources, manifest, and initial domain tests.
+## Honest external gates
 
-## Not yet verified
+The deterministic demo source is fully validated in public CI. The following
+cannot be inferred without maintainer-provided devices/accounts and remain
+explicit external gates:
 
-- Live pCloud OAuth and token restoration: requires a registered pCloud application and sandbox account.
-- Live EU and US account-region behavior.
-- Real folder browsing UI and folder-to-queue flow.
-- Media3 playback against expiring pCloud links and range seeking.
-- Room/DataStore migrations and process-death restoration.
-- Offline cache and content verification.
-- Metadata parsing and revision-safe remote writes.
-- Android instrumentation, accessibility, performance, battery, and Android Auto suites.
-- Linux client adapters and packaging.
+- live pCloud OAuth for US and EU accounts;
+- large private folder traversal and provider-specific codecs;
+- expired-link renewal against real pCloud capabilities;
+- account revocation and restoration;
+- physical-device TalkBack/large-font review;
+- Android 17 runtime compatibility;
+- production signing and store distribution.
 
-These gaps are tracked as implementation phases and release gates rather than represented as completed features.
+The checklist is in `docs/pcloud-setup.md`. Release language must preserve this
+distinction rather than claiming live-provider validation from fakes.

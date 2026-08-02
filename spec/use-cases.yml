@@ -242,3 +242,29 @@ use_cases:
         - Existing remote-only playback stops.
         - Retained verified offline files follow explicit user choice.
       tests: [TEST-AUTH-LOGOUT, TEST-LOGOUT-PLAYBACK, TEST-LOGOUT-CACHE]
+    UC-LINUX-PARITY:
+      traces: [REQ-LINUX-PARITY]
+      title: Continue the same folder-first library on native Linux
+      preconditions:
+        - Android 0.1.x queue, progress, identity, and source contracts are stable.
+        - mpv, Secret Service or KWallet, and a desktop browser are available.
+      flow:
+        - app: Load the same source-neutral contracts and pCloud java-core adapter.
+        - user: Authorize through the system browser without exposing credentials to the app UI.
+        - app: Browse folders, build deterministic queues, and inspect stable identities.
+        - platform: Play through supervised mpv JSON IPC and publish MPRIS state.
+        - app: Persist queue and progress in SQLite under XDG paths.
+        - user: Operate every queue and playback action by mouse, context menu, or keyboard.
+      compatibility:
+        - GNOME and KDE use their native secret-service implementation.
+        - i3 uses the same XDG, MPRIS, notification, and keyboard contracts without a desktop shell dependency.
+      failure:
+        missing_mpv: Explain the missing runtime dependency and preserve queue state.
+        secret_service_locked: Keep the account disconnected and offer retry after unlock.
+        crashed_player: Restart mpv once and resume from the latest confirmed position.
+      tests:
+        - TEST-LINUX-SHARED-CONTRACTS
+        - TEST-LINUX-MPV-IPC
+        - TEST-LINUX-MPRIS
+        - TEST-LINUX-SECRET-STORE
+        - TEST-LINUX-KEYBOARD

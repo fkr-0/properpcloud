@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 220" role="img" aria-labelledby="title desc">
+  <title id="title">properpcloud badger cloud</title>
+  <desc id="desc">A friendly geometric badger emerging from a violet cloud beside the properpcloud wordmark.</desc>
+  <rect width="720" height="220" rx="36" fill="#151218"/>
+  <g transform="translate(36 20)">
+    <circle cx="92" cy="92" r="72" fill="#6f5aa8"/>
+    <path d="M42 52 30 10 70 38ZM142 52 154 10 114 38Z" fill="#6f5aa8"/>
+    <path d="M78 22 60 132Q92 174 124 132L106 22Z" fill="#fef8ff"/>
+    <circle cx="64" cy="88" r="9" fill="#fef8ff"/>
+    <circle cx="120" cy="88" r="9" fill="#fef8ff"/>
+    <circle cx="92" cy="120" r="9" fill="#52c7c7"/>
+    <path d="M62 132Q92 158 122 132" fill="none" stroke="#52c7c7" stroke-width="8" stroke-linecap="round"/>
+    <path d="M14 170Q30 142 60 154 82 128 106 154 138 136 166 170Z" fill="#52c7c7"/>
+  </g>
+  <g fill="#fef8ff" font-family="system-ui, sans-serif">
+    <text x="230" y="104" font-size="58" font-weight="750">properpcloud</text>
+    <text x="234" y="146" font-size="21" fill="#d3c6f5">folder-first cloud audio · inspectable · badger-approved</text>
+  </g>
+</svg>

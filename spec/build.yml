@@ -16,9 +16,9 @@ build:
   toolchain:
     java:
       distribution: Eclipse Temurin
-      major: 17
-      container_base: eclipse-temurin:17
-      pinned_digest: sha256:b04a8c5d46e210873ffd1af6ad5f4d62c69ed3a6736993556eae60bba1373a23
+      major: 21
+      container_base: eclipse-temurin:21
+      pinned_digest: sha256:b9142586f9712700c6c9e07adcedfb18608b1a3a056e4001423a3354adfa9d80
       update_rule: Digest updates require a reviewed image build and complete verification run.
     gradle:
       version: 9.6.1
@@ -28,9 +28,10 @@ build:
     android:
       command_line_tools: 15859902
       command_line_tools_sha256: 4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583
-      compile_sdk: 36
+      compile_sdk: 37
       target_sdk: 36
-      build_tools: 36.0.0
+      build_tools: 37.0.0
+      policy: Compile with the current stable AndroidX baseline while keeping target SDK 36 until Android 17 compatibility validation completes.
       unnecessary_for_current_scope: [NDK, CMake, emulator inside build image]
     plugins:
       Android_Gradle_Plugin: 9.3.1
@@ -59,6 +60,7 @@ build:
     cache:
       local: project .cache/gradle ignored by Git
       toolchain_archive: project .cache/toolchain with resumable segmented download and SHA-256 gate
+      Robolectric_runtime: project .cache/robolectric with explicit Android 16 artifact and SHA-256 gate
       CI: content-addressed cache keyed by wrapper and Gradle scripts
       prohibited:
         - mount complete host home

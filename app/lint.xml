@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!--
+      Android 17/API 37 remains a preview runtime for this release. The project
+      compiles against API 37 for current AndroidX, but intentionally targets
+      stable API 36 until the protected Android 17 compatibility matrix passes.
+    -->
+    <issue id="OldTargetApi" severity="informational" />
+    <!-- Kotlin 2.3.21 is the version embedded by the selected Gradle toolchain. -->
+    <issue id="NewerVersionAvailable" severity="informational" />
+</lint>

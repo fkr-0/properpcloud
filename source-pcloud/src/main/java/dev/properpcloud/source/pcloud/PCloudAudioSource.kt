@@ -1,7 +1,9 @@
 package dev.properpcloud.source.pcloud
 
 import com.pcloud.sdk.ApiClient
+import com.pcloud.sdk.Authenticators
 import com.pcloud.sdk.DownloadOptions
+import com.pcloud.sdk.PCloudSdk
 import com.pcloud.sdk.RemoteEntry
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioSource
@@ -30,6 +32,15 @@ class PCloudAudioSource(
         require(parsed.kind == PCloudNodeKind.FOLDER) { "folder id required" }
 
         client.listFolder(parsed.numericId).execute().children().mapNotNull(::toMediaNode)
+    }
+
+    override suspend fun load(nodeId: NodeId): MediaNode = withContext(Dispatchers.IO) {
+        val parsed = PCloudNodeIds.parse(nodeId)
+        val entry = when (parsed.kind) {
+            PCloudNodeKind.FILE -> client.loadFile(parsed.numericId).execute()
+            PCloudNodeKind.FOLDER -> client.loadFolder(parsed.numericId).execute()
+        }
+        requireNotNull(toMediaNode(entry)) { "node is not playable audio or folder" }
     }
 
     override suspend fun resolveStream(trackId: NodeId): StreamHandle = withContext(Dispatchers.IO) {
@@ -110,7 +121,35 @@ class PCloudAudioSource(
             else -> null
         }
     }
+
 }
+
+data class PCloudSession(
+    val accessToken: String,
+    val apiHost: String,
+    val userId: Long,
+) {
+    init {
+        require(accessToken.isNotBlank()) { "access token must not be blank" }
+        require(apiHost in allowedPCloudApiHosts) { "unsupported pCloud API host" }
+        require(userId >= 0) { "invalid pCloud user id" }
+    }
+
+    override fun toString(): String =
+        "PCloudSession(accessToken=<redacted>, apiHost=$apiHost, userId=$userId)"
+}
+
+object PCloudSourceFactory {
+    fun create(session: PCloudSession): PCloudAudioSource {
+        val client = PCloudSdk.newClientBuilder()
+            .apiHost(session.apiHost)
+            .authenticator(Authenticators.newOAuthAuthenticator(session.accessToken))
+            .create()
+        return PCloudAudioSource(client)
+    }
+}
+
+val allowedPCloudApiHosts: Set<String> = setOf("api.pcloud.com", "eapi.pcloud.com")
 
 private val audioExtensions = setOf(
     "aac", "aiff", "alac", "flac", "m4a", "m4b", "mp3", "oga", "ogg", "opus", "wav", "wma",

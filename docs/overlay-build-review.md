@@ -67,7 +67,7 @@ Overlay Cam ends `sdkmanager` installation with `|| true`. This can cache an ima
 
 Overlay Cam installs CMake and the NDK despite being a Kotlin/Compose application. These packages substantially increase image size and download time.
 
-`properpcloud` installs only platform tools, platform 36, and build tools 36.0.0. Native components are added only when a reviewed module needs them.
+`properpcloud` installs only platform tools, platform 37.0, and build tools 37.0.0. Native components are added only when a reviewed module needs them. The app targets API 36 until Android 17 runtime compatibility validation completes.
 
 ### Two Gradle installations
 
@@ -116,11 +116,11 @@ Overlay Cam enables configure-on-demand, an older optimization with weaker relev
 
 ```text
 Dockerfile
-├── JDK 17 base
+├── JDK 21 base
 ├── checksum-verified Android command-line tools
 ├── platform-tools
-├── platform 36
-└── build-tools 36.0.0
+├── platform 37.0
+└── build-tools 37.0.0
 
 committed source
 ├── Gradle Wrapper 9.6.1

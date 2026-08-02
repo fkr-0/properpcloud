@@ -1,0 +1,83 @@
+release:
+  version: 0.1.0
+  tag: v0.1.0
+  date: 2026-08-02
+  status: validated_demo_release_with_external_provider_gate
+  license: MIT
+  source_revision: resolved by immutable tag v0.1.0
+  product:
+    Android:
+      feature_line: folder-first browse, queue, playback, persistence, inspection, settings
+      demo_source: deterministic local folders and generated PCM/WAV media
+      pCloud_source: official OAuth and Java SDK with user-provided client ID
+    Linux:
+      target_version: 0.2.0
+      status: specified_not_implemented
+  verification:
+    command: make ci
+    result: passed
+    Gradle:
+      actionable_tasks: 192
+      tests:
+        suites: 8
+        total: 21
+        failures: 0
+        errors: 0
+        skipped: 0
+      lint:
+        errors: 0
+        warnings: 0
+        informational:
+          NewerVersionAvailable: 1
+          OldTargetApi: 1
+    specifications:
+      documents: 10
+      requirements: 17
+      use_cases: 13
+    git_diff_check: passed
+  toolchain:
+    Java:
+      distribution: Eclipse Temurin
+      major: 21
+      base_digest: sha256:b9142586f9712700c6c9e07adcedfb18608b1a3a056e4001423a3354adfa9d80
+    container:
+      image_tag: properpcloud/android-build:2026.08
+      image_id: sha256:93420ccd18a67c7e3a72868111b7dcc24cd51e5dafb0a8003b41b10fe0d7d43a
+      size_bytes: 1187301285
+    Gradle:
+      version: 9.6.1
+      wrapper_sha256: 497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7
+    Android:
+      command_line_tools: 15859902
+      archive_sha256: 4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583
+      compile_sdk: 37
+      target_sdk: 36
+      build_tools: 37.0.0
+    Robolectric:
+      Android_runtime: 16-robolectric-13921718-i7
+      sha256: 16f1f751643d1d3d5592008846bbdfc1e57cff15e6ec303d26584de3b6ac25ec
+  artifact:
+    path: app/build/outputs/apk/debug/app-debug.apk
+    kind: installable_debug_signed_demo_APK
+    package: dev.properpcloud.app
+    version_code: 1000
+    version_name: 0.1.0
+    minimum_sdk: 26
+    compile_sdk: 37
+    target_sdk: 36
+    size_bytes: 23822451
+    sha256: c24832c85b9e0c57f7579a0ed4a46e28ee5e403b8a3bf6b54dddd66ba1440558
+    production_signed: false
+  external_validation:
+    live_pCloud_credentials_available: false
+    public_CI_credentials: none
+    status: outstanding
+    required_checklist: docs/pcloud-setup.md
+    release_language: Implementation validated with deterministic fixtures; live pCloud account validation outstanding.
+  known_gaps:
+    - production signing and store distribution
+    - physical-device TalkBack and large-font review
+    - Android 17 runtime compatibility matrix
+    - live pCloud US/EU, large-folder, codec, revocation, and expired-link validation
+    - full string extraction and localization
+    - offline pinning, Android Auto, metadata mutation, and native Linux client

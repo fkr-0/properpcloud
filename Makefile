@@ -4,12 +4,12 @@ SHELL := /usr/bin/env bash
 IMAGE ?= properpcloud/android-build:2026.08
 ANDROID_CMDLINE_TOOLS_VERSION ?= 15859902
 ANDROID_CMDLINE_TOOLS_SHA256 ?= 4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583
-ANDROID_PLATFORM ?= 36
-ANDROID_BUILD_TOOLS ?= 36.0.0
+ANDROID_PLATFORM ?= 37.0
+ANDROID_BUILD_TOOLS ?= 37.0.0
 
 export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
 
-.PHONY: help toolchain-archive image image-no-cache doctor wrapper-check spec release-check dependencies test lint build check ci shell compose install clean
+.PHONY: help toolchain-archive robolectric-runtime image image-no-cache doctor wrapper-check spec release-check release-artifacts dependencies test lint build check ci shell compose install clean
 
 help: ## Show available targets.
 	@awk 'BEGIN {FS = ":.*## "; printf "properpcloud targets:\n\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -18,6 +18,9 @@ toolchain-archive: ## Fetch and checksum-verify the resumable Android tools arch
 	@ANDROID_CMDLINE_TOOLS_VERSION=$(ANDROID_CMDLINE_TOOLS_VERSION) \
 	  ANDROID_CMDLINE_TOOLS_SHA256=$(ANDROID_CMDLINE_TOOLS_SHA256) \
 	  bash scripts/fetch-android-tools.sh
+
+robolectric-runtime: ## Fetch and checksum-verify the Android 16 JVM test runtime.
+	@bash scripts/fetch-robolectric-runtime.sh
 
 image: toolchain-archive ## Build the pinned Android SDK image with BuildKit.
 	DOCKER_BUILDKIT=1 docker build \
@@ -66,10 +69,13 @@ release-check: spec ## Validate SemVer, changelog, license, and Android version 
 	  $(IMAGE) \
 	  scripts/validate-release.py
 
+release-artifacts: ## Prepare versioned APK, checksums, evidence, and release notes.
+	@python3 scripts/prepare-release.py
+
 dependencies: ## Resolve dependencies without compiling production code.
 	@bash ./scripts/docker-run.sh dependencies
 
-test: ## Run JVM unit and module contract tests in Docker.
+test: robolectric-runtime ## Run JVM unit and module contract tests in Docker.
 	@bash ./scripts/docker-run.sh test
 
 lint: ## Run Android lint in Docker.
@@ -78,10 +84,10 @@ lint: ## Run Android lint in Docker.
 build: ## Build the debug APK in Docker.
 	@bash ./scripts/docker-run.sh :app:assembleDebug
 
-check: ## Run tests, lint, and debug assembly in one Gradle invocation.
+check: robolectric-runtime ## Run tests, lint, and debug assembly in one Gradle invocation.
 	@bash ./scripts/docker-run.sh test lint :app:assembleDebug
 
-ci: release-check ## Execute the complete hermetic CI verification set.
+ci: release-check robolectric-runtime ## Execute the complete hermetic CI verification set.
 	@bash ./scripts/docker-run.sh \
 	  --configuration-cache \
 	  --build-cache \

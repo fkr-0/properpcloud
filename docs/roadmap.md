@@ -1,60 +1,238 @@
-# Roadmap
+# properpcloud roadmap
 
-## Phase 0 — bootstrap
+The roadmap is release-oriented. A feature is complete only when its behavior,
+failure states, accessibility, persistence, tests, and release evidence are all
+complete. Dates are intentionally omitted; quality gates, not calendar pressure,
+determine publication.
 
-- [x] Verify public-source and API status.
-- [x] Select native API plus provider-neutral player architecture.
-- [x] Create Android multi-module build.
-- [x] Implement natural filename and disc/track queue ordering.
-- [x] Implement pCloud folder listing and renewable stream-link adapter.
-- [x] Seed Media3 background playback service.
+## `0.0.1` — validated architecture bootstrap
 
-## Phase 1 — minimum useful player
+Status: **released locally and tagged**.
 
-- [ ] Register the development OAuth application.
-- [ ] Wire `AuthorizationActivity` and encrypted token persistence.
-- [ ] Implement folder breadcrumb browser.
-- [ ] Add folder context actions: play, play next, append, recursive append.
-- [ ] Connect queue items to Media3 and refresh expired links.
-- [ ] Add now-playing → containing-folder navigation.
-- [ ] Persist queue and current item across process death.
-- [ ] Add unit tests with a fake `AudioSource` and integration tests with a disposable pCloud test tree.
+Completed:
 
-Acceptance test:
+- Semantic Versioning and immutable annotated tags;
+- MIT project license plus bundled Apache-2.0 dependency notices;
+- checksum-verified Docker/Gradle toolchain;
+- source-neutral folder, queue, progress, inspection, and stream contracts;
+- pCloud Java SDK and WebDAV adapter boundaries;
+- Media3 service bootstrap;
+- normative product, UX, test, build, release, and Linux specifications;
+- green specification, unit-test, lint, and debug-APK gate.
 
-```text
-Open /Audiobooks/Book A → enqueue folder → play chapter 1 → close app → reopen →
-resume position → open containing folder from player → chapter order remains 1,2,…,10.
+The `v0.0.1` tag is the immutable baseline and must never be moved.
+
+## `0.1.0` — first validated Android client
+
+Status: **implementation and release preparation in progress**.
+
+### Product promise
+
+`0.1.0` is a usable Android application even without provider credentials. It
+ships a deterministic, locally generated demo library so every browser, queue,
+playback, persistence, and responsive-UI flow can be validated in CI and by a
+reviewer. Users who provide their own pCloud application client ID can authorize
+through pCloud's trusted surface and use the same folder-first workflow against
+their account.
+
+### Feature-complete scope
+
+#### Identity and source handling
+
+- [x] Folder/file identity remains source ID plus stable node ID.
+- [x] Built-in deterministic demo source requires no network or credentials.
+- [x] Native pCloud source uses the official Java SDK.
+- [x] OAuth uses the official Android authorization activity.
+- [x] Access tokens are encrypted with Android Keystore AES-GCM.
+- [x] Only documented US/EU API hosts are accepted.
+- [x] Passwords, signed stream URLs, and tokens are never persisted or logged.
+- [x] Disconnect removes the local encrypted session immediately.
+
+#### Folder-first library UX
+
+- [x] Compact bottom navigation and expanded navigation rail.
+- [x] Folder breadcrumbs based on stable IDs.
+- [x] Folder and track rows preserve filename context.
+- [x] Natural filename, disc/track, tagged-title, and modified-time sorting.
+- [x] Loading, refresh, empty, error, demo, connected, and partial-result states.
+- [x] Metadata/identity inspection with secrets redacted.
+- [x] One-action navigation from player or queue to containing folder.
+- [x] Dynamic system color plus a custom badger/cloud visual identity.
+
+#### Queue semantics
+
+- [x] Play/replace, play-next, and append for tracks.
+- [x] Direct-folder and recursive-subtree queue construction.
+- [x] Atomic queue replacement; empty or cancelled scans preserve the old queue.
+- [x] Stable-ID duplicate collapse and deterministic ordering.
+- [x] Partial traversal records readable omissions rather than silently skipping.
+- [x] Select, remove, move-up, move-down, and clear operations.
+- [x] Queue order and selected item survive process death.
+
+#### Playback and progress
+
+- [x] Media3 `MediaSessionService` and system media controls.
+- [x] Stable media IDs; direct links resolved immediately before playback.
+- [x] One bounded link refresh on eligible HTTP 401/403 expiry responses.
+- [x] Play/pause, previous/next, ±15/30-second seek, timeline, and mini-player.
+- [x] Progress checkpoints and revision-ready progress identity.
+- [x] Smart rewind after interruptions and completion threshold policy.
+- [x] Generated PCM/WAV demo media exercises real ExoPlayer decoding.
+
+#### Privacy, accessibility, and distribution
+
+- [x] No analytics, mandatory backend, or cleartext network traffic.
+- [x] Tokens and app data excluded from Android backup/device transfer.
+- [x] Content descriptions, deterministic TalkBack order, and non-color state text.
+- [x] Keyboard/non-drag alternatives for queue reorder.
+- [x] In-app version, license, dependency notice, and privacy summary.
+- [ ] Complete string-resource extraction and localization-ready formatting.
+- [ ] Automated large-font and compact/expanded screenshot review.
+- [ ] Manual TalkBack pass on a physical or virtual device.
+
+### Automated release gates
+
+Every item below is release-blocking:
+
+```yaml
+release_gates:
+  metadata:
+    - make release-check
+    - VERSION == 0.1.0
+    - CHANGELOG contains dated 0.1.0 section
+    - tag v0.1.0 resolves exactly to release commit
+  static:
+    - duplicate-key-safe YAML validation
+    - git diff --check
+    - Android lint has no error or warning findings
+  tests:
+    - pure queue/progress/sort/identity unit tests
+    - pCloud session/host validation tests
+    - deterministic demo-source and WAV tests
+    - DataStore queue/progress round-trip tests
+    - Robolectric Compose compact and expanded navigation tests
+    - process-death reconstruction test with stable queue references
+  build:
+    - pinned Docker image
+    - Eclipse Temurin JDK 21 for Android 16 Robolectric compatibility
+    - compile SDK 37, target SDK 36
+    - debug/demo APK assembly
+    - release APK assembly with external signing boundary documented
+  evidence:
+    - APK SHA-256
+    - toolchain image ID
+    - JUnit and lint summary
+    - third-party notices present in source and APK
 ```
 
-## Phase 2 — long-form usability
+### External validation gate
 
-- [ ] Room-backed per-file progress and completion state.
-- [ ] Playback speed, sleep timer, skip intervals, bookmarks.
-- [ ] Folder-level audiobook grouping and cover selection.
-- [ ] Android Auto / media browser hierarchy.
-- [ ] Offline pinning with bounded cache and explicit storage accounting.
+No CI credential is embedded. Before describing the pCloud path as live-validated,
+a maintainer must run the protected sandbox checklist with a registered pCloud
+application and disposable test account:
 
-## Phase 3 — library control without tag coercion
+1. authorize US and EU regional accounts;
+2. browse at least three nested folders and a folder above 500 entries;
+3. play and seek an MP3, M4A/M4B, FLAC, Ogg/Opus, and WAV where account data permits;
+4. invalidate or age a direct link and verify bounded renewal at the same position;
+5. deny, cancel, disconnect, revoke, and restore authorization;
+6. kill the process during browse, queue construction, and playback;
+7. verify no token or signed URL in logs, backups, reports, or persisted state.
 
-- [ ] Folder whitelist/blacklist rules.
-- [ ] Custom tabs as saved folder roots and filters.
-- [ ] Sort/group by filename, path, tag track, disc, title, duration, or date.
-- [ ] Raw metadata inspector and conflict display.
-- [ ] Incremental updates through pCloud `diff`.
+Until this checklist has evidence, release notes must say **implementation
+validated with deterministic fakes; live pCloud account validation outstanding**.
 
-## Phase 4 — safe metadata repair
+### Deferred beyond `0.1.0`
 
-- [ ] Pluggable metadata providers.
-- [ ] Candidate matching with confidence and provenance.
-- [ ] Per-file and batch dry-run diffs.
-- [ ] Revision-aware write-back with post-upload verification.
-- [ ] Undo using pCloud revisions where possible.
+- verified offline file pinning and storage quotas;
+- saved-root tabs and whitelist/blacklist policy editor;
+- embedded-tag parsing and safe metadata mutation;
+- Android Auto browse hierarchy;
+- bookmarks, sleep timer, variable speed policy, and aggregate book progress;
+- cross-device progress synchronization.
 
-## Phase 5 — ecosystem
+## `0.2.0` — native Linux desktop parity
 
-- [ ] WebDAV adapter.
-- [ ] Android Storage Access Framework / DocumentsProvider adapter.
-- [ ] Local filesystem source.
-- [ ] Extract reusable pCloud Media3 data source or URL resolver library.
-- [ ] F-Droid reproducible build and privacy declaration.
+Status: **specified; implementation starts after Android `0.1.x` semantics are stable**.
+
+`0.2.0` is not an Android feature bucket. It delivers a native Linux desktop
+client with parity for the complete `0.1.0` semantic contract.
+
+### Reuse boundary
+
+Shared without Android dependencies:
+
+- source/node identity and folder model;
+- sorting, queue reducer, recursive assembler, omission model;
+- progress, completion, and smart-rewind policy;
+- pCloud `java-core` adapter and source contract tests;
+- serialized queue/progress records and migration fixtures;
+- redaction, error taxonomy, and inspection records.
+
+Native Linux adapters:
+
+- Compose Multiplatform Desktop UI;
+- system-browser OAuth and Secret Service/KWallet storage;
+- SQLite persistence under XDG paths;
+- mpv JSON IPC playback with expiring-link renewal;
+- MPRIS, media keys, notifications, and desktop file integration.
+
+### Desktop product gates
+
+```yaml
+0_2_0_parity:
+  library:
+    - folder tree, breadcrumbs, search scope, and raw filename context
+    - same sort behavior and containing-folder navigation as Android
+  queue:
+    - same reducer fixtures and queue snapshot format
+    - mouse, keyboard, and context-menu operations
+  playback:
+    - mpv process supervision
+    - MPRIS controls and position
+    - crash/restart resumes from durable queue and progress
+  security:
+    - token only in Secret Service/KWallet
+    - private IPC socket under XDG_RUNTIME_DIR
+    - no signed URL in command history, logs, or playlist files
+  accessibility:
+    - full keyboard operation
+    - no drag-only action
+    - semantic accessibility bridge and high-contrast review
+  packaging:
+    - Gradle distribution and Arch package
+    - Flatpak with browser/secret-service/mpv portal review
+  compatibility:
+    - GNOME, KDE Plasma, and i3 validation
+```
+
+The detailed architecture is in `spec/linux-client.yml` and
+`docs/linux-client.md`.
+
+## `0.3.0` — durable offline and long-form power features
+
+- verified file/folder/subtree pinning and cache accounting;
+- saved roots, custom tabs, whitelist/blacklist rules;
+- variable speed, sleep timer, bookmarks, and aggregate progress;
+- Android Auto and richer external media browsing;
+- optional local/FUSE source.
+
+## `0.4.0` — transparent metadata intelligence
+
+- embedded metadata parsing with raw/normalized/effective views;
+- filename/path inference and explicit external-provider consent;
+- candidate confidence/provenance and dry-run field diffs;
+- no remote writes.
+
+## `0.5.0` — revision-safe metadata maintenance
+
+- staged edits against an expected revision/hash;
+- decode and tag validation before upload;
+- post-upload readback verification;
+- conflict handling, audit trail, and recovery revision.
+
+## `1.0.0` — stable cross-platform contract
+
+`1.0.0` requires stable migrations, documented public contracts, Android and
+Linux release lines, complete privacy/security review, reproducible signed
+artifacts, and compatibility guarantees for queue/progress/source records.

@@ -63,6 +63,8 @@ interface AudioSource {
 
     suspend fun list(folderId: NodeId): List<MediaNode>
 
+    suspend fun load(nodeId: NodeId): MediaNode
+
     suspend fun resolveStream(trackId: NodeId): StreamHandle
 
     suspend fun inspect(nodeId: NodeId): NodeInspection

@@ -9,15 +9,17 @@ syncDir:
 agent:
   notes: |
     Keep provider-specific code behind core-model interfaces. Never commit OAuth tokens,
-    pCloud passwords, app secrets, local.properties, APKs, or downloaded media.
+    pCloud passwords, app secrets, signed stream URLs, local.properties, APKs, or private media.
+    VERSION is canonical; published tags are immutable. make ci is the merge/release gate.
   tasks:
-    - Wire pCloud OAuth AuthorizationActivity and encrypted token storage.
-    - Implement the folder browser and folder-to-queue interaction.
-    - Persist playback progress and source filters with Room/DataStore.
+    - Complete protected live pCloud US/EU account validation with disposable credentials.
+    - Run physical-device TalkBack, large-font, codec, and process-death validation.
+    - Implement native Linux 0.2.0 parity using shared Kotlin contracts and mpv.
   changelog:
-    - Bootstrapped a multi-module Android project with Media3 and pCloud SDK adapters.
-    - Added normative product, architecture, UX, testing, build, DoD, and Linux-client specifications.
-    - Added a checksum-verified Docker/Gradle build and passed the complete CI gate.
+    - Released and tagged the verified architecture bootstrap as 0.0.1.
+    - Implemented the adaptive Compose Android 0.1.0 client with deterministic demo media.
+    - Added encrypted pCloud OAuth, durable queue/progress, JIT Media3 links, and expanded tests.
+    - Added tag-driven GitHub releases, artifact evidence, attestations, and repository health files.
 
 commands:
   image:
@@ -32,14 +34,20 @@ commands:
     cwd: .
     timeoutMs: 300000
     run: ["make", "doctor"]
-  test:
-    description: Run JVM unit and contract tests in Docker
+  release-check:
+    description: Validate SemVer, changelog, license, specs, and package version agreement
     category: test
     cwd: .
-    timeoutMs: 900000
+    timeoutMs: 300000
+    run: ["make", "release-check"]
+  test:
+    description: Run JVM, provider, persistence, and Robolectric Compose tests in Docker
+    category: test
+    cwd: .
+    timeoutMs: 1200000
     run: ["make", "test"]
   build:
-    description: Build the debug APK in Docker
+    description: Build the installable debug/demo APK in Docker
     category: build
     cwd: .
     timeoutMs: 900000
@@ -51,11 +59,17 @@ commands:
     timeoutMs: 900000
     run: ["make", "lint"]
   ci:
-    description: Run tests, lint, and debug assembly in Docker
+    description: Run release metadata, specs, tests, lint, and APK assembly
     category: test
     cwd: .
-    timeoutMs: 1200000
+    timeoutMs: 1800000
     run: ["make", "ci"]
+  release-artifacts:
+    description: Create versioned APK, checksums, evidence, and GitHub release notes
+    category: build
+    cwd: .
+    timeoutMs: 300000
+    run: ["make", "release-artifacts"]
   list:
     description: List project files
     category: custom

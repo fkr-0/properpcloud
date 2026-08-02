@@ -24,10 +24,18 @@ jobs:
       - name: Cache Gradle data
         uses: actions/cache@v5
         with:
-          path: .cache/gradle
+          path: |
+            .cache/gradle
+            .cache/robolectric
           key: gradle-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', 'gradle/libs.versions.toml', '**/*.gradle.kts') }}
           restore-keys: |
             gradle-${{ runner.os }}-
+
+      - name: Fetch verified Android tools archive
+        run: make toolchain-archive
+
+      - name: Fetch verified Robolectric runtime
+        run: make robolectric-runtime
 
       - name: Build Android toolchain image
         uses: docker/build-push-action@v7

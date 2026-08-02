@@ -1,123 +1,199 @@
+<p align="center">
+  <img src="docs/assets/properpcloud-badger.svg" alt="properpcloud badger cloud" width="720">
+</p>
+
 # properpcloud
 
 Folder-first Android audio playback for pCloud and other file-oriented sources.
 
-The project exists because an audio collection is often already organised correctly in the filesystem. A player should not destroy that structure by forcing every file through unreliable tag-derived artist/album/song views.
-
-> Working title. This project is independent and is not affiliated with or endorsed by pCloud AG.
-
-[![Version](https://img.shields.io/badge/version-0.0.1-59636e)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.0-59636e)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
 
-## Decision
+Audio libraries are often already organized correctly in folders. properpcloud
+keeps that structure visible instead of forcing every file through unreliable
+artist/album/song tags.
 
-The official pCloud Android application does not appear to have a publicly available source repository. The official pCloud Java/Android SDK is public, Apache-2.0 licensed, and actively maintained. pCloud also documents a full HTTP/JSON API, OAuth 2.0, expiring direct file links, folder listing, and incremental filesystem changes.
+> Independent software. Not affiliated with or endorsed by pCloud AG.
 
-Therefore `properpcloud` does **not** reverse-engineer or patch the proprietary application. It builds a small source-neutral player around:
+## What `0.1.0` provides
 
-1. a folder/file domain model;
-2. a native pCloud adapter using the official SDK;
-3. Media3 playback with renewable stream URLs;
-4. optional WebDAV and Android DocumentsProvider adapters;
-5. separately upstreamable improvements to the SDK and suitable FOSS players.
+- adaptive Material 3 Android UI with compact and expanded layouts;
+- stable-ID folder navigation and breadcrumbs;
+- natural filename, disc/track, title, and modification-time sorting;
+- track, folder, and recursive-subtree queue actions;
+- atomic replace/play-next/append semantics with cancellation and partial-result reporting;
+- queue reorder, removal, selection, persistence, and containing-folder navigation;
+- Media3 background playback, system controls, seeking, and smart resume;
+- just-in-time pCloud stream-link resolution with one bounded expiry retry;
+- encrypted pCloud OAuth token storage using Android Keystore AES-GCM;
+- raw provider/identity inspection without exposing secrets;
+- a deterministic built-in demo library with generated WAV audio.
 
-## User-facing contract
+The demo source is not a screenshot mode. It exercises the real browser, queue,
+persistence, Media3 service, decoder, and responsive UI without credentials,
+network access, or private fixtures.
 
-The first useful release must provide:
+## First run
 
-- browse pCloud by folder;
-- enqueue one folder or a recursive subtree;
-- jump from the player back to the containing folder;
-- sort by natural filename, disc/track number, title, or modification time;
-- persist progress for long recordings and audiobooks;
-- whitelist or blacklist source folders;
-- inspect raw filename, path, pCloud metadata, detected tags, and effective sort keys.
+1. Install the APK and open **Demo library**.
+2. Browse folders and play tracks immediately.
+3. To use pCloud, create a pCloud application, copy its client ID, and enter it
+   under **Settings → pCloud OAuth**.
+4. Authorize on pCloud's trusted surface. properpcloud never asks for the account
+   password.
 
-Metadata repair and remote tag writing are deliberately later features because they mutate user files and require careful revision/rollback handling.
+Detailed setup and validation instructions are in `docs/pcloud-setup.md`.
 
-## Repository state
+## Security and privacy model
 
-This bootstrap contains a verified multi-module Android project, a Media3 playback service seed, a source-neutral queue model, and a native pCloud adapter for listing folders and resolving direct stream links. Authentication UI and the production browser are the next implementation slice.
-
-The code is accompanied by a normative YAML specification suite covering product scope, use cases, architecture, interfaces, UX, tests, build rules, release DoDs, and the Linux client. The Docker-backed `make ci` gate passes; exact toolchain, test, lint, image, and APK evidence is recorded in `docs/verification.md`.
-
-## Structure
-
-```text
-properpcloud/
-├── app/                    Android shell and Media3 service
-├── core-model/             source-neutral file, queue, sort, and stream contracts
-├── source-pcloud/          official pCloud SDK adapter
-├── source-webdav/          fallback/interoperability configuration
-├── docs/
-│   ├── architecture.md
-│   ├── system-design.md
-│   ├── linux-client.md
-│   ├── overlay-build-review.md
-│   ├── verification.md
-│   ├── research.md
-│   ├── roadmap.md
-│   ├── upstreaming.md
-│   └── adr/
-├── spec/                   normative YAML contracts and DoDs
-├── Dockerfile
-├── compose.yaml
-├── Makefile
-├── build.gradle.kts
-├── settings.gradle.kts
-└── bridge.yml
+```yaml
+credentials:
+  password_collection: never
+  OAuth_token: Android_Keystore_AES_GCM
+  backup: excluded
+network:
+  cleartext: disabled
+  signed_stream_URLs:
+    resolved: immediately_before_playback
+    persisted: never
+backend:
+  mandatory_properpcloud_service: false
+telemetry:
+  analytics: none
+  advertising: none
 ```
+
+Only pCloud's documented regional API hosts are accepted:
+
+- `api.pcloud.com`
+- `eapi.pcloud.com`
+
+See `SECURITY.md`, `docs/privacy.md`, and `THIRD_PARTY_NOTICES.md`.
+
+## Validation status
+
+Public CI validates:
+
+- YAML product/architecture/test/release traceability;
+- SemVer, changelog, license, and Android package agreement;
+- queue, traversal, cancellation, progress, identity, and provider contracts;
+- deterministic demo-source and generated-WAV behavior;
+- DataStore queue/progress round trips;
+- Robolectric Compose compact navigation and rendering;
+- Android lint with zero errors and zero warnings;
+- debug APK assembly in the pinned Docker toolchain.
+
+Live pCloud account validation is deliberately separate because public CI has no
+provider credentials. The maintainer checklist covers US/EU accounts, large
+folders, codecs, revocation, process death, and expired links. Until that
+checklist has evidence, release notes state that the implementation is validated
+with deterministic fixtures while live-provider validation remains outstanding.
+
+The published APK is debug-signed and suitable for evaluation. Production signing
+keys remain outside the repository and Docker layers.
 
 ## Build
 
 Requirements:
 
-- JDK 17 or newer supported by the selected Gradle release;
 - Docker with BuildKit;
-- Android SDK platform 36 and build tools 36.0.0 are supplied by the project image;
-- host `adb` only when installing to a device.
+- host `adb` only for installation/device inspection.
+
+The container supplies:
+
+```yaml
+Java: Eclipse Temurin 21
+Gradle: 9.6.1
+Android_compile_SDK: 37
+Android_target_SDK: 36
+Android_build_tools: 37.0.0
+```
+
+API 37 is used to compile current stable AndroidX libraries; target API remains
+36 until the protected Android 17 runtime compatibility matrix passes.
 
 ```sh
 make image
 make doctor
+make release-check
 make test
 make lint
 make build
+# or the complete merge/release gate:
+make ci
 ```
 
-The build runs through the committed Gradle Wrapper inside the pinned Android toolchain container. Host `adb` remains responsible for device installation through `make install`.
+Install through host ADB:
 
-No pCloud credentials are needed for compilation or unit tests. Runtime OAuth setup is documented in `docs/architecture.md`.
+```sh
+make install
+```
 
-## Versions
+Prepare versioned checksums, release notes, and evidence after a green build:
 
-- `0.0.1` is the verified architecture and build bootstrap.
-- `0.1.0` is the first validated Android end-user release target.
-- `0.2.0` adds a native Linux desktop client with feature parity.
+```sh
+make release-artifacts
+```
 
-The canonical version is stored in `VERSION`; release policy and Android
-version-code mapping are documented in `docs/versioning.md`.
+## Repository structure
+
+```text
+properpcloud/
+├── app/                    Compose UI, encrypted credentials, persistence, Media3
+├── core-model/             source-neutral identity, queue, progress, sorting
+├── source-pcloud/          official pCloud java-core adapter
+├── source-webdav/          optional interoperability boundary
+├── docs/                   design, setup, privacy, roadmap, releases
+├── spec/                   normative YAML contracts and release DoDs
+├── scripts/                verified downloads, spec/release checks, artifacts
+├── .github/workflows/      CI and tag-driven release publication
+├── Dockerfile
+├── Makefile
+├── VERSION
+└── CHANGELOG.md
+```
+
+## Release line
+
+| Version | Contract |
+|---|---|
+| `0.0.1` | Verified architecture/build bootstrap |
+| `0.1.x` | Validated Android folder-first client |
+| `0.2.x` | Native Linux desktop client with Android feature parity |
+| `1.0.0` | Stable cross-platform contracts and migrations |
+
+`VERSION` is canonical. See `docs/versioning.md` and `CHANGELOG.md`.
+
+## Linux `0.2.0`
+
+The desktop client is specified as native Linux software, not an Android wrapper:
+
+- shared Kotlin/JVM domain and pCloud java-core adapter;
+- Compose Multiplatform Desktop;
+- mpv JSON IPC playback;
+- SQLite persistence;
+- Secret Service or KWallet credentials;
+- MPRIS, media keys, notifications, and XDG paths;
+- GNOME, KDE Plasma, and i3 validation.
+
+See `docs/linux-client.md`, `spec/linux-client.yml`, and `docs/roadmap.md`.
 
 ## Design index
 
-- `spec/manifest.yml` — normative specification index and invariants
-- `spec/product.yml` — complete feature set and quality attributes
-- `spec/use-cases.yml` — user journeys, alternatives, and acceptance references
-- `spec/architecture.yml` — layers, module graph, data flows, and security boundaries
-- `spec/contracts.yml` — ports, commands, records, events, persistence, and errors
-- `spec/ux.yml` — Android and desktop interaction and accessibility design
-- `spec/testing.yml` — fixtures, fault injection, contract suites, and release gates
-- `spec/definition-of-done.yml` — feature and release completion rules
-- `spec/build.yml` — Docker, Gradle, CI, cache, and supply-chain contract
-- `spec/linux-client.yml` — desktop reuse and implementation plan
-- `docs/system-design.md` — architecture narrative
-- `docs/linux-client.md` — desktop design narrative
-- `docs/overlay-build-review.md` — inspected strengths and corrected weaknesses
-- `docs/verification.md` — exact build, test, lint, image, and APK evidence
+- `spec/manifest.yml` — normative index and invariants
+- `spec/product.yml` — release feature sets and quality attributes
+- `spec/use-cases.yml` — complete and failure-path user journeys
+- `spec/architecture.yml` — layers, dependencies, data flows, security
+- `spec/contracts.yml` — ports, records, persistence, events, errors
+- `spec/ux.yml` — Android and Linux interaction/accessibility behavior
+- `spec/testing.yml` — fixtures, fault injection, and release gates
+- `spec/definition-of-done.yml` — feature/release completion rules
+- `spec/build.yml` — Docker, Gradle, CI, cache, and supply chain
+- `spec/linux-client.yml` — native desktop parity architecture
+- `docs/roadmap.md` — release-oriented implementation roadmap
 
 ## Licensing
 
-Original code in this repository is MIT licensed. Runtime dependencies retain
-their own licenses, including Apache-2.0 components listed in
-`THIRD_PARTY_NOTICES.md`. Code copied from a copyleft player must remain in a
-separately licensed module or fork; none is copied in this bootstrap.
+Original code is licensed under MIT. Dependencies retain their own licenses,
+including Apache-2.0 components listed in `THIRD_PARTY_NOTICES.md` and bundled
+with the APK. No copyleft player code is copied into this repository.
