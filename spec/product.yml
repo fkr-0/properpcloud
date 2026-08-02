@@ -90,6 +90,10 @@ product:
       name: reviewed-tag-studio-and-safe-export
       requirements:
         - REQ-METADATA-FOUNDATION
+    v0_1_4:
+      name: ordinary-oauth-onboarding-and-revocation
+      requirements:
+        - REQ-AUTH
     v0_2:
       name: native-linux-feature-parity
       requirements: [REQ-LINUX-PARITY]
@@ -138,17 +142,22 @@ product:
         - credentials or fingerprints in logs and release evidence
     REQ-AUTH:
       priority: must
-      release: mvp_0_1
+      release: v0_1_4
       title: Native pCloud OAuth session
       behaviors:
+        - Published builds bundle the public properpcloud client ID; ordinary users never create a provider app.
+        - Developer builds may override the bundled public client ID explicitly.
+        - Release publication fails closed when no bundled client ID is configured.
         - Authorize in a trusted provider or system surface.
         - Persist bearer token in platform secret storage.
         - Persist non-secret regional API location and account identity separately.
         - Restore sessions without collecting an account password.
         - Disconnect immediately locally and attempt remote revocation when supported.
+        - Surface local removal and remote revocation as separate outcomes.
       forbidden:
         - tokens in logs, backups, crash reports, exported settings, or UI
         - password collection for native API authentication
+        - client secrets in source, BuildConfig, CI variables, or release artifacts
     REQ-BROWSE:
       priority: must
       release: mvp_0_1

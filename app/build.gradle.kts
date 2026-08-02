@@ -11,6 +11,28 @@ val appVersion = providers
     .get()
     .trim()
 
+val pCloudClientId = providers
+    .gradleProperty("pcloudClientId")
+    .orElse(providers.environmentVariable("PCLOUD_CLIENT_ID"))
+    .getOrElse("")
+    .trim()
+
+require(pCloudClientId.none(Char::isISOControl)) {
+    "pCloud client ID must not contain control characters"
+}
+
+fun buildConfigString(value: String): String = buildString {
+    append('"')
+    value.forEach { character ->
+        when (character) {
+            '\\' -> append("\\\\")
+            '"' -> append("\\\"")
+            else -> append(character)
+        }
+    }
+    append('"')
+}
+
 fun androidVersionCode(version: String): Int {
     val core = version.substringBefore('-').substringBefore('+')
     val parts = core.split('.')
@@ -30,6 +52,7 @@ android {
         targetSdk = libs.versions.target.sdk.get().toInt()
         versionCode = androidVersionCode(appVersion)
         versionName = appVersion
+        buildConfigField("String", "PCLOUD_CLIENT_ID", buildConfigString(pCloudClientId))
     }
 
     compileOptions {

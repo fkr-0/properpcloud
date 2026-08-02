@@ -12,8 +12,8 @@ agent:
     pCloud passwords, app secrets, signed stream URLs, local.properties, APKs, or private media.
     VERSION is canonical; published tags are immutable. make ci is the merge/release gate.
   tasks:
-    - Complete protected live pCloud US/EU account validation with disposable credentials.
-    - Complete the remaining documented 0.1.x lifecycle and controller hardening items.
+    - Register the properpcloud pCloud application, set PCLOUD_CLIENT_ID, and run protected US/EU OAuth/logout validation.
+    - Complete the 0.1.5 Android semantic-freeze lifecycle and controller hardening matrix.
     - Add artwork and optional local Chromaprint/AcoustID adapters after provider-term review.
     - Implement remote replacement only when pCloud exposes an atomic expected-revision primitive.
     - Run physical-device TalkBack, large-font, codec, and process-death validation.
@@ -29,6 +29,7 @@ agent:
     - Released v0.1.1 with green Android and release workflows.
     - Prepared 0.1.2 with a first-class player, staged tag tooling, batch plans, and MusicBrainz foundations.
     - Prepared 0.1.3 with Tag studio, reviewed batch editing, exact pCloud staging, and verified exports.
+    - Prepared 0.1.4 with bundled application identity, one-tap OAuth, and local-first remote token revocation.
 
 commands:
   image:

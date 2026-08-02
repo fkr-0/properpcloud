@@ -6,7 +6,7 @@
 
 Folder-first Android audio playback for pCloud and other file-oriented sources.
 
-[![Version](https://img.shields.io/badge/version-0.1.3-59636e)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.4-59636e)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
 
 Audio libraries are often already organized correctly in folders. properpcloud
@@ -15,7 +15,7 @@ artist/album/song tags.
 
 > Independent software. Not affiliated with or endorsed by pCloud AG.
 
-## What `0.1.3` provides
+## What `0.1.4` provides
 
 - adaptive Material 3 Android UI with compact and expanded layouts;
 - stable-ID folder navigation and breadcrumbs;
@@ -27,6 +27,9 @@ artist/album/song tags.
 - a first-class now-playing screen with seek timeline, queue context, and folder reveal;
 - just-in-time pCloud stream-link resolution with one bounded expiry retry;
 - encrypted pCloud OAuth token storage using Android Keystore AES-GCM;
+- normal pCloud OAuth sign-in using a release-bundled public application ID, with an
+  advanced custom-ID override for personal builds;
+- local-first disconnect followed by typed provider-side token invalidation;
 - raw provider/identity inspection without exposing secrets;
 - a complete in-app Tag studio with original/provenance display, field drafts, explicit
   MusicBrainz review, common-field batch edits, and deterministic track sequencing;
@@ -45,10 +48,11 @@ network access, or private fixtures.
 1. Install the APK and open **Demo library**.
 2. Browse folders and play tracks immediately. Open a track's menu and choose
    **Edit tags**, or select several tracks for **Edit batch**.
-3. To use pCloud, create a pCloud application, copy its client ID, and enter it
-   under **Settings → pCloud OAuth**.
+3. Choose **Settings → pCloud account → Sign in to pCloud**. Published builds carry
+   properpcloud's public application identity, so ordinary users do not create an app,
+   copy a token, or paste a client ID.
 4. Authorize on pCloud's trusted surface. properpcloud never asks for the account
-   password.
+   password. Personal/test builds may set a custom client ID under **Advanced setup**.
 
 Detailed setup and validation instructions are in `docs/pcloud-setup.md`.
 The modern-player design is in `docs/ux-modernization.md`; metadata architecture,

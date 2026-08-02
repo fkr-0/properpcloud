@@ -29,6 +29,7 @@ import dev.properpcloud.core.model.TagField
 import dev.properpcloud.core.model.TrackSortKey
 import dev.properpcloud.core.model.TrackSortPolicy
 import dev.properpcloud.source.pcloud.PCloudSession
+import dev.properpcloud.source.pcloud.PCloudRevocationResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -726,16 +727,36 @@ class MainViewModel(
     }
 
     fun disconnectPCloud() {
-        container.sources.disconnectPCloud()
+        val hadPCloudQueue = _state.value.queue.entries.any { it.track.sourceId.value == SourceKind.PCLOUD.id }
+        if (hadPCloudQueue) {
+            playbackConnection.clearQueue()
+            val clearedQueue = PlaybackQueue(generation = _state.value.queue.generation + 1)
+            _state.value = _state.value.copy(queue = clearedQueue)
+            viewModelScope.launch { container.preferences.saveQueue(clearedQueue) }
+        }
+        val session = container.sources.disconnectPCloudLocally()
         _state.value = _state.value.copy(
             sourceKind = SourceKind.DEMO,
             sourceName = "Demo library",
             pCloudConnected = false,
-            message = "pCloud session removed from this device.",
+            message = if (hadPCloudQueue) {
+                "pCloud session and active cloud queue removed. Revoking provider access…"
+            } else {
+                "pCloud session removed from this device. Revoking provider access…"
+            },
         )
         viewModelScope.launch {
             container.preferences.updateSource(SourceKind.DEMO)
             openRoot()
+            val revocation = session?.let { container.pCloudSessionRevoker.revoke(it) }
+            _state.value = _state.value.copy(
+                message = when (revocation) {
+                    PCloudRevocationResult.Revoked -> "Disconnected. pCloud confirmed that the access token was invalidated."
+                    PCloudRevocationResult.AlreadyInactive -> "Disconnected. The pCloud access token was already inactive."
+                    is PCloudRevocationResult.Failed -> "Disconnected locally, but pCloud could not confirm remote token invalidation. You can revoke the app from pCloud account security settings."
+                    null -> "pCloud session removed from this device. No active token was available for remote invalidation."
+                },
+            )
         }
     }
 

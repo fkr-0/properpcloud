@@ -3,18 +3,39 @@
 properpcloud uses pCloud's official OAuth surface and Java/Android SDK. It does
 not collect an account password.
 
-## Create an application
+## Normal user sign-in
+
+A published properpcloud build contains the project's public pCloud application
+client ID. Open **Settings → pCloud account** and choose **Sign in to pCloud**.
+Authentication and consent happen on pCloud's official authorization page. The
+approved token returns directly to properpcloud and is encrypted locally; users
+do not copy or paste access tokens.
+
+A client ID identifies the application. It is not tied to the user's account,
+cannot be discovered from that account, is not a password, and is not a client
+secret.
+
+## Maintainer release setup
 
 1. Sign in to pCloud's developer console.
-2. Create an application for personal/testing use.
-3. Record the public client ID. A client ID identifies the application; it is
-   not an account password or a client secret.
-4. Install properpcloud and open **Settings → pCloud OAuth**.
-5. Paste the client ID and choose **Connect pCloud**.
-6. Complete authorization on pCloud's surface.
+2. Create the properpcloud application.
+3. Register the redirect URI `pcloud-oauth://dev.properpcloud.app`.
+4. Enable **Allow implicit grant**, as required by pCloud's Android SDK token flow.
+5. Record the public client ID as the GitHub repository variable
+   `PCLOUD_CLIENT_ID`. Do not store or embed the client secret.
+6. Build the tagged release. The release workflow fails before building when the
+   variable is absent or blank.
+
+For a personal or local test build, open **Advanced setup** in the app and paste
+your own public client ID, or build with:
+
+```sh
+PCLOUD_CLIENT_ID=your_public_client_id make build
+```
 
 The returned access token is encrypted with an Android Keystore AES-GCM key and
-excluded from app backup/device transfer. Disconnect removes the stored session.
+excluded from app backup/device transfer. Disconnect removes the stored session
+immediately and then attempts pCloud's token-invalidating `logout` method.
 
 ## Regional API hosts
 
@@ -27,13 +48,22 @@ eapi.pcloud.com
 
 ## Troubleshooting
 
-### Connect button is disabled
+### Sign-in button is disabled
 
-Enter a non-empty client ID. Do not paste a client secret or account password.
+The build has no bundled application identity and no custom override. Published
+releases must be rebuilt with `PCLOUD_CLIENT_ID`; local testers may enter a public
+client ID under **Advanced setup**. Never paste a client secret, password, or token.
 
 ### Authorization is cancelled or denied
 
 No token is stored. Retry from Settings when ready.
+
+### Disconnect says remote invalidation was unconfirmed
+
+The encrypted local session has already been removed, so the app cannot make
+further authenticated requests. A network/provider failure prevented confirmation
+from pCloud. Revoke properpcloud from pCloud's account security/application settings
+when assurance is required.
 
 ### Folder cannot be loaded
 

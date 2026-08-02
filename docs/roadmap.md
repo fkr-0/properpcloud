@@ -200,6 +200,35 @@ Status: **local release candidate**.
 - scoped FileProvider sharing and bounded private-file retention;
 - no remote overwrite because the current pCloud SDK lacks atomic expected-revision replacement.
 
+## `0.1.4` — ordinary OAuth onboarding and complete disconnect
+
+Status: **local release candidate**.
+
+- public application client ID injected into tagged builds for one-tap pCloud sign-in;
+- no user-created app, copied token, or pasted ID in the ordinary path;
+- explicit personal/developer client-ID override retained under advanced setup;
+- tagged release fails closed until the maintainer repository variable is configured;
+- local credential removal and source detachment happen before network revocation;
+- queues containing pCloud media are cleared so an already-resolved stream cannot continue;
+- regional `/logout` invalidation uses an HTTPS bearer header and typed safe outcomes.
+
+External gate: register the properpcloud pCloud application once, configure
+`pcloud-oauth://dev.properpcloud.app`, enable implicit grant, set the public
+`PCLOUD_CLIENT_ID` repository variable, and complete protected US/EU live tests.
+
+## `0.1.5` — Android semantic freeze and lifecycle hardening
+
+Planned acceptance scope before Linux parity branches:
+
+- direct `MainViewModel` orchestration tests through an injected playback-controller port;
+- explicit progress flush on app background, service teardown, queue switch, and process recreation;
+- retry budget reset after a later user action or connectivity recovery following signed-link failure;
+- controller connection/restoration failures represented in UI state instead of silent fallback;
+- instrumentation evidence for process death during browse, recursive queue construction, playback,
+  metadata staging, OAuth return, and disconnect;
+- physical-device TalkBack, 200% font, media-key, headset, codec, and Android 17 checks;
+- Android queue/progress/source serialization fixtures frozen as the `0.2.0` compatibility corpus.
+
 ### Deferred beyond `0.1.0`
 
 - verified offline file pinning and storage quotas;
@@ -212,6 +241,15 @@ Status: **local release candidate**.
 ## `0.2.0` — native Linux desktop parity
 
 Status: **specified; implementation starts after Android `0.1.x` semantics are stable**.
+
+Implementation sequence:
+
+1. convert source-neutral models/reducers/policies from Android libraries to pure JVM/KMP modules;
+2. freeze and replay Android `0.1.5` queue/progress/source fixtures on JVM and Linux;
+3. add Secret Service/KWallet storage and system-browser OAuth callback handling;
+4. supervise mpv JSON IPC with JIT pCloud link resolution and bounded renewal;
+5. add Compose Desktop library/queue/player UI plus MPRIS/media keys;
+6. ship reproducible Arch and Flatpak evaluation packages after GNOME/KDE/i3 validation.
 
 `0.2.0` is not an Android feature bucket. It delivers a native Linux desktop
 client with parity for the complete `0.1.0` semantic contract.

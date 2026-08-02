@@ -80,14 +80,21 @@ testing:
       level: application_and_adapter
       cases:
         TEST-AUTH-LOGIN:
-          expect: [nonce validated, token stored only through vault, region persisted, root loaded]
+          expect: [bundled or explicit public client ID selected, token stored only through vault, region persisted, root loaded]
+        TEST-AUTH-CONFIG:
+          expect: [custom override wins, bundled ID enables ordinary login, missing ID fails closed]
+        TEST-AUTH-RELEASE-CONFIG:
+          command: make release-client-id-check
+          expect: tagged release fails before build when PCLOUD_CLIENT_ID is blank or malformed
         TEST-AUTH-CANCEL:
           expect: no account and no credential handle
         TEST-AUTH-CALLBACK:
           inject: wrong nonce and malformed redirect
           expect: reject and redact callback data
         TEST-AUTH-LOGOUT:
-          expect: local vault deletion blocks future access even if remote revocation fails
+          expect: local vault deletion blocks future access before remote revocation begins
+        TEST-AUTH-REMOTE-REVOKE:
+          expect: [regional HTTPS endpoint, bearer header, no redirect, typed confirmed/inactive/unconfirmed result]
     browse:
       level: application_adapter_ui
       cases:

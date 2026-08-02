@@ -97,9 +97,11 @@ use_cases:
       preconditions:
         - No valid session exists for the account slot.
         - Network is available.
-      trigger: User selects Connect pCloud.
+      trigger: User selects Sign in to pCloud.
       flow:
-        - app: Create nonce-bound OAuth request and trusted redirect.
+        - app: Select explicit developer override or the release-bundled public application client ID.
+        - app: Refuse to launch when neither application identity is available.
+        - app: Create SDK-managed token-flow OAuth request and package-bound trusted redirect.
         - app: Open provider authorization surface.
         - user: Authenticate and approve at pCloud.
         - source: Return token and regional API location.
@@ -120,9 +122,10 @@ use_cases:
         success:
           - Region-bound client can list root.
           - No account password is stored.
+          - No token or client secret was copied through the app UI.
         failure:
           - No half-created account or orphaned token remains.
-      tests: [TEST-AUTH-LOGIN, TEST-AUTH-CANCEL, TEST-AUTH-CALLBACK]
+      tests: [TEST-AUTH-CONFIG, TEST-AUTH-LOGIN, TEST-AUTH-CANCEL, TEST-AUTH-CALLBACK]
     UC-BROWSE-FOLDER:
       traces: [REQ-BROWSE, REQ-RESILIENCE]
       title: Navigate folder hierarchy
@@ -314,15 +317,18 @@ use_cases:
       trigger: User confirms Disconnect.
       flow:
         - app: Stop provider requests and block new stream resolution.
+        - app: Stop playback and clear the active queue when it contains provider media.
         - app: Invalidate local credential handle immediately.
-        - app: Attempt provider-side revocation when available.
+        - app: Remove the provider source and switch to demo before any network request.
+        - app: Attempt regional provider-side revocation using an HTTPS bearer header.
+        - app: Report confirmed, already inactive, or unconfirmed remote invalidation separately.
         - user: Choose whether non-secret snapshots and offline files are retained.
         - app: Remove account from active UI and media hierarchy.
       postconditions:
         - No future request can use removed credentials.
         - Existing remote-only playback stops.
         - Retained verified offline files follow explicit user choice.
-      tests: [TEST-AUTH-LOGOUT, TEST-LOGOUT-PLAYBACK, TEST-LOGOUT-CACHE]
+      tests: [TEST-AUTH-LOGOUT, TEST-AUTH-REMOTE-REVOKE, TEST-LOGOUT-PLAYBACK, TEST-LOGOUT-CACHE]
     UC-LINUX-PARITY:
       traces: [REQ-LINUX-PARITY]
       title: Continue the same folder-first library on native Linux

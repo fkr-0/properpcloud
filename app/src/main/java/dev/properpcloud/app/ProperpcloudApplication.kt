@@ -9,6 +9,7 @@ import dev.properpcloud.app.playback.PlaybackConnection
 import dev.properpcloud.app.security.EncryptedTokenVault
 import dev.properpcloud.metadata.online.MusicBrainzMetadataProvider
 import dev.properpcloud.metadata.tags.JAudioTaggerToolkit
+import dev.properpcloud.source.pcloud.PCloudSessionRevoker
 
 class ProperpcloudApplication : Application() {
     lateinit var container: AppContainer
@@ -27,6 +28,7 @@ class AppContainer(application: Application) {
         demoSource = DemoAudioSource(application),
         tokenVault = tokenVault,
     )
+    val pCloudSessionRevoker = PCloudSessionRevoker()
     val metadata = MetadataEditingWorkspace(
         context = application,
         tagToolkit = JAudioTaggerToolkit(),

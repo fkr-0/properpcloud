@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+      PCLOUD_CLIENT_ID: ${{ vars.PCLOUD_CLIENT_ID }}
     timeout-minutes: 60
 
     steps:
@@ -43,6 +44,9 @@ jobs:
           printf 'release_tag=%s\n' "$RELEASE_TAG"
           printf 'release_commit=%s\n' "$(git rev-parse HEAD)"
           git tag --points-at HEAD | grep --fixed-strings --line-regexp "$RELEASE_TAG"
+
+      - name: Require bundled pCloud application identity
+        run: make release-client-id-check
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4

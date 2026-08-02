@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import com.pcloud.sdk.AuthorizationActivity
 import com.pcloud.sdk.AuthorizationRequest
 import com.pcloud.sdk.AuthorizationResult
@@ -104,6 +105,7 @@ class MainActivity : ComponentActivity() {
                     stageBatchMetadata = viewModel::stageBatchMetadata,
                     shareMetadataArtifact = ::shareMetadataArtifact,
                     updateClientId = viewModel::updateClientId,
+                    openPCloudDeveloperConsole = ::openPCloudDeveloperConsole,
                     selectSource = { kind ->
                         when (kind) {
                             SourceKind.DEMO -> viewModel.useDemoSource()
@@ -125,7 +127,7 @@ class MainActivity : ComponentActivity() {
 
     private fun launchAuthorization(clientId: String) {
         if (clientId.isBlank()) {
-            viewModel.showMessage("Enter a pCloud client ID first.")
+            viewModel.showMessage("This build has no pCloud application identity. Open advanced setup to add a client ID.")
             return
         }
         val request = AuthorizationRequest.create()
@@ -133,6 +135,15 @@ class MainActivity : ComponentActivity() {
             .setClientId(clientId)
             .build()
         authorizationLauncher.launch(AuthorizationActivity.createIntent(this, request))
+    }
+
+    private fun openPCloudDeveloperConsole() {
+        startActivity(
+            Intent(
+                Intent.ACTION_VIEW,
+                "https://docs.pcloud.com/my_apps/".toUri(),
+            ),
+        )
     }
 
     private fun shareMetadataArtifact() {

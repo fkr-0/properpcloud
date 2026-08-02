@@ -93,6 +93,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.properpcloud.app.BuildConfig
+import dev.properpcloud.app.auth.PCloudOAuthConfiguration
 import dev.properpcloud.app.data.SourceKind
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
@@ -683,6 +684,10 @@ private fun QueueRow(index: Int, track: AudioTrack, state: AppUiState, actions: 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreen(state: AppUiState, actions: AppActions, onAuthorizePCloud: (String) -> Unit) {
+    val oauth = PCloudOAuthConfiguration.resolve(BuildConfig.PCLOUD_CLIENT_ID, state.clientId)
+    var showAdvancedOAuth by remember(state.clientId, oauth.usesBundledClientId) {
+        mutableStateOf(state.clientId.isNotBlank() || !oauth.usesBundledClientId)
+    }
     LazyColumn(Modifier.fillMaxSize().testTag("settings-screen")) {
         item { TopAppBar(title = { Text("Settings") }) }
         item {
@@ -705,15 +710,25 @@ private fun SettingsScreen(state: AppUiState, actions: AppActions, onAuthorizePC
             }
         }
         item {
-            SettingsSection("pCloud OAuth") {
-                Text("Create an application in the pCloud developer console, then paste its client ID. Authorization happens on pCloud's surface; properpcloud never asks for your password.")
-                OutlinedTextField(
-                    value = state.clientId,
-                    onValueChange = actions.updateClientId,
-                    label = { Text("pCloud client ID") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("client-id"),
+            SettingsSection("pCloud account") {
+                Text(
+                    "Sign-in opens pCloud's official authorization page. Your password is entered only there; properpcloud receives the approved access token automatically.",
                 )
+                if (oauth.usesBundledClientId) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.secondary)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Built-in properpcloud application identity is ready.",
+                            Modifier.weight(1f),
+                        )
+                    }
+                } else if (!oauth.isConfigured) {
+                    Text(
+                        "This developer build has no bundled pCloud application identity. Advanced setup is required until the maintainer configures the release client ID.",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 if (state.pCloudConnected) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.secondary)
@@ -726,13 +741,48 @@ private fun SettingsScreen(state: AppUiState, actions: AppActions, onAuthorizePC
                     }
                 } else {
                     Button(
-                        onClick = { onAuthorizePCloud(state.clientId.trim()) },
-                        enabled = state.clientId.isNotBlank(),
+                        onClick = { onAuthorizePCloud(oauth.clientId) },
+                        enabled = oauth.isConfigured,
                         modifier = Modifier.testTag("connect-pcloud"),
                     ) {
                         Icon(Icons.Default.Cloud, null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Connect pCloud")
+                        Text("Sign in to pCloud")
+                    }
+                }
+                TextButton(
+                    onClick = { showAdvancedOAuth = !showAdvancedOAuth },
+                    modifier = Modifier.testTag("toggle-advanced-oauth"),
+                ) {
+                    Text(if (showAdvancedOAuth) "Hide advanced setup" else "Advanced setup")
+                }
+                if (showAdvancedOAuth) {
+                    Text(
+                        "A client ID identifies an application, not a user account. Use an override only for personal builds or testing.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = state.clientId,
+                        onValueChange = actions.updateClientId,
+                        label = { Text("Custom pCloud client ID") },
+                        supportingText = {
+                            Text("Redirect URI: ${PCloudOAuthConfiguration.redirectUri(BuildConfig.APPLICATION_ID)}")
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("client-id"),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = actions.openPCloudDeveloperConsole,
+                            modifier = Modifier.testTag("open-pcloud-console"),
+                        ) {
+                            Text("Open pCloud developer site")
+                        }
+                        if (state.clientId.isNotBlank() && BuildConfig.PCLOUD_CLIENT_ID.isNotBlank()) {
+                            TextButton(onClick = { actions.updateClientId("") }) {
+                                Text("Use built-in identity")
+                            }
+                        }
                     }
                 }
             }
@@ -1022,6 +1072,7 @@ data class AppActions(
     val stageBatchMetadata: () -> Unit,
     val shareMetadataArtifact: () -> Unit,
     val updateClientId: (String) -> Unit,
+    val openPCloudDeveloperConsole: () -> Unit,
     val selectSource: (SourceKind) -> Unit,
     val disconnectPCloud: () -> Unit,
     val consumeMessage: () -> Unit,

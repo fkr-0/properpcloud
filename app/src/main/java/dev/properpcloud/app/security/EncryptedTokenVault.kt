@@ -12,10 +12,10 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-class EncryptedTokenVault(context: Context) {
+class EncryptedTokenVault(context: Context) : PCloudSessionStore {
     private val preferences = context.getSharedPreferences("pcloud_session", Context.MODE_PRIVATE)
 
-    fun read(): PCloudSession? = runCatching {
+    override fun read(): PCloudSession? = runCatching {
         val ciphertext = preferences.getString(KEY_CIPHERTEXT, null) ?: return null
         val iv = preferences.getString(KEY_IV, null) ?: return null
         val host = preferences.getString(KEY_HOST, null) ?: return null
@@ -32,7 +32,7 @@ class EncryptedTokenVault(context: Context) {
         PCloudSession(token, host, userId)
     }.getOrNull()
 
-    fun write(session: PCloudSession) {
+    override fun write(session: PCloudSession) {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey())
         val ciphertext = cipher.doFinal(session.accessToken.toByteArray(Charsets.UTF_8))
@@ -44,7 +44,7 @@ class EncryptedTokenVault(context: Context) {
         }
     }
 
-    fun clear() {
+    override fun clear() {
         preferences.edit(commit = true) { clear() }
     }
 

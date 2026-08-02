@@ -9,7 +9,7 @@ ANDROID_BUILD_TOOLS ?= 37.0.0
 
 export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
 
-.PHONY: help toolchain-archive robolectric-runtime image image-no-cache doctor wrapper-check spec release-check release-artifacts dependencies test lint build check ci shell compose install clean
+.PHONY: help toolchain-archive robolectric-runtime image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts dependencies test lint build check ci shell compose install clean
 
 help: ## Show available targets.
 	@awk 'BEGIN {FS = ":.*## "; printf "properpcloud targets:\n\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -70,6 +70,9 @@ release-check: spec ## Validate SemVer, changelog, license, and Android version 
 	  --workdir /workspace \
 	  $(IMAGE) \
 	  scripts/validate-release.py
+
+release-client-id-check: ## Require the public pCloud application ID used by tagged releases.
+	@python3 scripts/validate-pcloud-client-id.py
 
 release-artifacts: ## Prepare versioned APK, checksums, evidence, and release notes.
 	@python3 scripts/prepare-release.py

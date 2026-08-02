@@ -130,7 +130,15 @@ class ProperpcloudAppTest {
         }
         compose.onNodeWithText("Settings").performClick()
         compose.waitForIdle()
-        compose.onNodeWithText("pCloud OAuth").assertIsDisplayed()
+        compose.onNodeWithText("pCloud account").assertIsDisplayed()
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasText("Sign in to pCloud"))
+        compose.onNodeWithText("Sign in to pCloud").assertIsDisplayed()
+        if (compose.onAllNodesWithTag("client-id").fetchSemanticsNodes().isEmpty()) {
+            compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("toggle-advanced-oauth"))
+            compose.onNodeWithTag("toggle-advanced-oauth").performClick()
+            compose.waitForIdle()
+        }
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("client-id"))
         compose.onNodeWithTag("client-id").assertIsDisplayed()
         compose.onNodeWithTag("settings-screen").performScrollToNode(hasText("Metadata tools"))
         compose.onNodeWithText("Metadata tools").assertIsDisplayed()
@@ -215,6 +223,7 @@ class ProperpcloudAppTest {
         stageBatchMetadata = {},
         shareMetadataArtifact = {},
         updateClientId = {},
+        openPCloudDeveloperConsole = {},
         selectSource = {},
         disconnectPCloud = {},
         consumeMessage = {},

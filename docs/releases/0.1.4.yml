@@ -1,0 +1,58 @@
+release:
+  version: 0.1.4
+  tag: v0.1.4
+  date: 2026-08-02
+  status: local_release_candidate
+  license: MIT
+  scope:
+    - release-bundled public pCloud application client ID
+    - ordinary one-tap provider-hosted OAuth sign-in
+    - advanced custom application-ID override for personal builds
+    - release workflow fail-closed client-ID gate
+    - immediate local disconnect followed by typed remote token invalidation
+  verification:
+    command: make ci
+    result: passed
+    specifications:
+      documents: 11
+      requirements: 19
+      use_cases: 18
+    tests:
+      suites: 17
+      total: 52
+      failures: 0
+      errors: 0
+      skipped: 0
+    lint:
+      errors: 0
+      warnings: 0
+      informational_hints: 2
+    Gradle:
+      actionable_tasks: 284
+    client_id_preflight:
+      blank_rejected: true
+      malformed_rejected: true
+      configured_accepted: true
+    build_modes:
+      configured_test_id_reached_apk: true
+      unconfigured_evaluation_apk_excludes_test_id: true
+  artifact:
+    path: app/build/outputs/apk/debug/app-debug.apk
+    package: dev.properpcloud.app
+    version_code: 1004
+    version_name: 0.1.4
+    production_signed: false
+    bundled_pcloud_client_id: false
+    size_bytes: 24576208
+    sha256: 7e4582f72979bc4b1744ae693a62453fb2cb87652457f31bf64aebd0c7c8f2b6
+  external_validation:
+    pcloud_application_registered: false
+    repository_client_id_configured: false
+    live_pCloud_credentials_available: false
+    remote_logout_live_validated: false
+    production_signing_available: false
+    physical_device_accessibility: outstanding
+    publication_authorized: false
+    required_checklists:
+      - docs/pcloud-setup.md
+      - docs/roadmap.md

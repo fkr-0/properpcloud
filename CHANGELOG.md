@@ -14,6 +14,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Verified offline pinning, saved roots, long-form controls, and Android Auto after
   cross-platform queue/progress semantics stabilize.
 
+## [0.1.4] - 2026-08-02
+
+### Added
+
+- Release-time injection of properpcloud's public pCloud application client ID, enabling
+  an ordinary one-tap **Sign in to pCloud** flow without asking users to create an app.
+- Advanced developer override for personal/test pCloud applications, including the exact
+  package-derived redirect URI and a direct link to pCloud's developer site.
+- Typed provider-side token revocation using the account's regional pCloud API host.
+
+### Changed
+
+- Settings now explain the application-ID/token distinction: users authenticate only on
+  pCloud's official surface and the approved access token returns directly to the app.
+- User-facing tagged releases fail closed when the public `PCLOUD_CLIENT_ID` repository
+  variable has not been configured; ordinary source builds remain usable with a custom ID.
+- Disconnect removes the encrypted local session and provider source immediately, then
+  clears queues containing pCloud media and reports remote invalidation as confirmed,
+  already inactive, or unconfirmed.
+
+### Security
+
+- properpcloud still never collects a pCloud account password or asks users to copy an
+  access token. The client ID is public application metadata, not a client secret.
+- Remote logout sends the OAuth bearer token in the HTTPS Authorization header rather
+  than a URL, rejects redirects and unknown regional hosts, bounds response size/time,
+  and never surfaces provider response bodies or credential-bearing exceptions.
+- Local disconnect succeeds independently of network availability; remote-revocation
+  failure cannot restore or retain the local credential handle.
+
+### Testing
+
+- Added bundled/custom/missing OAuth configuration tests, redirect-URI tests, local-first
+  registry disconnect coverage, and typed revocation success/inactive/failure tests.
+
+### Known limitations
+
+- The maintainer must register properpcloud once in pCloud's developer console, enable
+  implicit grant, register `pcloud-oauth://dev.properpcloud.app`, and set the resulting
+  public client ID as the repository variable before publishing `v0.1.4`.
+- Live US/EU OAuth and logout validation, production signing, physical-device
+  accessibility, and Android 17 runtime validation remain external gates.
+
 ## [0.1.3] - 2026-08-02
 
 ### Added
@@ -233,7 +276,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/fkr-0/properpcloud/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/fkr-0/properpcloud/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/fkr-0/properpcloud/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/fkr-0/properpcloud/compare/v0.1.0...v0.1.1
