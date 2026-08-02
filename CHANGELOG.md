@@ -7,18 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Release workflow tag validation now runs on the GitHub host where Git is
-  available, manual dispatch can rebuild an existing immutable tag, and release
-  publication receives that tag explicitly instead of inheriting the workflow ref.
-
 ### Planned
 
 - Native Linux desktop feature parity through Compose Multiplatform, mpv JSON IPC,
   SQLite, Secret Service/KWallet, MPRIS, media keys, and XDG integration for `0.2.0`.
 - Verified offline pinning, saved roots, long-form controls, and Android Auto after
   cross-platform queue/progress semantics stabilize.
+
+## [0.1.1] - 2026-08-02
+
+### Fixed
+
+- Manual release dispatch now checks out, validates, rebuilds, attests, and publishes
+  the explicitly requested immutable tag rather than operating on the workflow branch.
+- GitHub release publication receives the release tag explicitly, fixing the failed
+  final publication step seen in the first `v0.1.0` rebuild attempt.
+
+### Security
+
+- Pinned every third-party GitHub Action to a reviewed immutable commit SHA while
+  preserving Dependabot-managed version comments.
+- Added a committed SHA-256 for the Gradle Wrapper JAR and made wrapper integrity a
+  doctor, CI, and release-metadata gate.
+
+### Testing
+
+- Release validation now rejects floating GitHub Action references, missing release
+  manifests, malformed wrapper checksums, and wrapper byte drift.
+- Release jobs print and verify the exact tag-to-commit target before building.
+
+### Known limitations
+
+- This patch changes release engineering only; the installable APK remains the
+  folder-first `0.1.0` product behavior with version metadata advanced to `0.1.1`.
 
 ## [0.1.0] - 2026-08-02
 
@@ -115,6 +136,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/fkr-0/properpcloud/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/fkr-0/properpcloud/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/fkr-0/properpcloud/releases/tag/v0.0.1

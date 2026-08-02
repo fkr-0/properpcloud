@@ -6,7 +6,7 @@
 
 Folder-first Android audio playback for pCloud and other file-oriented sources.
 
-[![Version](https://img.shields.io/badge/version-0.1.0-59636e)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.1-59636e)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
 
 Audio libraries are often already organized correctly in folders. properpcloud

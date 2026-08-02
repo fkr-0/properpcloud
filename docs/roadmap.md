@@ -161,6 +161,16 @@ semantics are considered frozen for Linux parity:
 These are release-quality hardening items, not retroactive changes to the immutable
 `v0.1.0` tag. Product behavior changes ship under a new SemVer tag.
 
+## `0.1.1` — release-pipeline integrity patch
+
+Status: **release candidate**.
+
+- rebuild and publication are bound to one explicit immutable tag;
+- all third-party GitHub Actions are pinned to reviewed commit SHAs;
+- the committed Gradle Wrapper JAR has a separately reviewed SHA-256 gate;
+- release validation rejects floating actions, wrapper drift, and missing release evidence;
+- no user-facing playback or library behavior changes.
+
 ### Deferred beyond `0.1.0`
 
 - verified offline file pinning and storage quotas;

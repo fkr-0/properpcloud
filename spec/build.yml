@@ -25,6 +25,7 @@ build:
       launcher: committed wrapper
       distribution: bin
       checksum: mandatory in gradle-wrapper.properties
+      wrapper_jar_checksum: mandatory in gradle/wrapper/gradle-wrapper.jar.sha256
     android:
       command_line_tools: 15859902
       command_line_tools_sha256: 4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583
@@ -81,7 +82,7 @@ build:
       result: duplicate-key-safe YAML parsing and requirement/use-case trace validation
     make_release_check:
       command: make release-check
-      result: version, changelog, license, and Android packaging agreement
+      result: version, changelog, license, Android packaging, wrapper hash, release manifest, and immutable GitHub Action agreement
     make_lint:
       command: make lint
       result: Android lint reports
@@ -139,6 +140,7 @@ build:
       - Verify Gradle distribution checksum.
       - Use TLS with failure-on-error and bounded retries for downloads.
       - Keep GitHub Actions pinned to reviewed major or commit according to repository policy.
+      - Pin every third-party GitHub Action to a reviewed full commit SHA.
       - Generate SBOM before public release.
       - Scan container and dependencies before release.
     forbidden:

@@ -23,6 +23,7 @@ agent:
     - Added encrypted pCloud OAuth, durable queue/progress, JIT Media3 links, and expanded tests.
     - Added tag-driven GitHub releases, artifact evidence, attestations, and repository health files.
     - Published v0.1.0 from its immutable tag and recorded independent post-release audits.
+    - Prepared 0.1.1 with immutable Action pins, exact-tag release dispatch, and wrapper integrity validation.
 
 commands:
   image:

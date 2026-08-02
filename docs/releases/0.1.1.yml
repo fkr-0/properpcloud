@@ -1,0 +1,38 @@
+release:
+  version: 0.1.1
+  tag: v0.1.1
+  date: 2026-08-02
+  status: validated_release_candidate
+  license: MIT
+  scope:
+    - exact immutable tag checkout and publication
+    - immutable third-party GitHub Action pins
+    - Gradle Wrapper JAR SHA-256 validation
+    - release-manifest and workflow-reference validation
+  verification:
+    command: make ci
+    result: passed
+    specifications:
+      documents: 10
+      requirements: 17
+      use_cases: 13
+    tests:
+      suites: 8
+      total: 21
+      failures: 0
+      errors: 0
+      skipped: 0
+    Gradle:
+      actionable_tasks: 192
+  artifact:
+    path: app/build/outputs/apk/debug/app-debug.apk
+    package: dev.properpcloud.app
+    version_code: 1001
+    version_name: 0.1.1
+    production_signed: false
+    size_bytes: 23822451
+    sha256: 7a7a6a29596e9e1e9d7eb12a07f65a70289989d024c66025340b90d124d4e33f
+  external_validation:
+    live_pCloud_credentials_available: false
+    status: outstanding
+    required_checklist: docs/pcloud-setup.md

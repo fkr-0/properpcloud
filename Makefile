@@ -50,6 +50,8 @@ wrapper-check: ## Fail if the reviewed Gradle Wrapper is absent.
 	@test -x ./gradlew || { echo "gradlew is missing or not executable" >&2; exit 1; }
 	@test -f ./gradle/wrapper/gradle-wrapper.jar || { echo "gradle-wrapper.jar is missing" >&2; exit 1; }
 	@test -f ./gradle/wrapper/gradle-wrapper.properties || { echo "gradle-wrapper.properties is missing" >&2; exit 1; }
+	@test -f ./gradle/wrapper/gradle-wrapper.jar.sha256 || { echo "gradle-wrapper.jar.sha256 is missing" >&2; exit 1; }
+	@cd gradle/wrapper && sha256sum --check --strict gradle-wrapper.jar.sha256
 
 spec: ## Parse YAML and verify requirement/use-case traceability in Docker.
 	@docker run --rm \
