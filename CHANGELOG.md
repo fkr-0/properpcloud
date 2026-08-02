@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The first native Linux `0.2.0` foundation boundary: `core-model` is now a pure
+  Kotlin/JVM module that emits JVM 17-compatible bytecode and a reusable JAR.
+
+### Changed
+
+- Android, metadata, pCloud, and WebDAV modules now consume the same JVM core artifact
+  intended for the desktop client instead of an Android Library artifact.
+
 ### Planned
 
 - Native Linux desktop feature parity through Compose Multiplatform, mpv JSON IPC,

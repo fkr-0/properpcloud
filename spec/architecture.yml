@@ -22,6 +22,7 @@ architecture:
     domain:
       purpose: Provider-neutral meaning, invariants, value objects, policies, and pure algorithms.
       current_module: core-model
+      current_runtime: pure Kotlin/JVM with JVM 17 bytecode; no Android plugin or Android package dependency
       target_modules: [core-domain, core-queue, core-metadata]
       owns:
         identity:

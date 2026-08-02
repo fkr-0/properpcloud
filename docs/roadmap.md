@@ -247,7 +247,8 @@ Status: **specified; implementation starts after Android `0.1.x` semantics are s
 
 Implementation sequence:
 
-1. convert source-neutral models/reducers/policies from Android libraries to pure JVM/KMP modules;
+1. **Started:** `core-model` now builds as a pure Kotlin/JVM 17-compatible JAR with no
+   Android package linkage; split into finer KMP modules only when desktop needs justify it;
 2. freeze and replay Android `0.1.5` queue/progress/source fixtures on JVM and Linux;
 3. add Secret Service/KWallet storage and system-browser OAuth callback handling;
 4. supervise mpv JSON IPC with JIT pCloud link resolution and bounded renewal;
