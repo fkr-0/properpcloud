@@ -120,8 +120,9 @@ make desktop-smoke        # real host mpv + SQLite smoke
 make lint                 # Android lint
 make build                # Android debug APK
 make desktop-package      # desktop application image / package inputs
+make linux-ci             # complete host Linux package + mpv + MPRIS gate
 make docs-build           # Astro/Starlight static documentation
-make ci                   # complete repository gate
+make ci                   # containerized merge gate, including desktop package image
 ```
 
 Live pCloud account validation remains protected because public CI contains no provider credentials. Deterministic fixtures cover provider mapping, queue semantics, persistence, metadata staging, and playback adapters without exposing private media.

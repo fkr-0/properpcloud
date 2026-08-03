@@ -110,10 +110,33 @@ class PCloudDirectLoginClientTest {
         }
 
         assertEquals(
-            PCloudDirectLoginResult.ProviderRejected(2000),
+            PCloudDirectLoginResult.ProviderRejected(
+                providerCode = 2000,
+                reason = PCloudDirectLoginRejectionReason.CREDENTIALS_OR_REGION,
+            ),
             client.signIn("listener@example.test", password, PCloudAccountRegion.UNITED_STATES),
         )
         assertTrue(password.all { it == '\u0000' })
+    }
+
+    @Test
+    fun classifiesStableProviderFailureCodesWithoutRetainingProviderText() {
+        assertEquals(
+            PCloudDirectLoginRejectionReason.CREDENTIALS_OR_REGION,
+            pCloudDirectLoginRejectionReason(2000),
+        )
+        assertEquals(
+            PCloudDirectLoginRejectionReason.TOO_MANY_ATTEMPTS,
+            pCloudDirectLoginRejectionReason(4000),
+        )
+        assertEquals(
+            PCloudDirectLoginRejectionReason.PROVIDER_FAILURE,
+            pCloudDirectLoginRejectionReason(5000),
+        )
+        assertEquals(
+            PCloudDirectLoginRejectionReason.UNKNOWN,
+            pCloudDirectLoginRejectionReason(2999),
+        )
     }
 
     @Test

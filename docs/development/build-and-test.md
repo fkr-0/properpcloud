@@ -19,8 +19,9 @@
 | `make lint` | Android lint and repository checks. |
 | `make build` | Debug Android build and portable modules. |
 | `make desktop-package` | Compose Desktop application image and native package inputs. |
+| `make linux-ci` | Complete host Linux gate: unit tests, application image, real mpv/SQLite smoke, and packaged MPRIS smoke. |
 | `make docs-build` | Markdown sync, type validation, and static site generation. |
-| `make ci` | Complete local CI-equivalent sequence. |
+| `make ci` | Containerized merge gate including docs, all unit tests, Android lint/APK, and the desktop application image. |
 
 ## Gradle environment
 
@@ -33,6 +34,7 @@ The build uses JDK 21 toolchains and emits JVM 17-compatible bytecode for portab
 - Desktop persistence tests use temporary SQLite databases.
 - mpv command encoding is unit-tested without starting a player.
 - `desktop-smoke` starts a real mpv process with `--no-config --ao=null`.
+- `linux-ci` additionally needs a session D-Bus, `gdbus`, and the host JDK selected through `DESKTOP_JAVA_HOME`.
 
 ## Adding a source contract test
 

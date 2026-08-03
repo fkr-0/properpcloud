@@ -11,7 +11,8 @@ NPM ?= npm
 
 export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
 
-.PHONY: help toolchain-archive robolectric-runtime image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts dependencies test desktop-test desktop-smoke desktop-mpris-smoke desktop-run desktop-package docs-install docs-build lint build check ci shell compose install clean
+.PHONY: help toolchain-archive robolectric-runtime image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts dependencies test desktop-test desktop-smoke desktop-mpris-smoke desktop-run desktop-package linux-ci docs-install docs-build lint build check ci shell compose install clean
+.NOTPARALLEL: linux-ci
 
 help: ## Show available targets.
 	@awk 'BEGIN {FS = ":.*## "; printf "properpcloud targets:\n\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -88,7 +89,7 @@ test: robolectric-runtime ## Run JVM unit and module contract tests in Docker.
 desktop-test: ## Run the Linux desktop adapter and persistence tests in Docker.
 	@bash ./scripts/docker-run.sh :desktop-app:test
 
-desktop-smoke: ## Verify generated media, SQLite, and a real host mpv JSON-IPC process.
+desktop-smoke: desktop-package ## Verify generated media, SQLite, and a real host mpv JSON-IPC process.
 	@command -v mpv >/dev/null || { echo "mpv is required" >&2; exit 1; }
 	@test -x "$(DESKTOP_JAVA_HOME)/bin/java" || { echo "JDK 21 not found at $(DESKTOP_JAVA_HOME)" >&2; exit 1; }
 	@mkdir -p .cache/gradle
@@ -109,6 +110,8 @@ desktop-mpris-smoke: desktop-package ## Verify packaged MPRIS properties over an
 	@command -v gdbus >/dev/null || { echo "gdbus is required" >&2; exit 1; }
 	@dbus-run-session -- bash scripts/desktop-mpris-smoke.sh
 
+linux-ci: desktop-test desktop-package desktop-smoke desktop-mpris-smoke ## Run the complete native Linux unit, package, mpv, SQLite, and MPRIS gate.
+
 docs-install: ## Install the pinned documentation renderer dependencies.
 	@cd website && $(NPM) ci
 
@@ -122,7 +125,7 @@ build: ## Build the debug APK in Docker.
 	@bash ./scripts/docker-run.sh :app:assembleDebug
 
 check: robolectric-runtime ## Run tests, lint, and debug assembly in one Gradle invocation.
-	@bash ./scripts/docker-run.sh test lint :app:assembleDebug
+	@bash ./scripts/docker-run.sh test lint :app:assembleDebug :desktop-app:createDistributable
 
 ci: release-check robolectric-runtime docs-build ## Execute the complete repository verification set.
 	@bash ./scripts/docker-run.sh \
@@ -130,7 +133,8 @@ ci: release-check robolectric-runtime docs-build ## Execute the complete reposit
 	  --build-cache \
 	  test \
 	  lint \
-	  :app:assembleDebug
+	  :app:assembleDebug \
+	  :desktop-app:createDistributable
 
 shell: ## Open an interactive shell in the Android SDK image.
 	@mkdir -p .cache/gradle

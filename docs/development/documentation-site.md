@@ -10,7 +10,7 @@ Markdown under `docs/` is authoritative. The website directory contains renderin
 2. copy Markdown recursively;
 3. rename `README.md` to `index.md` for clean section routes;
 4. derive title and description frontmatter when absent;
-5. copy the project logo and custom-domain `CNAME` into generated assets.
+5. copy the project logo into generated assets.
 
 ## Local development
 
@@ -39,14 +39,16 @@ The Pages workflow uses GitHub's artifact-based deployment path:
 ```text
 checkout
   -> setup Node
+  -> configure Pages
   -> npm ci
   -> npm run build
-  -> configure Pages
   -> upload Pages artifact
   -> deploy Pages
 ```
 
-Deployment requires `pages: write` and `id-token: write`, and targets the protected `github-pages` environment. The custom domain is included in the artifact and configured through the repository Pages API.
+Deployment requires `pages: write` and `id-token: write`, and targets the protected `github-pages` environment.
+
+Before the workflow can deploy for the first time, an administrator must open **Settings → Pages** and select **GitHub Actions** as the publishing source. The normal workflow token cannot enable Pages by itself. The custom domain is likewise configured in repository Pages settings; a `CNAME` file inside an artifact-based Actions deployment is not authoritative. `website/astro.config.mjs` must use the same public site URL.
 
 ## Link discipline
 

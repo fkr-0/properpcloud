@@ -1,5 +1,5 @@
-name: android
-run-name: Android verification · ${{ github.event_name }} · ${{ github.ref_name }}
+name: linux
+run-name: Linux verification · ${{ github.event_name }} · ${{ github.ref_name }}
 
 on:
   push:
@@ -11,29 +11,30 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-${{ github.workflow }}-${{ github.ref }}
+  group: linux-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    env:
-      PCLOUD_CLIENT_ID: ${{ vars.PCLOUD_CLIENT_ID }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          fetch-depth: 0
           persist-credentials: false
 
-      - name: Set up Node.js for documentation verification
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: website/package-lock.json
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Linux playback and D-Bus probes
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends mpv dbus-x11 libglib2.0-bin libsecret-tools
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
@@ -41,20 +42,16 @@ jobs:
       - name: Cache Gradle data
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: |
-            .cache/gradle
-            .cache/robolectric
-          key: gradle-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', 'gradle/libs.versions.toml', '**/*.gradle.kts') }}
+          path: .cache/gradle
+          key: linux-gradle-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', 'gradle/libs.versions.toml', '**/*.gradle.kts') }}
           restore-keys: |
+            linux-gradle-${{ runner.os }}-
             gradle-${{ runner.os }}-
 
       - name: Fetch verified Android tools archive
         run: make toolchain-archive
 
-      - name: Fetch verified Robolectric runtime
-        run: make robolectric-runtime
-
-      - name: Build Android toolchain image
+      - name: Build pinned project toolchain image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
@@ -63,18 +60,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Verify
-        run: make ci
+      - name: Verify native Linux client
+        run: make linux-ci DESKTOP_JAVA_HOME="$JAVA_HOME"
 
-      - name: Upload APK and reports
+      - name: Upload desktop application image and reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: properpcloud-debug-and-reports
+          name: properpcloud-linux-and-reports
           if-no-files-found: warn
           path: |
-            app/build/outputs/apk/debug/app-debug.apk
             desktop-app/build/compose/binaries/main/app/**
-            **/build/reports/tests/**
-            **/build/reports/lint-results-*.html
-            **/build/test-results/**
+            desktop-app/build/reports/tests/**
+            desktop-app/build/test-results/**

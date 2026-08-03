@@ -49,11 +49,29 @@ internal fun pCloudDirectLoginRequestPlan(
 
 sealed interface PCloudDirectLoginResult {
     data class Connected(val session: PCloudSession) : PCloudDirectLoginResult
-    data class ProviderRejected(val providerCode: Int?) : PCloudDirectLoginResult
+    data class ProviderRejected(
+        val providerCode: Int,
+        val reason: PCloudDirectLoginRejectionReason,
+    ) : PCloudDirectLoginResult
     data object InvalidInput : PCloudDirectLoginResult
     data object InvalidResponse : PCloudDirectLoginResult
     data object NetworkFailure : PCloudDirectLoginResult
 }
+
+enum class PCloudDirectLoginRejectionReason {
+    CREDENTIALS_OR_REGION,
+    TOO_MANY_ATTEMPTS,
+    PROVIDER_FAILURE,
+    UNKNOWN,
+}
+
+internal fun pCloudDirectLoginRejectionReason(resultCode: Int): PCloudDirectLoginRejectionReason =
+    when (resultCode) {
+        2000 -> PCloudDirectLoginRejectionReason.CREDENTIALS_OR_REGION
+        4000 -> PCloudDirectLoginRejectionReason.TOO_MANY_ATTEMPTS
+        5000 -> PCloudDirectLoginRejectionReason.PROVIDER_FAILURE
+        else -> PCloudDirectLoginRejectionReason.UNKNOWN
+    }
 
 class PCloudDirectLoginClient internal constructor(
     private val transport: PCloudDirectLoginTransport,
@@ -90,7 +108,10 @@ class PCloudDirectLoginClient internal constructor(
             val resultCode = response.resultCode
                 ?: return@withContext PCloudDirectLoginResult.InvalidResponse
             if (resultCode != 0) {
-                return@withContext PCloudDirectLoginResult.ProviderRejected(resultCode)
+                return@withContext PCloudDirectLoginResult.ProviderRejected(
+                    providerCode = resultCode,
+                    reason = pCloudDirectLoginRejectionReason(resultCode),
+                )
             }
             val authToken = response.authToken
             val userId = response.userId

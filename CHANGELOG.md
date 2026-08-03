@@ -11,16 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The first native Linux `0.2.0` foundation boundary: `core-model` is now a pure
   Kotlin/JVM module that emits JVM 17-compatible bytecode and a reusable JAR.
+- A native Compose Desktop client with folder browsing, deterministic queues, SQLite
+  state, mpv JSON IPC playback, Secret Service sessions, MPRIS, and XDG paths.
+- An Astro Starlight documentation site and a dedicated GitHub Linux integration
+  workflow covering the desktop application image, real mpv/SQLite, and packaged MPRIS.
 
 ### Changed
 
 - Android, metadata, pCloud, and WebDAV modules now consume the same JVM core artifact
   intended for the desktop client instead of an Android Library artifact.
+- The container merge gate now builds the desktop application image, while Android and
+  release workflows pin Node.js 24 for reproducible documentation verification.
+- Direct-login failures now distinguish ambiguous credential/region rejection, rate
+  limiting, and provider failures. The desktop form stays open for correction and can
+  reveal the entered password before submission.
+- Pages documentation now states the required repository publishing-source and custom-
+  domain settings instead of treating an artifact `CNAME` as authoritative.
 
 ### Planned
 
-- Native Linux desktop feature parity through Compose Multiplatform, mpv JSON IPC,
-  SQLite, Secret Service/KWallet, MPRIS, media keys, and XDG integration for `0.2.0`.
+- Desktop release hardening, broad-distribution packages, protected live-provider tests,
+  keyring matrix validation, and accessibility review for `0.2.0`.
 - Verified offline pinning, saved roots, long-form controls, and Android Auto after
   cross-platform queue/progress semantics stabilize.
 

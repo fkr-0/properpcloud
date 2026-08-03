@@ -37,6 +37,8 @@ import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -78,6 +80,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
@@ -298,6 +301,7 @@ private fun AccountDialog(state: DesktopUiState, controller: DesktopController, 
     }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var revealPassword by remember { mutableStateOf(false) }
     var region by remember { mutableStateOf(PCloudAccountRegion.EUROPE) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -305,26 +309,69 @@ private fun AccountDialog(state: DesktopUiState, controller: DesktopController, 
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Interim direct sign-in. Credentials go once to the selected regional pCloud HTTPS API; only the returned token is stored in Secret Service.", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Google, Apple, or Facebook accounts need a regular pCloud password. Create one through pCloud's Forgot password flow before using direct sign-in.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Choose where the account was originally created. A generic login failure does not identify which credential or regional selection was wrong.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PCloudAccountRegion.entries.forEach { candidate ->
-                        OutlinedButton(onClick = { region = candidate }, enabled = region != candidate) { Text(candidate.displayName) }
+                        OutlinedButton(
+                            onClick = { region = candidate },
+                            enabled = !state.busy && region != candidate,
+                        ) { Text(candidate.displayName) }
                     }
                 }
-                OutlinedTextField(email, { email = it }, label = { Text("Account email") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    email,
+                    { email = it },
+                    label = { Text("Account email") },
+                    singleLine = true,
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 OutlinedTextField(
                     password, { password = it }, label = { Text("Password") }, singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = if (revealPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { revealPassword = !revealPassword }) {
+                            Icon(
+                                if (revealPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                if (revealPassword) "Hide password" else "Show password",
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.busy,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
-                        val secret = password.toCharArray(); password = ""; controller.connectPCloud(email, secret, region); onDismiss()
+                        if (!state.busy && email.isNotBlank() && password.isNotEmpty()) {
+                            val secret = password.toCharArray(); password = ""; revealPassword = false
+                            controller.connectPCloud(email, secret, region)
+                        }
                     }),
                 )
+                if (state.busy || state.status.contains("pCloud", ignoreCase = true)) {
+                    Text(
+                        state.status,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
         },
         confirmButton = {
             Button(onClick = {
-                val secret = password.toCharArray(); password = ""; controller.connectPCloud(email, secret, region); onDismiss()
-            }, enabled = email.isNotBlank() && password.isNotEmpty()) { Text("Connect") }
+                val secret = password.toCharArray(); password = ""; revealPassword = false
+                controller.connectPCloud(email, secret, region)
+            }, enabled = email.isNotBlank() && password.isNotEmpty() && !state.busy) {
+                Text(if (state.busy) "Connecting…" else "Connect")
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )

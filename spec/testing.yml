@@ -32,8 +32,9 @@ testing:
       covers: [OAuth, region, listing, link expiry, ranges, change feed, mutation conflict]
       restrictions: [least-privilege disposable data, no fork secrets, cleanup required]
     linux_integration:
-      runs: desktop pull request after client exists
-      covers: [SQLite, secret-vault fake, mpv IPC, MPRIS]
+      runs: every desktop pull request and main-branch push through .github/workflows/linux.yml
+      covers: [desktop unit tests, application image, SQLite, generated media, real mpv IPC, packaged MPRIS]
+      host_requirements: [JDK 21, mpv, dbus-run-session, gdbus, secret-tool]
   fixtures:
     folder_tree:
       Music/Album: [01 - Opening.mp3, 2 - Middle.mp3, 10 - Ending.mp3, cover.jpg]
@@ -87,7 +88,7 @@ testing:
           command: make release-client-id-check
           expect: missing ID reports OAuth-disabled fallback mode, valid ID enables OAuth, malformed ID fails
         TEST-AUTH-DIRECT:
-          expect: [explicit regional host, successful auth token session, password buffer cleared, provider and network failures typed]
+          expect: [explicit regional host, successful auth token session, password buffer cleared, provider and network failures typed, stable 2000/4000/5000 rejection classification]
         TEST-AUTH-LEGACY-TRANSPORT:
           expect: [HTTPS API allowlist, SDK query parameters moved to one-shot form body, auth token absent from URL and Authorization header, token-bearing replay prevented, HTTPS content capabilities passed without account token, cleartext content rejected]
         TEST-AUTH-DIRECT-UI:

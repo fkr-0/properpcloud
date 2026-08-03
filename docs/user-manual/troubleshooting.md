@@ -39,6 +39,18 @@ MPRIS depends on a session D-Bus. Playback itself remains functional without it.
 
 Confirm the selected region. European accounts use the European API host; other accounts use the United States host. The application intentionally does not spray credentials across both endpoints.
 
+The direct-login result code narrows the next step without revealing provider response text:
+
+| Code | Meaning | Action |
+| --- | --- | --- |
+| `2000` | Generic login failure. pCloud does not identify whether the email/password is wrong. The original account region is also mandatory. | Re-enter the credentials, use the password-reveal control to check for a typo, and verify Europe versus United States. |
+| `4000` | Too many login attempts from the current IP address. | Stop retrying and wait before another attempt. |
+| `5000` | Provider internal error. | Retry later. |
+
+Accounts requiring a two-factor challenge may need OAuth because pCloud's public direct-login protocol does not document an interactive challenge response.
+
+If the account was created through Google, Apple, or Facebook, the social-provider password is not a pCloud password. Use pCloud's **Forgot password** flow for that email address to create a regular pCloud password before trying direct sign-in.
+
 ## A folder appears incomplete
 
 Recursive scans expose omissions when a child folder cannot be listed or the safety bound is reached. Inspect the status message instead of assuming the result is complete.

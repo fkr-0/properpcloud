@@ -125,13 +125,10 @@ The current UI provides menu equivalents for queue operations. Drag-and-drop, ri
 ## Verification
 
 ```bash
-make desktop-test
-make desktop-smoke
-make desktop-mpris-smoke
-make desktop-package
+make linux-ci
 ```
 
-The unit suite covers XDG mapping, SQLite round trips, deterministic demo traversal and media generation, and mpv command encoding. The playback smoke covers the actual host Unix socket and mpv process. The MPRIS smoke verifies the packaged jlink runtime and externally queries root/player properties over an isolated session bus.
+The aggregate target runs `desktop-test`, `desktop-package`, `desktop-smoke`, and `desktop-mpris-smoke`. The unit suite covers XDG mapping, SQLite round trips, deterministic demo traversal and media generation, and mpv command encoding. The playback smoke covers the actual host Unix socket and mpv process. The MPRIS smoke verifies the packaged jlink runtime and externally queries root/player properties over an isolated session bus. `.github/workflows/linux.yml` installs the explicit host dependencies and runs the same gate on pull requests and `main`.
 
 ## Remaining release gates
 

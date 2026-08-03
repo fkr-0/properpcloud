@@ -91,7 +91,10 @@ build:
       result: debug APK
     make_ci:
       command: make ci
-      result: tests, lint, and debug APK with configuration and build caches
+      result: documentation build, all JVM and Android tests, lint, debug APK, and desktop application image with configuration and build caches
+    make_linux_ci:
+      command: make linux-ci
+      result: desktop unit tests, application image, real mpv and SQLite smoke, and packaged MPRIS verification
     make_install:
       command: make install
       boundary: Build in container, install through host adb.
@@ -113,14 +116,15 @@ build:
         - Review licenses before adding dependencies.
   CI:
     provider: GitHub Actions
-    workflow: .github/workflows/android.yml
+    workflows: [.github/workflows/android.yml, .github/workflows/linux.yml, .github/workflows/pages.yml]
     permissions: read-only repository contents
     stages:
       - checkout
       - build or restore Docker image through BuildKit cache
       - restore project Gradle cache
       - make ci
-      - upload APK and reports even when verification fails
+      - run the host Linux integration gate with pinned JDK and explicit mpv/D-Bus dependencies
+      - upload APK, desktop application image, and reports even when verification fails
     protected_live_tests:
       separate_job: true
       conditions:

@@ -91,6 +91,12 @@ commands:
     cwd: .
     timeoutMs: 1200000
     run: ["make", "desktop-mpris-smoke"]
+  linux-ci:
+    description: Run native Linux unit, package, mpv, SQLite, and MPRIS verification
+    category: test
+    cwd: .
+    timeoutMs: 1800000
+    run: ["make", "linux-ci"]
   docs-build:
     description: Validate Markdown and build the Astro Starlight Pages artifact
     category: build

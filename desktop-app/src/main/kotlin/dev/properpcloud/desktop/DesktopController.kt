@@ -25,11 +25,13 @@ import dev.properpcloud.desktop.playback.MpvState
 import dev.properpcloud.desktop.security.SecretServiceVault
 import dev.properpcloud.source.pcloud.PCloudAccountRegion
 import dev.properpcloud.source.pcloud.PCloudDirectLoginClient
+import dev.properpcloud.source.pcloud.PCloudDirectLoginRejectionReason
 import dev.properpcloud.source.pcloud.PCloudDirectLoginResult
 import dev.properpcloud.source.pcloud.PCloudSession
 import dev.properpcloud.source.pcloud.PCloudSourceFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -71,6 +73,8 @@ class DesktopController(
     private val closing = AtomicBoolean(false)
     private var mpris: MprisService? = null
     private var lastCheckpointSecond = -1L
+    private var pCloudConnectJob: Job? = null
+    private var pCloudConnectGeneration = 0L
 
     init {
         restorePCloudSession()
@@ -105,36 +109,74 @@ class DesktopController(
         }
     }
 
-    fun connectPCloud(email: String, password: CharArray, region: PCloudAccountRegion) = scope.launch {
+    fun connectPCloud(email: String, password: CharArray, region: PCloudAccountRegion) {
+        pCloudConnectJob?.cancel()
+        val generation = ++pCloudConnectGeneration
         mutableState.value = mutableState.value.copy(busy = true, status = "Connecting to pCloud ${region.displayName}…")
-        when (val result = PCloudDirectLoginClient().signIn(email, password, region)) {
-            is PCloudDirectLoginResult.Connected -> {
-                val serialized = gson.toJson(result.session).toCharArray()
-                runCatching { vault.store(PCLOUD_SESSION_KEY, serialized) }
-                    .onFailure {
-                        mutableState.value = mutableState.value.copy(busy = false, status = "Secret Service storage failed: ${it.message}")
+        pCloudConnectJob = scope.launch {
+            when (val result = PCloudDirectLoginClient().signIn(email, password, region)) {
+                is PCloudDirectLoginResult.Connected -> {
+                    if (generation != pCloudConnectGeneration) return@launch
+                    val serialized = gson.toJson(result.session).toCharArray()
+                    val storageFailure = runCatching { vault.store(PCLOUD_SESSION_KEY, serialized) }.exceptionOrNull()
+                    if (storageFailure != null) {
+                        updatePCloudConnectState(generation) {
+                            it.copy(busy = false, status = "Secret Service storage failed: ${storageFailure.message}")
+                        }
                         return@launch
                     }
-                attachPCloud(result.session)
-                source = sources.getValue(result.session.let { dev.properpcloud.core.model.SourceId("pcloud") })
-                repository.setSetting("source", "pcloud")
-                loadFolder(source.root.id, resetBreadcrumbs = true)
-                mutableState.value = mutableState.value.copy(busy = false, connectedToPCloud = true, status = "Connected to pCloud")
+                    if (generation != pCloudConnectGeneration) {
+                        runCatching { vault.clear(PCLOUD_SESSION_KEY) }
+                        return@launch
+                    }
+                    attachPCloud(result.session)
+                    source = sources.getValue(result.session.let { dev.properpcloud.core.model.SourceId("pcloud") })
+                    repository.setSetting("source", "pcloud")
+                    loadFolder(source.root.id, resetBreadcrumbs = true)
+                    updatePCloudConnectState(generation) {
+                        it.copy(busy = false, connectedToPCloud = true, status = "Connected to pCloud")
+                    }
+                }
+                is PCloudDirectLoginResult.ProviderRejected -> updatePCloudConnectState(generation) {
+                    it.copy(
+                        busy = false,
+                        status = when (result.reason) {
+                            PCloudDirectLoginRejectionReason.CREDENTIALS_OR_REGION ->
+                                "pCloud login failed (code 2000): re-enter the credentials and verify the account's Europe/US data center"
+                            PCloudDirectLoginRejectionReason.TOO_MANY_ATTEMPTS ->
+                                "pCloud blocked further login attempts (code 4000); wait before retrying"
+                            PCloudDirectLoginRejectionReason.PROVIDER_FAILURE ->
+                                "pCloud reported an internal login error (code 5000); try again later"
+                            PCloudDirectLoginRejectionReason.UNKNOWN ->
+                                "pCloud rejected sign-in (code ${result.providerCode})"
+                        },
+                    )
+                }
+                PCloudDirectLoginResult.InvalidInput -> updatePCloudConnectState(generation) {
+                    it.copy(busy = false, status = "Email or password is invalid")
+                }
+                PCloudDirectLoginResult.InvalidResponse -> updatePCloudConnectState(generation) {
+                    it.copy(busy = false, status = "pCloud returned an invalid response")
+                }
+                PCloudDirectLoginResult.NetworkFailure -> updatePCloudConnectState(generation) {
+                    it.copy(busy = false, status = "Could not reach pCloud")
+                }
             }
-            is PCloudDirectLoginResult.ProviderRejected -> mutableState.value = mutableState.value.copy(busy = false, status = "pCloud rejected sign-in (code ${result.providerCode ?: "unknown"})")
-            PCloudDirectLoginResult.InvalidInput -> mutableState.value = mutableState.value.copy(busy = false, status = "Email or password is invalid")
-            PCloudDirectLoginResult.InvalidResponse -> mutableState.value = mutableState.value.copy(busy = false, status = "pCloud returned an invalid response")
-            PCloudDirectLoginResult.NetworkFailure -> mutableState.value = mutableState.value.copy(busy = false, status = "Could not reach pCloud")
         }
     }
 
-    fun disconnectPCloud() = scope.launch {
-        runCatching { vault.clear(PCLOUD_SESSION_KEY) }
-        sources.entries.removeIf { it.key.value == "pcloud" }
-        source = demoSource
-        repository.setSetting("source", "demo")
-        loadFolder(source.root.id, resetBreadcrumbs = true)
-        mutableState.value = mutableState.value.copy(connectedToPCloud = false, status = "pCloud disconnected locally")
+    fun disconnectPCloud() {
+        pCloudConnectGeneration += 1
+        pCloudConnectJob?.cancel()
+        pCloudConnectJob = null
+        scope.launch {
+            runCatching { vault.clear(PCLOUD_SESSION_KEY) }
+            sources.entries.removeIf { it.key.value == "pcloud" }
+            source = demoSource
+            repository.setSetting("source", "demo")
+            loadFolder(source.root.id, resetBreadcrumbs = true)
+            mutableState.value = mutableState.value.copy(connectedToPCloud = false, status = "pCloud disconnected locally")
+        }
     }
 
     fun open(node: MediaNode) = when (node) {
@@ -284,6 +326,15 @@ class DesktopController(
     private fun attachPCloud(session: PCloudSession) {
         val pcloud = PCloudSourceFactory.create(session)
         sources[pcloud.id] = pcloud
+    }
+
+    private inline fun updatePCloudConnectState(
+        generation: Long,
+        transform: (DesktopUiState) -> DesktopUiState,
+    ) {
+        if (generation == pCloudConnectGeneration) {
+            mutableState.value = transform(mutableState.value)
+        }
     }
 
     private fun sourceFor(node: MediaNode): AudioSource = sources[node.sourceId] ?: error("source ${node.sourceId.value} is unavailable")

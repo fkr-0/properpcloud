@@ -247,7 +247,9 @@ private fun DirectLoginCard(
                 "properpcloud sends the email and password once, directly to the selected " +
                     "pCloud regional API over HTTPS. The password is cleared from this form " +
                     "immediately and is never saved. This legacy flow may be rejected for " +
-                    "accounts requiring two-factor authentication.",
+                    "accounts requiring two-factor authentication. Accounts created through " +
+                    "Google, Apple, or Facebook need a regular pCloud password; create one " +
+                    "through pCloud's Forgot password flow before using direct sign-in.",
                 style = MaterialTheme.typography.bodySmall,
             )
             TextButton(
@@ -289,6 +291,11 @@ private fun DirectLoginForm(
     onSubmit: () -> Unit,
 ) {
     Text("Account region", style = MaterialTheme.typography.labelLarge)
+    Text(
+        "Choose where the account was originally created. A generic login failure does not identify which credential or regional selection was wrong.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PCloudAccountRegion.entries.forEach { option ->
             if (region == option) {

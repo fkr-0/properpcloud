@@ -40,8 +40,8 @@ async function copyDirectory(sourceDirectory, targetDirectory) {
 await copyDirectory(sourceRoot, targetRoot);
 await mkdir(path.join(websiteRoot, 'src', 'assets'), { recursive: true });
 await mkdir(path.join(websiteRoot, 'public'), { recursive: true });
+await rm(path.join(websiteRoot, 'public', 'CNAME'), { force: true });
 await cp(path.join(sourceRoot, 'assets', 'logo.png'), path.join(websiteRoot, 'src', 'assets', 'logo.png'));
 await cp(path.join(sourceRoot, 'assets', 'logo.png'), path.join(websiteRoot, 'public', 'favicon.png'));
-await writeFile(path.join(websiteRoot, 'public', 'CNAME'), 'properpcloud.fkr.dev\n', 'utf8');
 
 console.log(`Synced Markdown documentation from ${sourceRoot} to ${targetRoot}`);

@@ -33,6 +33,7 @@ import dev.properpcloud.core.model.TrackSortPolicy
 import dev.properpcloud.source.pcloud.PCloudSession
 import dev.properpcloud.source.pcloud.PCloudAccountRegion
 import dev.properpcloud.source.pcloud.PCloudDirectLoginResult
+import dev.properpcloud.source.pcloud.PCloudDirectLoginRejectionReason
 import dev.properpcloud.source.pcloud.PCloudRevocationResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -759,9 +760,17 @@ class MainViewModel(
                         )
                     }
                     is PCloudDirectLoginResult.ProviderRejected -> {
-                        val code = result.providerCode?.let { " (provider code $it)" }.orEmpty()
                         _state.value = _state.value.copy(
-                            message = "pCloud rejected direct sign-in$code. Check the email, password, and region. Accounts requiring two-factor authentication may need OAuth.",
+                            message = when (result.reason) {
+                                PCloudDirectLoginRejectionReason.CREDENTIALS_OR_REGION ->
+                                    "pCloud could not log in (code 2000), which does not identify whether the email or password was mistyped. pCloud also requires the data center where the account was created. Re-enter the credentials, verify Europe versus United States, and use OAuth when available for accounts requiring two-factor authentication."
+                                PCloudDirectLoginRejectionReason.TOO_MANY_ATTEMPTS ->
+                                    "pCloud temporarily blocked further login attempts (code 4000). Stop retrying and wait before trying again."
+                                PCloudDirectLoginRejectionReason.PROVIDER_FAILURE ->
+                                    "pCloud reported an internal login error (code 5000). Try again later."
+                                PCloudDirectLoginRejectionReason.UNKNOWN ->
+                                    "pCloud rejected direct sign-in (provider code ${result.providerCode}). Verify the account region and use OAuth when available."
+                            },
                         )
                     }
                 }
