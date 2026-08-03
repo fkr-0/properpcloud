@@ -2,8 +2,8 @@
 
 properpcloud supports two documented pCloud authentication paths. OAuth is the
 preferred long-term path because account credentials stay on pCloud's own page.
-An explicitly labelled direct-login fallback is available while pCloud's
-application-registration console is unavailable.
+An explicitly labelled direct-login fallback remains available for unconfigured
+source builds and account/provider cases where OAuth cannot be completed.
 
 ## Preferred: OAuth
 
@@ -19,31 +19,47 @@ secret.
 
 ### Maintainer OAuth setup
 
-1. Sign in to pCloud's developer console.
-2. Create the properpcloud application.
+The properpcloud application has been created and its client credentials are
+available to maintainers. Client builds consume only the public client ID. The
+client secret is intentionally not read, exported to Docker, written to
+`BuildConfig`, or included in release artifacts.
+
+1. Sign in to pCloud's developer console and verify the properpcloud application.
+2. Confirm that the application permits the Android SDK token flow.
 3. Register `pcloud-oauth://dev.properpcloud.app` as the redirect URI.
 4. Enable **Allow implicit grant**, as required by pCloud's Android SDK token flow.
-5. Record the public client ID as the GitHub repository variable
-   `PCLOUD_CLIENT_ID`. Never store or embed the client secret.
-6. Rebuild a tagged release. The release preflight validates a supplied ID but no
-   longer blocks publication when it is absent, because interim direct sign-in is
-   available.
+5. Put only the public client ID in the ignored local `.env` as
+   `PCLOUD_CLIENT_ID=...` and run `make oauth-config-check`.
+6. Record the same public client ID as the GitHub repository variable
+   `PCLOUD_CLIENT_ID`. Never configure the client secret as a client-build or
+   release-workflow variable.
+7. Rebuild a tagged release and complete the protected EU/US OAuth and logout gate.
 
-For a personal build, open **OAuth developer setup** in the app and enter a public
-client ID, or build with:
+Local Make and Docker Compose builds automatically read only `PCLOUD_CLIENT_ID`
+from `.env`. They never source the file and never pass `PCLOUD_CLIENT_SECRET` into
+the build container. The entire `.env*` family is excluded from Docker build
+contexts, and only `.env.example` may be committed.
+
+For a personal build, copy the template and set the public ID:
 
 ```sh
-PCLOUD_CLIENT_ID=your_public_client_id make build
+cp .env.example .env
+# edit PCLOUD_CLIENT_ID in .env
+make oauth-config-check
+make build
 ```
 
-## Interim: direct pCloud account sign-in
+An explicit environment variable or Gradle property still overrides `.env` for CI
+and controlled builds.
+
+## Fallback: direct pCloud account sign-in
 
 pCloud's HTTP JSON authentication documentation permits an HTTPS request with
 `username`, `password`, `getauth=1`, `logout=1`, and a device name. A successful
 `userinfo` response contains an `auth` token. This path requires no application
 client ID.
 
-Open **Settings → pCloud account → Interim direct sign-in**, then:
+Open **Settings → pCloud account → Fallback direct sign-in**, then:
 
 1. choose the account's storage region—**Europe** or **United States**;
 2. enter the pCloud account email and password;
@@ -103,8 +119,9 @@ region explicitly.
 
 ### OAuth button is unavailable
 
-The build has no bundled application identity and no custom override. Use the
-clearly labelled interim direct-login path, or enter a public client ID under
+The build has no bundled application identity and no custom override. Confirm that
+the repository-root `.env` contains `PCLOUD_CLIENT_ID`, run
+`make oauth-config-check`, or enter a public client ID under
 **OAuth developer setup**. Never enter a client secret or access token there.
 
 ### Direct sign-in is rejected

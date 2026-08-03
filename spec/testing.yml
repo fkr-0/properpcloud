@@ -86,13 +86,16 @@ testing:
           expect: [custom override wins, bundled ID enables OAuth, missing ID leaves OAuth disabled while direct fallback remains available]
         TEST-AUTH-RELEASE-CONFIG:
           command: make release-client-id-check
-          expect: missing ID reports OAuth-disabled fallback mode, valid ID enables OAuth, malformed ID fails
+          expect: missing ID reports unbundled fallback mode, valid ID enables OAuth, malformed ID fails
+        TEST-AUTH-DOTENV:
+          command: make oauth-config-test
+          expect: [only PCLOUD_CLIENT_ID is read, client secret and unrelated keys are ignored, explicit environment wins, quoted values work, duplicate or malformed IDs fail]
         TEST-AUTH-DIRECT:
           expect: [explicit regional host, successful auth token session, password buffer cleared, provider and network failures typed, stable 2000/4000/5000 rejection classification]
         TEST-AUTH-LEGACY-TRANSPORT:
           expect: [HTTPS API allowlist, SDK query parameters moved to one-shot form body, auth token absent from URL and Authorization header, token-bearing replay prevented, HTTPS content capabilities passed without account token, cleartext content rejected]
         TEST-AUTH-DIRECT-UI:
-          expect: [interim label, OAuth preference disclosure, explicit region, email and password fields, two-factor limitation]
+          expect: [fallback-only label, OAuth preference disclosure, explicit region, email and password fields, two-factor limitation]
         TEST-AUTH-CANCEL:
           expect: no account and no credential handle
         TEST-AUTH-CALLBACK:

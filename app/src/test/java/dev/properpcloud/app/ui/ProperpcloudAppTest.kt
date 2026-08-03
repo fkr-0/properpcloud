@@ -131,8 +131,8 @@ class ProperpcloudAppTest {
         compose.onNodeWithText("Settings").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("pCloud account").assertIsDisplayed()
-        compose.onNodeWithTag("settings-screen").performScrollToNode(hasText("Interim direct sign-in"))
-        compose.onNodeWithText("Interim direct sign-in").assertIsDisplayed()
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasText("Fallback direct sign-in"))
+        compose.onNodeWithText("Fallback direct sign-in").assertIsDisplayed()
         if (compose.onAllNodesWithTag("client-id").fetchSemanticsNodes().isEmpty()) {
             compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("toggle-advanced-oauth"))
             compose.onNodeWithTag("toggle-advanced-oauth").performClick()
@@ -145,7 +145,7 @@ class ProperpcloudAppTest {
     }
 
     @Test
-    fun settingsExposeClearlyLabelledInterimDirectLogin() {
+    fun settingsExposeClearlyLabelledFallbackDirectLogin() {
         compose.setContent {
             ProperpcloudApp(
                 state = sampleState().copy(destination = AppDestination.SETTINGS),
@@ -155,7 +155,7 @@ class ProperpcloudAppTest {
         }
 
         compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("direct-login-card"))
-        compose.onNodeWithText("Interim direct sign-in").assertIsDisplayed()
+        compose.onNodeWithText("Fallback direct sign-in").assertIsDisplayed()
         if (compose.onAllNodesWithTag("direct-login-email").fetchSemanticsNodes().isEmpty()) {
             compose.onNodeWithTag("toggle-direct-login").performClick()
             compose.waitForIdle()

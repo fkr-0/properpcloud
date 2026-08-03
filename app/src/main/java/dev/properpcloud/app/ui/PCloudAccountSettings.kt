@@ -163,8 +163,8 @@ private fun OAuthSignInCard(
                 }
             } else {
                 Text(
-                    "OAuth is temporarily unavailable because pCloud's developer console " +
-                        "has not issued properpcloud an application ID yet.",
+                    "This build has no bundled pCloud application ID. OAuth can still be " +
+                        "enabled with a public client ID under developer setup.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -240,11 +240,11 @@ private fun DirectLoginCard(
         ) {
             AccountMethodHeader(
                 icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.tertiary) },
-                title = "Interim direct sign-in",
-                subtitle = "Documented pCloud API fallback while application registration is unavailable.",
+                title = "Fallback direct sign-in",
+                subtitle = "Legacy provider API fallback when OAuth cannot be used.",
             )
             Text(
-                "properpcloud sends the email and password once, directly to the selected " +
+                "Prefer OAuth above. This fallback sends the email and password once, directly to the selected " +
                     "pCloud regional API over HTTPS. The password is cleared from this form " +
                     "immediately and is never saved. This legacy flow may be rejected for " +
                     "accounts requiring two-factor authentication. Accounts created through " +
@@ -256,7 +256,7 @@ private fun DirectLoginCard(
                 onClick = { onExpandedChange(!expanded) },
                 modifier = Modifier.testTag("toggle-direct-login"),
             ) {
-                Text(if (expanded) "Hide direct sign-in" else "Use interim direct sign-in")
+                Text(if (expanded) "Hide fallback sign-in" else "Use fallback direct sign-in")
             }
             if (expanded) {
                 DirectLoginForm(

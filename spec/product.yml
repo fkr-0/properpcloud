@@ -156,10 +156,12 @@ product:
       title: Safe pCloud session establishment and revocation
       behaviors:
         - Prefer provider-hosted OAuth whenever a bundled or explicit public client ID is available.
-        - Published builds may omit a client ID while provider application registration is unavailable.
+        - Published builds bundle the registered public client ID; unconfigured source builds keep OAuth unavailable and retain the fallback direct path.
+        - Local Make and Compose builds may resolve only PCLOUD_CLIENT_ID from an ignored dotenv file.
+        - The client-side token flow never consumes, embeds, exports, or distributes the application client secret.
         - Developer builds may override the bundled public client ID explicitly.
         - Authorize in a trusted provider or system surface.
-        - Offer a clearly labelled interim direct-login fallback implementing pCloud's documented HTTPS username/password token exchange.
+        - Offer a clearly labelled fallback-only direct-login path implementing pCloud's documented HTTPS username/password token exchange.
         - Require explicit Europe or United States selection and send direct-login credentials to exactly one allowlisted regional host.
         - Clear direct-login password form state before dispatch and never persist, log, export, back up, or restore the password.
         - Persist OAuth bearer or legacy auth token plus token kind in platform secret storage.

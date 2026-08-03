@@ -10,13 +10,24 @@ DESKTOP_JAVA_HOME ?= /opt/android-studio/jbr
 PREBUILT_DESKTOP_IMAGE ?= 0
 NPM ?= npm
 
-export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
+DOTENV_PCLOUD_CLIENT_ID := $(shell python3 scripts/read-dotenv-public.py)
+PCLOUD_CLIENT_ID ?= $(DOTENV_PCLOUD_CLIENT_ID)
 
-.PHONY: help toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts dependencies test desktop-test desktop-smoke desktop-mpris-smoke desktop-run desktop-package desktop-appimage desktop-flatpak linux-packages linux-ci docs-install docs-build lint build check ci shell compose install clean
+export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
+export PCLOUD_CLIENT_ID
+
+.PHONY: help oauth-config-check oauth-config-test toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts dependencies test desktop-test desktop-smoke desktop-mpris-smoke desktop-run desktop-package desktop-appimage desktop-flatpak linux-packages linux-ci docs-install docs-build lint build check ci shell compose install clean
 .NOTPARALLEL: linux-ci linux-packages
 
 help: ## Show available targets.
 	@awk 'BEGIN {FS = ":.*## "; printf "properpcloud targets:\n\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+oauth-config-check: ## Validate public OAuth configuration without reading or exporting the client secret.
+	@python3 scripts/read-dotenv-public.py --check
+	@python3 scripts/validate-pcloud-client-id.py
+
+oauth-config-test: ## Run the host-side public dotenv parser regression tests.
+	@python3 -m unittest discover -s tests -p 'test_read_dotenv_public.py'
 
 toolchain-archive: ## Fetch and checksum-verify the resumable Android tools archive.
 	@ANDROID_CMDLINE_TOOLS_VERSION=$(ANDROID_CMDLINE_TOOLS_VERSION) \
@@ -47,7 +58,7 @@ image-no-cache: toolchain-archive ## Rebuild the Android SDK image without Docke
 	  --tag $(IMAGE) \
 	  .
 
-doctor: wrapper-check ## Verify Docker, wrapper, and project prerequisites.
+doctor: oauth-config-check wrapper-check ## Verify Docker, wrapper, OAuth configuration, and project prerequisites.
 	@docker version >/dev/null
 	@docker image inspect $(IMAGE) >/dev/null 2>&1 || { echo "Missing $(IMAGE); run 'make image'." >&2; exit 1; }
 	@mkdir -p .cache/gradle
@@ -60,7 +71,7 @@ wrapper-check: ## Fail if the reviewed Gradle Wrapper is absent.
 	@test -f ./gradle/wrapper/gradle-wrapper.jar.sha256 || { echo "gradle-wrapper.jar.sha256 is missing" >&2; exit 1; }
 	@cd gradle/wrapper && sha256sum --check --strict gradle-wrapper.jar.sha256
 
-spec: ## Parse YAML and verify requirement/use-case traceability in Docker.
+spec: oauth-config-test oauth-config-check ## Parse YAML and verify requirement/use-case traceability in Docker.
 	@docker run --rm \
 	  --user "$$(id -u):$$(id -g)" \
 	  --entrypoint python3 \
@@ -78,16 +89,15 @@ release-check: spec ## Validate SemVer, changelog, license, and Android version 
 	  $(IMAGE) \
 	  scripts/validate-release.py
 
-release-client-id-check: ## Validate the optional public pCloud OAuth application ID.
-	@python3 scripts/validate-pcloud-client-id.py
+release-client-id-check: oauth-config-check ## Validate the public pCloud OAuth application ID when configured.
 
-release-artifacts: ## Prepare versioned APK, checksums, evidence, and release notes.
+release-artifacts: oauth-config-check ## Prepare versioned APK, checksums, evidence, and release notes.
 	@python3 scripts/prepare-release.py
 
 dependencies: ## Resolve dependencies without compiling production code.
 	@bash ./scripts/docker-run.sh dependencies
 
-test: robolectric-runtime ## Run JVM unit and module contract tests in Docker.
+test: oauth-config-check robolectric-runtime ## Run JVM unit and module contract tests in Docker.
 	@bash ./scripts/docker-run.sh test
 
 desktop-test: ## Run the Linux desktop adapter and persistence tests in Docker.
@@ -144,16 +154,16 @@ docs-install: ## Install the pinned documentation renderer dependencies.
 docs-build: docs-install ## Validate Markdown content and build static GitHub Pages output.
 	@cd website && ASTRO_TELEMETRY_DISABLED=1 $(NPM) run build
 
-lint: ## Run Android lint in Docker.
+lint: oauth-config-check ## Run Android lint in Docker.
 	@bash ./scripts/docker-run.sh lint
 
-build: ## Build the debug APK in Docker.
+build: oauth-config-check ## Build the debug APK in Docker.
 	@bash ./scripts/docker-run.sh :app:assembleDebug
 
-check: robolectric-runtime ## Run tests, lint, and debug assembly in one Gradle invocation.
+check: oauth-config-test oauth-config-check robolectric-runtime ## Run tests, lint, and debug assembly in one Gradle invocation.
 	@bash ./scripts/docker-run.sh test lint :app:assembleDebug :desktop-app:createDistributable
 
-ci: release-check robolectric-runtime docs-build ## Execute the complete repository verification set.
+ci: oauth-config-test oauth-config-check release-check robolectric-runtime docs-build ## Execute the complete repository verification set.
 	@bash ./scripts/docker-run.sh \
 	  --configuration-cache \
 	  --build-cache \
@@ -169,12 +179,13 @@ shell: ## Open an interactive shell in the Android SDK image.
 	  --entrypoint /bin/bash \
 	  --env HOME=/tmp/properpcloud-home \
 	  --env GRADLE_USER_HOME=/gradle-cache \
+	  --env PCLOUD_CLIENT_ID="$(PCLOUD_CLIENT_ID)" \
 	  --volume "$$PWD:/workspace" \
 	  --volume "$$PWD/.cache/gradle:/gradle-cache" \
 	  --workdir /workspace \
 	  $(IMAGE)
 
-compose: ## Run the default one-shot Compose build.
+compose: oauth-config-check ## Run the default one-shot Compose build.
 	@LOCAL_UID=$$(id -u) LOCAL_GID=$$(id -g) docker compose run --rm android-build
 
 install: build ## Install the debug APK using host adb.

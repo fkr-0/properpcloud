@@ -95,7 +95,7 @@ def main() -> int:
         "distribution_note": "Installable debug-signed demo build; production signing is intentionally external.",
         "authentication": {
             "oauth_client_id_bundled": bool(os.environ.get("PCLOUD_CLIENT_ID", "").strip()),
-            "interim_direct_login_available": True,
+            "fallback_direct_login_available": True,
             "password_persisted": False,
         },
         "live_pcloud_validation": "requires maintainer sandbox credentials and is not performed in public CI",
@@ -116,8 +116,8 @@ def main() -> int:
         "\n\n## Artifact status\n\n"
         "The attached APK is an installable debug-signed demo build produced by the pinned "
         "Docker toolchain. Production signing remains an external maintainer boundary.\n\n"
-        "The deterministic demo source is fully exercised in public CI. Live pCloud OAuth/direct-login and "
-        "regional-account validation require maintainer-provided sandbox credentials and are "
+        "The deterministic demo source is fully exercised in public CI. Protected live pCloud OAuth, "
+        "fallback direct-login, and regional-account validation require maintainer-provided sandbox credentials and are "
         "reported separately rather than simulated.\n\n"
         "The exact jaudiotagger source archive used by the metadata adapter is attached under "
         "`third-party/`, checksum-verified, and rebuildable through the tagged Gradle project.\n"

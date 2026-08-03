@@ -67,13 +67,17 @@ build:
         - mount complete host home
         - include credential stores
         - commit cache directories
+        - include .env files, dotenv variants, or client secrets in Docker build contexts
   commands:
     make_image:
       command: make image
       result: resumably fetched, checksum-verified Android tools and build image
     make_doctor:
       command: make doctor
-      checks: [Docker available, image available, wrapper complete, Gradle reports expected version]
+      checks: [public OAuth configuration valid, Docker available, image available, wrapper complete, Gradle reports expected version]
+    make_oauth_config_check:
+      command: make oauth-config-check
+      result: only PCLOUD_CLIENT_ID is resolved from environment or ignored .env; client secret is never read or exported
     make_test:
       command: make test
       result: all JVM unit and contract tests
@@ -217,6 +221,7 @@ build:
       - Run make ci.
     development:
       - Edit on host.
+      - Configure only the public PCLOUD_CLIENT_ID in ignored .env; client builds never consume PCLOUD_CLIENT_SECRET.
       - Run narrow tests through Make target or docker-run wrapper.
       - Use make shell only for diagnosis.
       - Use host adb for install and logcat.

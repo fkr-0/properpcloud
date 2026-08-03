@@ -1,5 +1,7 @@
 .git
 .github
+.env
+.env.*
 .gradle
 .cache/*
 !.cache/toolchain/

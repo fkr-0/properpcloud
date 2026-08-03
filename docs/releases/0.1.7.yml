@@ -1,0 +1,60 @@
+release:
+  version: 0.1.7
+  tag: v0.1.7
+  date: 2026-08-03
+  status: verified_release_candidate
+  license: MIT
+  scope:
+    - registered public pCloud application ID available to tagged Android builds
+    - secret-safe local dotenv configuration for the public client ID only
+    - OAuth-first Android account settings with fallback-only direct login
+    - Git and Docker exclusion of dotenv files and application client secrets
+    - regression coverage for parsing, precedence, duplication, and malformed IDs
+  verification:
+    command: make ci
+    result: passed
+    specifications:
+      documents: 11
+      requirements: 19
+      use_cases: 19
+    tests:
+      suites: 26
+      total: 84
+      failures: 0
+      errors: 0
+      skipped: 0
+    lint:
+      errors: 0
+      warnings: 0
+      hints: 6
+  artifact:
+    path: app/build/outputs/apk/debug/app-debug.apk
+    package: dev.properpcloud.app
+    version_code: 1007
+    version_name: 0.1.7
+    production_signed: false
+    bundled_pcloud_client_id: true
+    fallback_direct_login: true
+    size_bytes: 24691633
+    sha256: 350a992a2ecfbd5277d91a8f7234878ab83ea5f24229660d6dc206abffefa867
+  authentication:
+    oauth:
+      preferred: true
+      application_registered: true
+      repository_variable_configured: true
+      bundled_client_id: true
+      client_secret_in_client_build: false
+    fallback_direct_login:
+      documented_provider_protocol: true
+      regions: [Europe, United States]
+      password_persisted: false
+      two_factor_live_validation: outstanding
+  external_validation:
+    live_eu_oauth: outstanding
+    live_us_oauth: outstanding
+    denial_and_cancel: outstanding
+    regional_logout: outstanding
+    device_log_redaction: outstanding
+    physical_device_accessibility: outstanding
+    android_17_runtime: outstanding
+    production_signing_available: false

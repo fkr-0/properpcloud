@@ -15,6 +15,7 @@ services:
     environment:
       HOME: /tmp/properpcloud-home
       GRADLE_USER_HOME: /gradle-cache
+      PCLOUD_CLIENT_ID: ${PCLOUD_CLIENT_ID:-}
     working_dir: /workspace
     volumes:
       - ./:/workspace

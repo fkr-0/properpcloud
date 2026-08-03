@@ -202,21 +202,21 @@ Status: **local release candidate**.
 
 ## `0.1.4` — ordinary OAuth onboarding and complete disconnect
 
-Status: **local release candidate**.
+Status: **implementation complete; application registration and repository variable configured, protected live evidence remains**.
 
 - public application client ID injected into tagged builds for one-tap pCloud sign-in;
 - no user-created app, copied token, or pasted ID in the ordinary path;
 - explicit personal/developer client-ID override retained under advanced setup;
-- tagged release validates a supplied application ID; while pCloud registration is unavailable, releases may ship with the interim direct-login fallback;
+- tagged releases validate the supplied public application ID; unconfigured source builds retain the fallback direct-login path;
 - local credential removal and source detachment happen before network revocation;
 - queues containing pCloud media are cleared so an already-resolved stream cannot continue;
 - regional `/logout` invalidation uses an HTTPS bearer header and typed safe outcomes.
 
-External gate: register the properpcloud pCloud application once, configure
-`pcloud-oauth://dev.properpcloud.app`, enable implicit grant, set the public
-`PCLOUD_CLIENT_ID` repository variable, and complete protected US/EU live tests.
-The provider console is currently unavailable for this account, so this remains
-an enhancement gate rather than a blocker for the interim direct-login release.
+The application-registration and repository-variable steps are complete. Remaining
+external gates are to confirm `pcloud-oauth://dev.properpcloud.app` and implicit
+grant in the provider console and complete protected US/EU OAuth and logout tests.
+The client secret is not a client build input and must remain outside Android/Linux
+binaries and release automation.
 
 ## `0.1.5` — Android semantic freeze and lifecycle hardening
 
@@ -236,7 +236,7 @@ construction, playback, metadata staging, OAuth return and disconnect; TalkBack,
 
 ## `0.1.6` — interim direct login and account UX
 
-Status: **release target**.
+Status: **released 2026-08-02; direct login is retained as a fallback-only path**.
 
 - preserve OAuth as the preferred login path whenever a registered public client ID exists;
 - add pCloud's documented username/password → `auth` token flow as a visibly interim fallback;
@@ -249,9 +249,25 @@ Status: **release target**.
 - replace the broken documentation SVG with the supplied PNG logo and use it in the in-app About surface;
 - keep two-factor direct-login support explicitly unclaimed until protected live-account evidence exists.
 
-OAuth application registration, protected EU/US direct-login checks, and two-factor
-behavior remain external provider/device gates. The direct path is temporary and
-will become a fallback-only option once OAuth application registration succeeds.
+Protected EU/US direct-login checks and two-factor behavior remain external
+provider/device gates. With application credentials now available, the direct path
+is retained only as a fallback for OAuth-unavailable cases.
+
+## `0.1.7` — registered OAuth activation and configuration hardening
+
+Status: **verified release candidate; automated gates passed and protected live OAuth evidence remains outstanding**.
+
+- load only the public `PCLOUD_CLIENT_ID` from an ignored repository-root `.env`;
+- preserve explicit environment/Gradle overrides for CI and developer builds;
+- never read or export `PCLOUD_CLIENT_SECRET` from client build tooling;
+- exclude `.env*` from Git and Docker build contexts while publishing a safe template;
+- keep OAuth ordinary when configured, with direct sign-in collapsed and described
+  only as a fallback;
+- validate dotenv parsing, duplicate keys, quoting, environment precedence, and
+  malformed public IDs with host-side regression tests;
+- publish tagged builds with the configured GitHub repository variable;
+- retain protected Android EU/US authorization, denial, logout, and token-redaction
+  validation as explicit external evidence.
 
 ### Deferred beyond `0.1.0`
 

@@ -39,6 +39,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Verified offline pinning, saved roots, long-form controls, and Android Auto after
   cross-platform queue/progress semantics stabilize.
 
+## [0.1.7] - 2026-08-03
+
+### Added
+
+- Secret-safe local OAuth configuration that reads only the public
+  `PCLOUD_CLIENT_ID` from an ignored `.env`.
+- A committed `.env.example` and host-side regression tests for dotenv parsing,
+  quoting, environment precedence, duplicate keys, and malformed identifiers.
+
+### Changed
+
+- Tagged builds now receive properpcloud's registered public pCloud application ID
+  through the GitHub repository variable, enabling the ordinary OAuth button.
+- Android account settings describe direct username/password sign-in only as a
+  collapsed fallback when OAuth is configured.
+
+### Security
+
+- `.env*` files are excluded from Git and Docker build contexts. Client tooling
+  exports only the public application ID and never reads or passes
+  `PCLOUD_CLIENT_SECRET` to Gradle, containers, binaries, CI, or release artifacts.
+
+### Testing
+
+- The build path is validated from dotenv/environment configuration through Make,
+  Docker, Gradle, and Android `BuildConfig`, with malformed configuration failing
+  closed before client compilation.
+
+### Known limitations
+
+- Protected live OAuth authorization, denial, regional logout, and device-log
+  redaction evidence remains a maintainer/device gate outside public CI.
+
 ## [0.1.6] - 2026-08-02
 
 ### Added

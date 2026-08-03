@@ -27,9 +27,10 @@ When pCloud is selected, the app communicates with pCloud's documented regional
 API host and temporary content hosts returned by pCloud. The app accepts only
 `api.pcloud.com` or `eapi.pcloud.com` as the account API host.
 
-OAuth is preferred and keeps the password on pCloud's page. Until pCloud issues
-properpcloud an application client ID, the optional interim direct-login form sends
-the entered email and password once to the explicitly selected regional `userinfo`
+OAuth is preferred and keeps the password on pCloud's page. Builds configured with
+properpcloud's registered public application ID present OAuth as the ordinary path.
+The optional fallback direct-login form sends the entered email and password once
+to the explicitly selected regional `userinfo`
 endpoint over HTTPS POST. The password is removed from Compose form state before
 the request starts, mutable buffers are cleared after use, and no password is
 written to preferences, backup, files, logs, analytics, crash reports, or release
@@ -70,6 +71,8 @@ properpcloud does not persist or centrally collect:
 - private media files for project-operated processing;
 - audio bytes for MusicBrainz, Cover Art Archive, or AcoustID lookup;
 - metadata provider API keys in source code or release artifacts;
+- the pCloud client secret in source code, Gradle, Docker environments, client
+  binaries, CI variables, or release artifacts;
 - credentials for public CI.
 
 ## User controls

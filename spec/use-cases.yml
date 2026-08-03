@@ -128,13 +128,13 @@ use_cases:
       tests: [TEST-AUTH-CONFIG, TEST-AUTH-LOGIN, TEST-AUTH-CANCEL, TEST-AUTH-CALLBACK]
     UC-AUTH-DIRECT-LOGIN:
       traces: [REQ-AUTH]
-      title: Connect through the documented interim direct-login fallback
+      title: Connect through the documented fallback-only direct login
       preconditions:
         - No valid pCloud session exists.
         - User knows the account's Europe or United States storage region.
-      trigger: User expands Interim direct sign-in and submits email and password.
+      trigger: User expands Fallback direct sign-in and submits email and password.
       flow:
-        - app: Explain that OAuth remains preferred and direct login is interim.
+        - app: Explain that OAuth remains preferred and direct login is fallback-only.
         - user: Select exactly one regional API and enter credentials.
         - app: Remove password text from form state before dispatch.
         - app: POST username, password, getauth, logout, device, and bounded expiry parameters over HTTPS to regional userinfo.

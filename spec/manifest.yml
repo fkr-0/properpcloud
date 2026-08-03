@@ -1,9 +1,9 @@
 specification:
   id: properpcloud
   title: properpcloud product and system specification
-  version: 0.1.6
+  version: 0.1.7
   status: draft-implementable
-  snapshot_date: 2026-08-02
+  snapshot_date: 2026-08-03
   normative_language:
     must: mandatory for the named release or contract
     should: expected unless a documented ADR justifies deviation

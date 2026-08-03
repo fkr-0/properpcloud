@@ -744,7 +744,7 @@ class MainViewModel(
                 when (result) {
                     is PCloudDirectLoginResult.Connected -> installPCloudSession(
                         result.session,
-                        "pCloud connected through interim direct sign-in. The password was not stored; the temporary auth token is encrypted on this device.",
+                        "pCloud connected through fallback direct sign-in. The password was not stored; the temporary auth token is encrypted on this device.",
                     )
                     PCloudDirectLoginResult.InvalidInput -> {
                         _state.value = _state.value.copy(message = "Enter a valid pCloud email and password.")

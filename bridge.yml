@@ -12,7 +12,7 @@ agent:
     pCloud passwords, app secrets, signed stream URLs, local.properties, APKs, or private media.
     VERSION is canonical; published tags are immutable. make ci is the merge/release gate.
   tasks:
-    - Register the properpcloud pCloud application, set PCLOUD_CLIENT_ID, and run protected US/EU OAuth/logout validation.
+    - Confirm the Android redirect/implicit-grant settings and run protected US/EU OAuth/logout validation with the configured PCLOUD_CLIENT_ID repository variable.
     - Complete the external 0.1.5 physical-device process-death and accessibility matrix.
     - Add artwork and optional local Chromaprint/AcoustID adapters after provider-term review.
     - Implement remote replacement only when pCloud exposes an atomic expected-revision primitive.
@@ -35,6 +35,7 @@ agent:
     - Converted the core, provider, WebDAV, and metadata adapters to portable JVM modules.
     - Implemented native Compose Desktop browsing, queueing, SQLite, Secret Service, mpv JSON IPC, MPRIS, and host smoke verification.
     - Added a Markdown user manual and developer API reference rendered by Astro Starlight for GitHub Pages.
+    - Added secret-safe local dotenv loading for the registered public pCloud client ID and made direct login fallback-only when OAuth is configured.
 
 commands:
   image:

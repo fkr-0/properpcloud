@@ -11,7 +11,7 @@ def main() -> int:
     client_id = os.environ.get("PCLOUD_CLIENT_ID", "").strip()
     if not client_id:
         print(
-            "release: PCLOUD_CLIENT_ID is absent; OAuth is disabled and the clearly labelled interim direct-login path remains available",
+            "release: PCLOUD_CLIENT_ID is absent; bundled OAuth is disabled and the clearly labelled fallback direct-login path remains available",
         )
         return 0
     if len(client_id) > 512 or any(character.isspace() or ord(character) < 32 for character in client_id):
