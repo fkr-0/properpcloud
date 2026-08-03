@@ -79,14 +79,21 @@ jobs:
             -cf - properpcloud \
             | gzip -n > .release-inputs/properpcloud-desktop-image.tar.gz
 
-      - name: Upload desktop image and reports
+      - name: Upload executable desktop image
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: properpcloud-linux-desktop-image
+          if-no-files-found: error
+          path: .release-inputs/properpcloud-desktop-image.tar.gz
+          retention-days: 1
+
+      - name: Upload Linux reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: properpcloud-linux-base-and-reports
+          name: properpcloud-linux-reports
           if-no-files-found: warn
           path: |
-            .release-inputs/properpcloud-desktop-image.tar.gz
             desktop-app/build/reports/tests/**
             desktop-app/build/test-results/**
 
@@ -104,7 +111,7 @@ jobs:
       - name: Download verified desktop image
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: properpcloud-linux-base-and-reports
+          name: properpcloud-linux-desktop-image
           path: .release-inputs
 
       - name: Restore executable desktop image
@@ -148,7 +155,7 @@ jobs:
       - name: Download verified desktop image
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: properpcloud-linux-base-and-reports
+          name: properpcloud-linux-desktop-image
           path: .release-inputs
 
       - name: Restore executable desktop image
