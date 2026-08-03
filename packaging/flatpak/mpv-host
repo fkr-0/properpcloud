@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+set -eu
+
+if ! command -v flatpak-spawn >/dev/null 2>&1; then
+  echo "properpcloud Flatpak requires flatpak-spawn to invoke the host mpv package" >&2
+  exit 127
+fi
+
+exec flatpak-spawn --host mpv "$@"

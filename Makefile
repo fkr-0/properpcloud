@@ -7,12 +7,13 @@ ANDROID_CMDLINE_TOOLS_SHA256 ?= 4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a
 ANDROID_PLATFORM ?= 37.0
 ANDROID_BUILD_TOOLS ?= 37.0.0
 DESKTOP_JAVA_HOME ?= /opt/android-studio/jbr
+PREBUILT_DESKTOP_IMAGE ?= 0
 NPM ?= npm
 
 export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
 
-.PHONY: help toolchain-archive robolectric-runtime image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts dependencies test desktop-test desktop-smoke desktop-mpris-smoke desktop-run desktop-package linux-ci docs-install docs-build lint build check ci shell compose install clean
-.NOTPARALLEL: linux-ci
+.PHONY: help toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts dependencies test desktop-test desktop-smoke desktop-mpris-smoke desktop-run desktop-package desktop-appimage desktop-flatpak linux-packages linux-ci docs-install docs-build lint build check ci shell compose install clean
+.NOTPARALLEL: linux-ci linux-packages
 
 help: ## Show available targets.
 	@awk 'BEGIN {FS = ":.*## "; printf "properpcloud targets:\n\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -24,6 +25,9 @@ toolchain-archive: ## Fetch and checksum-verify the resumable Android tools arch
 
 robolectric-runtime: ## Fetch and checksum-verify the Android 16 JVM test runtime.
 	@bash scripts/fetch-robolectric-runtime.sh
+
+appimage-tool: ## Fetch checksum-pinned appimagetool and its type-2 runtime.
+	@bash scripts/fetch-appimagetool.sh
 
 image: toolchain-archive ## Build the pinned Android SDK image with BuildKit.
 	DOCKER_BUILDKIT=1 docker build \
@@ -104,6 +108,28 @@ desktop-run: ## Launch the Compose Desktop client on the host.
 
 desktop-package: ## Build the Linux Compose Desktop application image in Docker.
 	@bash ./scripts/docker-run.sh :desktop-app:createDistributable
+
+desktop-appimage: ## Build an x86_64 AppImage from the Compose Desktop image.
+	@if [[ "$(PREBUILT_DESKTOP_IMAGE)" == "1" ]]; then \
+	  test -x desktop-app/build/compose/binaries/main/app/properpcloud/bin/properpcloud || { \
+	    echo "prebuilt desktop image is missing" >&2; exit 1; \
+	  }; \
+	else \
+	  $(MAKE) desktop-package; \
+	fi
+	@bash scripts/package-appimage.sh
+
+desktop-flatpak: ## Build an x86_64 single-file Flatpak bundle from the desktop image.
+	@if [[ "$(PREBUILT_DESKTOP_IMAGE)" == "1" ]]; then \
+	  test -x desktop-app/build/compose/binaries/main/app/properpcloud/bin/properpcloud || { \
+	    echo "prebuilt desktop image is missing" >&2; exit 1; \
+	  }; \
+	else \
+	  $(MAKE) desktop-package; \
+	fi
+	@bash scripts/package-flatpak.sh
+
+linux-packages: desktop-appimage desktop-flatpak ## Build AppImage and Flatpak release packages.
 
 desktop-mpris-smoke: desktop-package ## Verify packaged MPRIS properties over an isolated session bus.
 	@command -v dbus-run-session >/dev/null || { echo "dbus-run-session is required" >&2; exit 1; }

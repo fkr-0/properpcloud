@@ -36,9 +36,33 @@ make desktop-run
 
 ```bash
 make desktop-package
+make desktop-appimage
+make desktop-flatpak
+# or both release formats:
+make linux-packages
 ```
 
-The Compose Desktop packaging configuration produces Linux application images and supports `.deb` and `.rpm` packages. The first project-supported package for Arch remains a planned release artifact; the unpacked application image works independently of the Android toolchain.
+`desktop-package` produces the unpacked Compose application image. `desktop-appimage`
+wraps that image with checksum-pinned AppImage tooling and a pinned type-2 runtime.
+`desktop-flatpak` produces a directly installable single-file Flatpak bundle using the
+Freedesktop 25.08 runtime. Since the application is already compiled into its jlink
+image, packaging does not download or invoke the Freedesktop compiler SDK.
+
+Both packages bundle properpcloud's jlink application runtime but intentionally retain
+the existing `mpv` system dependency. The AppImage resolves `mpv` from the normal host
+`PATH`. The Flatpak uses its narrowly declared `org.freedesktop.Flatpak` D-Bus permission
+to invoke the host `mpv` through `flatpak-spawn` and shares only
+`$XDG_RUNTIME_DIR/properpcloud` for the private IPC socket; it does not grant broad
+host-filesystem access. Install a release bundle with:
+
+```bash
+flatpak install ./properpcloud-*-x86_64.flatpak
+```
+
+The GitHub Linux workflow builds and smoke-tests both package formats, and tagged release
+workflows attach them beside the Android APK with one checksum manifest and provenance
+record. The Flatpak smoke verifies the installed application runtime, MPRIS export, and
+host-mpv IPC socket through the shared XDG runtime subdirectory.
 
 ## Data locations
 

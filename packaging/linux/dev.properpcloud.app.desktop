@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=properpcloud
+Comment=Folder-first pCloud audio player
+Exec=properpcloud
+Icon=dev.properpcloud.app
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupNotify=true
+StartupWMClass=properpcloud

@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   state, mpv JSON IPC playback, Secret Service sessions, MPRIS, and XDG paths.
 - An Astro Starlight documentation site and a dedicated GitHub Linux integration
   workflow covering the desktop application image, real mpv/SQLite, and packaged MPRIS.
+- Checksum-pinned x86_64 AppImage packaging and a Freedesktop 25.08 single-file
+  Flatpak bundle, both produced and smoke-tested in CI and attached to tagged releases.
 
 ### Changed
 
@@ -27,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reveal the entered password before submission.
 - Pages documentation now states the required repository publishing-source and custom-
   domain settings instead of treating an artifact `CNAME` as authoritative.
+- Tagged releases now aggregate Android, AppImage, and Flatpak jobs into one checksum
+  manifest, provenance record, workflow artifact, and GitHub release.
 
 ### Planned
 

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.properpcloud.app</id>
+  <name>properpcloud</name>
+  <summary>Folder-first pCloud audio player</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      properpcloud is a native Linux and Android audio player that treats folders and
+      filenames as first-class library data while adding queues, progress, metadata,
+      pCloud access, mpv playback, and MPRIS integration.
+    </p>
+  </description>
+  <launchable type="desktop-id">dev.properpcloud.app.desktop</launchable>
+  <url type="homepage">https://properpcloud.fkr.dev/</url>
+  <url type="bugtracker">https://github.com/fkr-0/properpcloud/issues</url>
+  <content_rating type="oars-1.1"/>
+</component>

@@ -95,6 +95,9 @@ build:
     make_linux_ci:
       command: make linux-ci
       result: desktop unit tests, application image, real mpv and SQLite smoke, and packaged MPRIS verification
+    make_linux_packages:
+      command: make linux-packages
+      result: checksum-pinned x86_64 AppImage and Freedesktop 25.08 single-file Flatpak bundle
     make_install:
       command: make install
       boundary: Build in container, install through host adb.
@@ -116,7 +119,7 @@ build:
         - Review licenses before adding dependencies.
   CI:
     provider: GitHub Actions
-    workflows: [.github/workflows/android.yml, .github/workflows/linux.yml, .github/workflows/pages.yml]
+    workflows: [.github/workflows/android.yml, .github/workflows/linux.yml, .github/workflows/pages.yml, .github/workflows/release.yml]
     permissions: read-only repository contents
     stages:
       - checkout
@@ -124,7 +127,8 @@ build:
       - restore project Gradle cache
       - make ci
       - run the host Linux integration gate with pinned JDK and explicit mpv/D-Bus dependencies
-      - upload APK, desktop application image, and reports even when verification fails
+      - package and smoke-test x86_64 AppImage and Flatpak artifacts in isolated jobs
+      - upload APK, AppImage, Flatpak, desktop application image, and reports
     protected_live_tests:
       separate_job: true
       conditions:
@@ -134,6 +138,8 @@ build:
       cleanup: mandatory finally step
     artifact_retention:
       - APK
+      - AppImage
+      - Flatpak bundle
       - test reports
       - lint report
       - dependency and build evidence
@@ -142,6 +148,7 @@ build:
     mandatory:
       - Verify Android command-line-tools archive checksum.
       - Verify Gradle distribution checksum.
+      - Verify appimagetool and the AppImage type-2 runtime checksums.
       - Use TLS with failure-on-error and bounded retries for downloads.
       - Keep GitHub Actions pinned to reviewed major or commit according to repository policy.
       - Pin every third-party GitHub Action to a reviewed full commit SHA.

@@ -35,7 +35,7 @@ DesktopController
 - MPRIS play, pause, next, previous, seek, status, and metadata;
 - XDG config, data, cache, and runtime locations;
 - deterministic headless smoke test with a real mpv process;
-- Compose Desktop application-image and `.deb`/`.rpm` packaging configuration.
+- Compose Desktop application-image, AppImage, and Flatpak packaging.
 
 ## Shared versus platform-specific code
 
@@ -138,7 +138,7 @@ Before declaring the Linux `0.2.0` release complete:
 2. verify Secret Service behavior under GNOME, KDE Plasma, and an i3 keyring session;
 3. exercise MPRIS through common media-key daemons;
 4. validate long playback, expired direct-link recovery, mpv crash recovery, and process restart;
-5. produce reproducible Arch and broad-distribution artifacts;
+5. validate AppImage and Flatpak on a broader distribution and desktop matrix;
 6. perform keyboard-only, high-contrast, font-scaling, and accessibility review;
 7. add browser OAuth after provider redirect registration is confirmed.
 

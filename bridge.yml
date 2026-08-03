@@ -85,6 +85,24 @@ commands:
     cwd: .
     timeoutMs: 1200000
     run: ["make", "desktop-package"]
+  desktop-appimage:
+    description: Build the checksum-pinned x86_64 AppImage
+    category: build
+    cwd: .
+    timeoutMs: 1200000
+    run: ["make", "desktop-appimage"]
+  desktop-flatpak:
+    description: Build the x86_64 single-file Flatpak bundle
+    category: build
+    cwd: .
+    timeoutMs: 1800000
+    run: ["make", "desktop-flatpak"]
+  linux-packages:
+    description: Build AppImage and Flatpak release packages
+    category: build
+    cwd: .
+    timeoutMs: 2400000
+    run: ["make", "linux-packages"]
   desktop-mpris-smoke:
     description: Verify packaged MPRIS properties over an isolated D-Bus session
     category: test
@@ -116,7 +134,7 @@ commands:
     timeoutMs: 1800000
     run: ["make", "ci"]
   release-artifacts:
-    description: Create versioned APK, checksums, evidence, and GitHub release notes
+    description: Create the Android release baseline, checksums, evidence, and release notes
     category: build
     cwd: .
     timeoutMs: 300000

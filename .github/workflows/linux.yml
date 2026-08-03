@@ -63,13 +63,124 @@ jobs:
       - name: Verify native Linux client
         run: make linux-ci DESKTOP_JAVA_HOME="$JAVA_HOME"
 
-      - name: Upload desktop application image and reports
+      - name: Archive executable desktop image
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .release-inputs
+          epoch=$(git show -s --format=%ct HEAD)
+          tar \
+            --sort=name \
+            --mtime="@${epoch}" \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -C desktop-app/build/compose/binaries/main/app \
+            -cf - properpcloud \
+            | gzip -n > .release-inputs/properpcloud-desktop-image.tar.gz
+
+      - name: Upload desktop image and reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: properpcloud-linux-and-reports
+          name: properpcloud-linux-base-and-reports
           if-no-files-found: warn
           path: |
-            desktop-app/build/compose/binaries/main/app/**
+            .release-inputs/properpcloud-desktop-image.tar.gz
             desktop-app/build/reports/tests/**
             desktop-app/build/test-results/**
+
+  appimage:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Download verified desktop image
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: properpcloud-linux-base-and-reports
+          path: .release-inputs
+
+      - name: Restore executable desktop image
+        run: |
+          mkdir -p desktop-app/build/compose/binaries/main/app
+          tar -xzf .release-inputs/properpcloud-desktop-image.tar.gz \
+            -C desktop-app/build/compose/binaries/main/app
+
+      - name: Install AppImage smoke dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends mpv
+
+      - name: Build and smoke-test AppImage
+        run: |
+          set -euo pipefail
+          make desktop-appimage PREBUILT_DESKTOP_IMAGE=1
+          appimage=$(find build/releases -maxdepth 1 -type f \
+            -name 'properpcloud-*-x86_64.AppImage' -print -quit)
+          test -n "$appimage"
+          APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --smoke
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: properpcloud-appimage
+          if-no-files-found: error
+          path: build/releases/*.AppImage
+
+  flatpak:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Download verified desktop image
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: properpcloud-linux-base-and-reports
+          path: .release-inputs
+
+      - name: Restore executable desktop image
+        run: |
+          mkdir -p desktop-app/build/compose/binaries/main/app
+          tar -xzf .release-inputs/properpcloud-desktop-image.tar.gz \
+            -C desktop-app/build/compose/binaries/main/app
+
+      - name: Install Flatpak toolchain and smoke dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            flatpak ostree mpv dbus-x11 libglib2.0-bin
+          flatpak remote-add --user --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub \
+            org.freedesktop.Platform//25.08
+
+      - name: Build and smoke-test Flatpak
+        run: |
+          set -euo pipefail
+          make desktop-flatpak PREBUILT_DESKTOP_IMAGE=1
+          bundle=$(find build/releases -maxdepth 1 -type f \
+            -name 'properpcloud-*-x86_64.flatpak' -print -quit)
+          test -n "$bundle"
+          flatpak install --user --noninteractive --reinstall "$bundle"
+          dbus-run-session -- bash scripts/flatpak-smoke.sh
+          flatpak uninstall --user --noninteractive dev.properpcloud.app
+
+      - name: Upload Flatpak
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: properpcloud-flatpak
+          if-no-files-found: error
+          path: build/releases/*.flatpak
