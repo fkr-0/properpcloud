@@ -43,6 +43,51 @@ class MainViewModelTest {
     }
 
     @Test
+    fun partialQueueRestorationPreservesSelectedStableItemAndRewritesStorage() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val playback = FakePlaybackController()
+        val container = AppContainer(context.applicationContext as Application, applicationScope = this)
+        val source = container.sources.current.value
+        val folder = source.list(source.root.id)
+            .filterIsInstance<AudioFolder>()
+            .first { it.name == "Numbered tracks" }
+        val selected = source.list(folder.id).filterIsInstance<AudioTrack>().first()
+        val missing = AudioTrack(
+            sourceId = SourceId("missing-source"),
+            id = NodeId("missing-track"),
+            parentId = NodeId("missing-folder"),
+            name = "missing.flac",
+        )
+        container.preferences.saveQueue(
+            PlaybackQueue(
+                entries = listOf(QueueEntry(missing), QueueEntry(selected)),
+                currentIndex = 1,
+            ),
+        )
+
+        withViewModel(container, playback) { viewModel ->
+            var restoredState: AppUiState? = null
+            for (attempt in 0 until 200) {
+                advanceUntilIdle()
+                restoredState = viewModel.state.value.takeIf {
+                    it.queue.current?.track?.id == selected.id
+                }
+                if (restoredState != null) break
+                Thread.sleep(10)
+            }
+            val resolved = requireNotNull(restoredState) {
+                "partial queue restoration did not preserve the selected stable item"
+            }
+
+            assertEquals(selected.id, resolved.queue.current?.track?.id)
+            val stored = container.preferences.loadQueue()
+            assertEquals(listOf(selected.id), stored.entries.map { it.nodeId })
+            assertEquals(0, stored.currentIndex)
+            assertTrue(resolved.message.orEmpty().contains("1 unavailable"))
+        }
+    }
+
+    @Test
     fun playbackControllerFailureBecomesActionableUiMessage() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val playback = FakePlaybackController()

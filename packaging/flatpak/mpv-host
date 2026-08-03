@@ -6,4 +6,60 @@ if ! command -v flatpak-spawn >/dev/null 2>&1; then
   exit 127
 fi
 
+runtime_root="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/properpcloud"
+seen_no_config=0
+seen_ipc=0
+seen_idle=0
+seen_terminal=0
+seen_audio_display=0
+seen_force_window=0
+
+for argument in "$@"; do
+  case "$argument" in
+    --no-config)
+      if [ "$seen_no_config" -ne 0 ]; then
+        echo "properpcloud rejected duplicate mpv configuration flags" >&2
+        exit 64
+      fi
+      seen_no_config=1
+      ;;
+    --idle=yes)
+      seen_idle=$((seen_idle + 1))
+      ;;
+    --terminal=no)
+      seen_terminal=$((seen_terminal + 1))
+      ;;
+    --audio-display=no)
+      seen_audio_display=$((seen_audio_display + 1))
+      ;;
+    --force-window=no)
+      seen_force_window=$((seen_force_window + 1))
+      ;;
+    --input-ipc-server="$runtime_root"/*)
+      if [ "$seen_ipc" -ne 0 ]; then
+        echo "properpcloud rejected duplicate mpv IPC sockets" >&2
+        exit 64
+      fi
+      case "$argument" in
+        *'/../'*|*'/..')
+          echo "properpcloud rejected an unsafe mpv IPC path" >&2
+          exit 64
+          ;;
+      esac
+      seen_ipc=1
+      ;;
+    *)
+      echo "properpcloud rejected unsupported host mpv argument" >&2
+      exit 64
+      ;;
+  esac
+done
+
+if [ "$seen_no_config" -ne 1 ] || [ "$seen_ipc" -ne 1 ] || \
+   [ "$seen_idle" -ne 1 ] || [ "$seen_terminal" -ne 1 ] || \
+   [ "$seen_audio_display" -ne 1 ] || [ "$seen_force_window" -ne 1 ]; then
+  echo "properpcloud requires deterministic mpv configuration and a private IPC socket" >&2
+  exit 64
+fi
+
 exec flatpak-spawn --host mpv "$@"

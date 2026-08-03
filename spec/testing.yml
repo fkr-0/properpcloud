@@ -184,7 +184,14 @@ testing:
         TEST-PLAYBACK-CONTROLLER-ERROR:
           expect: fixed redacted actionable UI message
         TEST-QUEUE-RESTORE-REPAIR:
-          expect: unavailable entries omitted, repaired queue persisted, user informed
+          expect: [unavailable entries omitted, selected surviving stable item preserved, deterministic nearest fallback, repaired queue persisted, user informed]
+        TEST-MPV-IPC-CORRELATION:
+          expect: [request ID echoed, unrelated events ignored, unmatched responses ignored, provider data absent from fixed failure]
+        TEST-SECRET-SERVICE-BOUNDARY:
+          expect: [missing executable fails closed, timeout process terminated, caller credential buffer cleared, invalid keys rejected, oversized lookup rejected]
+        TEST-FLATPAK-MPV-BOUNDARY:
+          command: make oauth-config-test
+          expect: [known deterministic flags forwarded, private runtime socket required, arbitrary host mpv options rejected]
         TEST-CROSS-PLATFORM-FIXTURES:
           fixture: spec/fixtures/0.1.5
           expect: exact queue/progress decode and byte reproduction
@@ -333,6 +340,19 @@ testing:
         - Performance targets are measured and exceptions documented.
         - Reproducible build evidence is recorded.
         - Signed artifact is smoke-tested on supported API levels.
+    linux_0_1_8:
+      required:
+        - Shared queue restoration tests pass on JVM and Android orchestration.
+        - Desktop final checkpoint and mpv response-correlation tests pass.
+        - Secret Service and Flatpak host-boundary tests pass without credentials.
+        - Android, Linux, documentation, and release metadata gates remain green.
+    linux_0_1_9:
+      required:
+        - Forced mpv crash/restart and long-playback soak evidence is retained.
+        - Clean-profile AppImage and Flatpak tests pass.
+        - Arch package reproduction and license inventory pass.
+        - GNOME, KDE Plasma, and i3 Secret Service/MPRIS cells are explicit.
+        - Keyboard-only, focus, text-scale, contrast, and non-drag checks have no critical finding.
   evidence:
     retain: [JUnit XML, HTML reports, lint reports, APK SHA-256, dependency verification, emulator API, sandbox cleanup]
     prohibit: [OAuth tokens, signed URLs, passwords, private media bytes]

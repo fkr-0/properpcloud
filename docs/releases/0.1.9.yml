@@ -1,0 +1,27 @@
+release:
+  version: 0.1.9
+  tag: v0.1.9
+  status: planned_evidence_gate
+  predecessor: v0.1.8
+  promotes_to: v0.2.0
+  objective: close Linux distribution, desktop-environment, accessibility, and recovery uncertainty
+  required_evidence:
+    crash_recovery:
+      - forced mpv exit preserves durable queue and selected stable identity
+      - restart resumes within the documented progress-loss bound
+      - automatic restart attempts are bounded and observable
+    packaging:
+      - clean-profile AppImage smoke
+      - clean-profile Flatpak smoke
+      - immutable-tag checksum and attestation graph
+      - reproducible Arch package recipe and license inventory
+    desktop_matrix:
+      sessions: [GNOME, KDE Plasma, i3]
+      checks: [Secret Service available, Secret Service locked, MPRIS controls, media keys, suspend and resume]
+    accessibility:
+      checks: [keyboard only, focus order, 200 percent text, high contrast, non-drag queue operations]
+    soak:
+      checks: [long playback, pause and seek, link refresh, suspend and resume, controlled mpv failure]
+    oauth_decision:
+      rule: enable browser OAuth only after a provider-confirmed desktop redirect; otherwise retain and document the fallback boundary
+  promotion_rule: every failed or unavailable matrix cell remains explicit and blocks v0.2.0

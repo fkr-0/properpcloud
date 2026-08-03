@@ -7,42 +7,77 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+
+- `0.1.9` distribution hardening: forced mpv crash/restart evidence, clean-profile
+  AppImage/Flatpak checks, reproducible Arch packaging, desktop-environment keyring/MPRIS
+  matrix, accessibility review, and long-playback soak testing.
+- `0.2.0` promotion only after the `0.1.8` runtime and `0.1.9` compatibility gates plus
+  protected EU/US provider evidence are complete.
+- Verified offline pinning, saved roots, long-form controls, and Android Auto after
+  cross-platform queue/progress semantics stabilize.
+
+## [0.1.8] - 2026-08-03
+
 ### Added
 
-- The first native Linux `0.2.0` foundation boundary: `core-model` is now a pure
-  Kotlin/JVM module that emits JVM 17-compatible bytecode and a reusable JAR.
-- A native Compose Desktop client with folder browsing, deterministic queues, SQLite
-  state, mpv JSON IPC playback, Secret Service sessions, MPRIS, and XDG paths.
-- An Astro Starlight documentation site and a dedicated GitHub Linux integration
-  workflow covering the desktop application image, real mpv/SQLite, and packaged MPRIS.
-- Checksum-pinned x86_64 AppImage packaging and a Freedesktop 25.08 single-file
-  Flatpak bundle, both produced and smoke-tested in CI and attached to tagged releases.
+- A shared queue-restoration algorithm that repairs stale snapshots by stable identity,
+  preserves the selected surviving item, and chooses a deterministic nearest fallback.
+- Desktop Secret Service regression coverage for missing tooling, caller-buffer clearing,
+  and invalid key rejection.
+- Host-side tests for the Flatpak-to-host mpv argument boundary.
 
 ### Changed
 
-- Android, metadata, pCloud, and WebDAV modules now consume the same JVM core artifact
-  intended for the desktop client instead of an Android Library artifact.
-- The container merge gate now builds the desktop application image, while Android and
-  release workflows pin Node.js 24 for reproducible documentation verification.
-- Direct-login failures now distinguish ambiguous credential/region rejection, rate
-  limiting, and provider failures. The desktop form stays open for correction and can
-  reveal the entered password before submission.
-- Pages documentation now states the required repository publishing-source and custom-
-  domain settings instead of treating an artifact `CNAME` as authoritative.
-- Tagged releases now aggregate Android, AppImage, and Flatpak jobs into one checksum
-  manifest, provenance record, workflow artifact, and GitHub release.
+- Android and Linux now persist partially repaired queues immediately and report omitted
+  entries rather than rediscovering the same stale state on every launch.
+- Desktop progress is force-checkpointed before queue mutation, on playback failure,
+  during disconnect, and on orderly shutdown instead of only at five-second boundaries.
+- mpv JSON IPC commands carry request IDs, ignore unrelated messages, enforce bounded
+  responses, and require an explicit successful command result.
+- Desktop pCloud disconnect removes the active source locally first, stops pCloud
+  playback, persists a disconnect tombstone and clears affected queue state before
+  attempting Secret Service cleanup and typed remote session revocation.
+- AppStream metadata now records release history and release validation requires the
+  current `VERSION` to be represented.
 
-### Planned
+### Security
 
-- Desktop release hardening, broad-distribution packages, protected live-provider tests,
-  keyring matrix validation, and accessibility review for `0.2.0`.
-- Verified offline pinning, saved roots, long-form controls, and Android Auto after
-  cross-platform queue/progress semantics stabilize.
+- Secret Service subprocesses are bounded and terminated on timeout, caller credential
+  buffers are cleared in `finally`, lookup keys are constrained, and oversized results
+  are rejected.
+- The Flatpak host-mpv bridge rejects arbitrary host command flags and accepts only the
+  deterministic properpcloud playback contract plus its private runtime socket.
+- mpv failures expose a fixed command error rather than response data that may include an
+  ephemeral signed stream location.
+
+### Testing
+
+- Added shared restoration tests for missing predecessors, missing selected entries,
+  end-of-queue fallback, and fully unavailable queues.
+- Added Android orchestration coverage proving the repaired selection and rewritten
+  persisted index.
+- Expanded desktop mpv protocol tests for event filtering, response correlation, and
+  redacted command failures.
+
+### Known limitations
+
+- Protected pCloud account validation and the GNOME/KDE/i3 compatibility matrix remain
+  external gates; this patch makes no new live-provider claim.
+- Automatic mpv crash restart, long-duration soak evidence, broad desktop accessibility,
+  and reproducible Arch packaging are intentionally assigned to `0.1.9`.
 
 ## [0.1.7] - 2026-08-03
 
 ### Added
 
+- The first native Linux foundation: a JVM 17 `core-model` artifact and Compose Desktop
+  client with folder browsing, deterministic queues, SQLite state, mpv JSON IPC,
+  Secret Service sessions, MPRIS, and XDG paths.
+- Astro Starlight documentation plus a dedicated Linux integration workflow covering
+  the desktop application image, real mpv/SQLite, and packaged MPRIS.
+- Checksum-pinned x86_64 AppImage and Freedesktop 25.08 Flatpak packaging, smoke-tested
+  in CI and published with the tagged release.
 - Secret-safe local OAuth configuration that reads only the public
   `PCLOUD_CLIENT_ID` from an ignored `.env`.
 - A committed `.env.example` and host-side regression tests for dotenv parsing,
@@ -50,6 +85,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Android, metadata, pCloud, and WebDAV modules consume the same portable JVM core
+  artifact used by the desktop client.
+- Tagged releases aggregate Android, AppImage, and Flatpak jobs into one checksum
+  manifest, provenance record, workflow artifact, and GitHub release.
 - Tagged builds now receive properpcloud's registered public pCloud application ID
   through the GitHub repository variable, enabling the ordinary OAuth button.
 - Android account settings describe direct username/password sign-in only as a
@@ -419,7 +458,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/fkr-0/properpcloud/compare/v0.1.7...v0.1.8
+[0.1.7]: https://github.com/fkr-0/properpcloud/compare/v0.1.6...v0.1.7
+[0.1.6]: https://github.com/fkr-0/properpcloud/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/fkr-0/properpcloud/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/fkr-0/properpcloud/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/fkr-0/properpcloud/compare/v0.1.2...v0.1.3

@@ -7,12 +7,16 @@ import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.FolderQueueAssembler
 import dev.properpcloud.core.model.FolderQueueBuilder
 import dev.properpcloud.core.model.MediaNode
+import dev.properpcloud.core.model.MediaIdentity
 import dev.properpcloud.core.model.NodeId
-import dev.properpcloud.core.model.PlaybackProgress
+import dev.properpcloud.core.model.PlaybackCheckpointCursor
+import dev.properpcloud.core.model.PlaybackCheckpointPolicy
+import dev.properpcloud.core.model.PlaybackObservation
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.QueueReducer
+import dev.properpcloud.core.model.QueueRestoration
 import dev.properpcloud.core.model.ResumePolicy
 import dev.properpcloud.desktop.data.DesktopDemoAudioSource
 import dev.properpcloud.desktop.data.SqliteStateRepository
@@ -23,11 +27,14 @@ import dev.properpcloud.desktop.platform.XdgPaths
 import dev.properpcloud.desktop.playback.MpvController
 import dev.properpcloud.desktop.playback.MpvState
 import dev.properpcloud.desktop.security.SecretServiceVault
+import dev.properpcloud.desktop.security.PCloudSessionRestorePolicy
 import dev.properpcloud.source.pcloud.PCloudAccountRegion
 import dev.properpcloud.source.pcloud.PCloudDirectLoginClient
 import dev.properpcloud.source.pcloud.PCloudDirectLoginRejectionReason
 import dev.properpcloud.source.pcloud.PCloudDirectLoginResult
 import dev.properpcloud.source.pcloud.PCloudSession
+import dev.properpcloud.source.pcloud.PCloudRevocationResult
+import dev.properpcloud.source.pcloud.PCloudSessionRevoker
 import dev.properpcloud.source.pcloud.PCloudSourceFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +46,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.awt.Desktop
 import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
@@ -59,6 +67,7 @@ data class DesktopUiState(
 
 class DesktopController(
     private val paths: XdgPaths = XdgPaths.resolve().create(),
+    private val sessionRevoker: PCloudSessionRevoker = PCloudSessionRevoker(),
 ) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val gson = Gson()
@@ -72,9 +81,11 @@ class DesktopController(
     val state: StateFlow<DesktopUiState> = mutableState.asStateFlow()
     private val closing = AtomicBoolean(false)
     private var mpris: MprisService? = null
-    private var lastCheckpointSecond = -1L
+    private val checkpointPolicy = PlaybackCheckpointPolicy(minimumPositionDeltaMillis = 5_000)
+    private var checkpointCursor = PlaybackCheckpointCursor()
     private var pCloudConnectJob: Job? = null
     private var pCloudConnectGeneration = 0L
+    private var pCloudSession: PCloudSession? = null
 
     init {
         restorePCloudSession()
@@ -169,13 +180,45 @@ class DesktopController(
         pCloudConnectGeneration += 1
         pCloudConnectJob?.cancel()
         pCloudConnectJob = null
-        scope.launch {
-            runCatching { vault.clear(PCLOUD_SESSION_KEY) }
-            sources.entries.removeIf { it.key.value == "pcloud" }
-            source = demoSource
+        val session = pCloudSession
+        pCloudSession = null
+        sources.entries.removeIf { it.key.value == "pcloud" }
+        source = demoSource
+        val localPersistence = runCatching {
+            checkpoint(mutableState.value.playback, force = true)
             repository.setSetting("source", "demo")
+            repository.setSetting(PCloudSessionRestorePolicy.SETTING_KEY, PCloudSessionRestorePolicy.DISCONNECTED)
+            if (mutableState.value.queue.entries.any { it.track.sourceId.value == "pcloud" }) {
+                updateQueue(PlaybackQueue(generation = mutableState.value.queue.generation + 1))
+            }
+        }
+        mutableState.value = mutableState.value.copy(
+            connectedToPCloud = false,
+            status = if (localPersistence.isSuccess) {
+                "pCloud disconnected locally; clearing the credential and revoking the remote session…"
+            } else {
+                "pCloud disconnected for this process, but durable local state could not be updated"
+            },
+        )
+        scope.launch {
+            runCatching { mpv.stop() }
             loadFolder(source.root.id, resetBreadcrumbs = true)
-            mutableState.value = mutableState.value.copy(connectedToPCloud = false, status = "pCloud disconnected locally")
+            val localClear = withContext(Dispatchers.IO) { runCatching { vault.clear(PCLOUD_SESSION_KEY) } }
+            val revocation = session?.let { sessionRevoker.revoke(it) }
+            mutableState.value = mutableState.value.copy(
+                connectedToPCloud = false,
+                status = when {
+                    localPersistence.isFailure && localClear.isFailure ->
+                        "pCloud is disconnected for this process, but durable state and Secret Service cleanup failed; retry disconnect"
+                    localPersistence.isFailure ->
+                        "pCloud credential cleared, but durable local state could not be updated"
+                    localClear.isFailure -> "pCloud playback disconnected, but Secret Service removal failed; retry disconnect"
+                    revocation == PCloudRevocationResult.Revoked -> "pCloud disconnected locally and the remote session was revoked"
+                    revocation == PCloudRevocationResult.AlreadyInactive -> "pCloud disconnected; the remote session was already inactive"
+                    revocation is PCloudRevocationResult.Failed -> "pCloud disconnected locally; remote revocation could not be confirmed"
+                    else -> "pCloud disconnected locally"
+                },
+            )
         }
     }
 
@@ -281,35 +324,60 @@ class DesktopController(
 
     private suspend fun restoreQueue() {
         val stored = repository.loadQueue()
-        val entries = stored.entries.mapNotNull { reference ->
-            val selectedSource = sources.entries.firstOrNull { it.key == reference.sourceId }?.value ?: return@mapNotNull null
+        val restoredEntries = stored.entries.map { reference ->
+            val selectedSource = sources.entries.firstOrNull { it.key == reference.sourceId }?.value ?: return@map null
             runCatching { selectedSource.load(reference.nodeId) as? AudioTrack }.getOrNull()?.let { QueueEntry(it, reference.originFolderId) }
         }
-        if (entries.isNotEmpty()) {
-            val index = stored.currentIndex.coerceIn(0, entries.lastIndex)
-            mutableState.value = mutableState.value.copy(queue = PlaybackQueue(0, entries, index), status = "Restored ${entries.size} queued tracks")
+        val restoration = QueueRestoration.repair(restoredEntries, stored.currentIndex)
+        if (restoration.requiresRewrite) repository.saveQueue(restoration.queue)
+        if (restoration.queue.entries.isNotEmpty()) {
+            mutableState.value = mutableState.value.copy(
+                queue = restoration.queue,
+                status = if (restoration.omittedCount > 0) {
+                    "Restored ${restoration.queue.entries.size} queued tracks; ${restoration.omittedCount} unavailable item(s) were removed"
+                } else {
+                    "Restored ${restoration.queue.entries.size} queued tracks"
+                },
+            )
+        } else if (stored.entries.isNotEmpty()) {
+            mutableState.value = mutableState.value.copy(status = "The saved queue was unavailable and has been cleared")
         }
         updateMpris()
     }
 
     private fun updateQueue(queue: PlaybackQueue) {
+        checkpoint(mutableState.value.playback, force = true)
         mutableState.value = mutableState.value.copy(queue = queue)
         repository.saveQueue(queue)
         updateMpris()
     }
 
-    private fun checkpoint(playback: MpvState) {
-        val second = playback.positionMillis / 1_000
-        if (second == lastCheckpointSecond || second % 5 != 0L) return
-        lastCheckpointSecond = second
+    private fun checkpoint(playback: MpvState, force: Boolean = false) {
         val track = mutableState.value.queue.current?.track ?: return
-        repository.saveProgress(PlaybackProgress(
-            track.sourceId, track.id, playback.positionMillis, playback.durationMillis ?: track.durationMillis,
-            1f, System.currentTimeMillis(), completed = false,
-        ))
+        val decision = checkpointPolicy.evaluate(
+            queue = mutableState.value.queue,
+            observation = PlaybackObservation(
+                mediaId = MediaIdentity.encode(track.sourceId, track.id),
+                positionMillis = playback.positionMillis,
+                durationMillis = playback.durationMillis ?: track.durationMillis,
+                playbackSpeed = 1f,
+                isPlaying = playback.running && !playback.paused && !playback.idle,
+            ),
+            cursor = checkpointCursor,
+            observedAtEpochMillis = System.currentTimeMillis(),
+            force = force,
+        )
+        checkpointCursor = decision.cursor
+        decision.progress?.let(repository::saveProgress)
     }
 
     private fun restorePCloudSession() {
+        if (!PCloudSessionRestorePolicy.permitsRestore(repository.setting(PCloudSessionRestorePolicy.SETTING_KEY))) {
+            if (vault.available()) {
+                scope.launch(Dispatchers.IO) { runCatching { vault.clear(PCLOUD_SESSION_KEY) } }
+            }
+            return
+        }
         if (!vault.available()) return
         val secret = runCatching { vault.lookup(PCLOUD_SESSION_KEY) }.getOrNull() ?: return
         try {
@@ -317,6 +385,7 @@ class DesktopController(
             attachPCloud(session)
             mutableState.value = mutableState.value.copy(connectedToPCloud = true)
         } catch (_: RuntimeException) {
+            repository.setSetting(PCloudSessionRestorePolicy.SETTING_KEY, PCloudSessionRestorePolicy.DISCONNECTED)
             runCatching { vault.clear(PCLOUD_SESSION_KEY) }
         } finally {
             secret.fill('\u0000')
@@ -326,6 +395,8 @@ class DesktopController(
     private fun attachPCloud(session: PCloudSession) {
         val pcloud = PCloudSourceFactory.create(session)
         sources[pcloud.id] = pcloud
+        pCloudSession = session
+        repository.setSetting(PCloudSessionRestorePolicy.SETTING_KEY, PCloudSessionRestorePolicy.ACTIVE)
     }
 
     private inline fun updatePCloudConnectState(
@@ -339,8 +410,11 @@ class DesktopController(
 
     private fun sourceFor(node: MediaNode): AudioSource = sources[node.sourceId] ?: error("source ${node.sourceId.value} is unavailable")
 
-    private fun playbackFailure(error: Throwable) {
-        mutableState.value = mutableState.value.copy(status = "Playback failed: ${error.message}")
+    private fun playbackFailure(@Suppress("UNUSED_PARAMETER") error: Throwable) {
+        checkpoint(mutableState.value.playback, force = true)
+        mutableState.value = mutableState.value.copy(
+            status = "Playback failed. Check mpv availability and retry.",
+        )
     }
 
     private fun updateMpris() {
@@ -372,12 +446,14 @@ class DesktopController(
 
     override fun close() {
         if (!closing.compareAndSet(false, true)) return
-        runCatching { checkpoint(mutableState.value.playback) }
+        runCatching { checkpoint(mutableState.value.playback, force = true) }
         runCatching { mpris?.close() }
         runCatching { mpv.close() }
         runCatching { repository.close() }
         scope.cancel()
     }
 
-    private companion object { const val PCLOUD_SESSION_KEY = "pcloud-session" }
+    private companion object {
+        const val PCLOUD_SESSION_KEY = "pcloud-session"
+    }
 }

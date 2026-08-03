@@ -1,0 +1,73 @@
+release:
+  version: 0.1.8
+  tag: v0.1.8
+  date: 2026-08-03
+  status: verified_release_candidate
+  license: MIT
+  objective: harden shared restoration and the native Linux runtime without expanding provider claims
+  scope:
+    - stable-identity queue repair shared by Android and Linux
+    - repaired queue rewrite with selected-item preservation
+    - forced final desktop progress checkpoints
+    - request-correlated and redacted mpv JSON IPC
+    - durable local-first desktop disconnect with typed remote revocation
+    - bounded Secret Service subprocess and credential-buffer handling
+    - allowlisted Flatpak host-mpv boundary
+    - AppStream release metadata validation
+  verification:
+    required_commands:
+      - make oauth-config-test
+      - make spec
+      - make doctor
+      - make test
+      - make lint
+      - make build
+      - make ci
+      - make linux-ci
+    current_result: passed
+    specifications:
+      documents: 11
+      requirements: 19
+      use_cases: 19
+    host_regressions:
+      tests: 10
+      failures: 0
+    gradle_tests:
+      suites: 28
+      total: 96
+      failures: 0
+      errors: 0
+      skipped: 0
+    documentation:
+      pages: 39
+      errors: 0
+      warnings: 0
+      hints: 0
+    android_lint:
+      errors: 0
+      warnings: 0
+    linux_integration:
+      desktop_unit_tests: passed
+      packaged_application_image: passed
+      real_mpv_sqlite_smoke: passed
+      packaged_mpris_dbus_smoke: passed
+    evidence_policy:
+      - record exact suite counts and artifact digests only after the full gate
+      - do not substitute protected provider claims with mocks
+      - prohibit tokens, passwords, signed URLs, and private media in reports
+  artifact:
+    path: app/build/outputs/apk/debug/app-debug.apk
+    package: dev.properpcloud.app
+    version_code: 1008
+    version_name: 0.1.8
+    production_signed: false
+    bundled_pcloud_client_id: true
+    size_bytes: 24691633
+    sha256: 21048c1c55a8a2bd9f5429b4ad64a9a36c72dd814edb30bb7a966ac94f41c73f
+  external_validation:
+    live_eu_pcloud: inherited_outstanding
+    live_us_pcloud: inherited_outstanding
+    desktop_environment_matrix: assigned_to_0.1.9
+    accessibility_matrix: assigned_to_0.1.9
+    long_playback_and_crash_soak: assigned_to_0.1.9
+  release_decision: no tag or push without explicit maintainer confirmation

@@ -17,9 +17,11 @@ agent:
     - Add artwork and optional local Chromaprint/AcoustID adapters after provider-term review.
     - Implement remote replacement only when pCloud exposes an atomic expected-revision primitive.
     - Run physical-device TalkBack, large-font, codec, and process-death validation.
-    - Run protected Linux EU/US pCloud playback, expiry, disconnect, and restart validation.
-    - Validate Secret Service and MPRIS across GNOME, KDE Plasma, and i3 sessions.
-    - Add reproducible Arch and broad-distribution desktop release artifacts.
+    - Complete and verify the public-CI 0.1.8 runtime-hardening gate without expanding live-provider claims.
+    - Execute the 0.1.9 forced mpv crash/restart and long-playback soak matrix.
+    - Validate 0.1.9 Secret Service, MPRIS, keyboard, text-scale, and contrast behavior across GNOME, KDE Plasma, and i3 sessions.
+    - Add a reproducible Arch recipe and clean-profile AppImage/Flatpak evidence for 0.1.9.
+    - Run protected Linux EU/US pCloud playback, expiry, disconnect, and restart validation before 0.2.0 promotion.
   changelog:
     - Released and tagged the verified architecture bootstrap as 0.0.1.
     - Implemented the adaptive Compose Android 0.1.0 client with deterministic demo media.
@@ -36,6 +38,9 @@ agent:
     - Implemented native Compose Desktop browsing, queueing, SQLite, Secret Service, mpv JSON IPC, MPRIS, and host smoke verification.
     - Added a Markdown user manual and developer API reference rendered by Astro Starlight for GitHub Pages.
     - Added secret-safe local dotenv loading for the registered public pCloud client ID and made direct login fallback-only when OAuth is configured.
+    - Published v0.1.7 with verified signed tag, Android/AppImage/Flatpak artifacts, checksums, and attestations.
+    - Prepared 0.1.8 with shared queue repair, forced desktop checkpoints, correlated mpv IPC, local-first revocation, and hardened Secret Service/Flatpak boundaries.
+    - Split 0.1.9 compatibility evidence from the final 0.2.0 parity promotion.
 
 commands:
   image:

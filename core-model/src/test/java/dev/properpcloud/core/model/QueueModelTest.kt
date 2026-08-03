@@ -64,6 +64,46 @@ class QueueModelTest {
         assertEquals(SourceId("pcloud") to NodeId("pcloud:file:42"), MediaIdentity.decode(encoded))
     }
 
+    @Test
+    fun queueRestorationPreservesSelectedItemWhenEarlierEntryIsMissing() {
+        val selected = entry("2.mp3")
+        val result = QueueRestoration.repair(listOf(null, selected), storedCurrentIndex = 1)
+
+        assertEquals(listOf("2.mp3"), result.queue.entries.map { it.track.name })
+        assertEquals(selected, result.queue.current)
+        assertEquals(1, result.omittedCount)
+        assertTrue(result.requiresRewrite)
+    }
+
+    @Test
+    fun queueRestorationSelectsNearestFollowingItemWhenSelectionIsMissing() {
+        val before = entry("1.mp3")
+        val after = entry("3.mp3")
+        val result = QueueRestoration.repair(listOf(before, null, after), storedCurrentIndex = 1)
+
+        assertEquals(after, result.queue.current)
+        assertEquals(1, result.queue.currentIndex)
+    }
+
+    @Test
+    fun queueRestorationFallsBackToPreviousItemAtEnd() {
+        val before = entry("1.mp3")
+        val result = QueueRestoration.repair(listOf(before, null), storedCurrentIndex = 1)
+
+        assertEquals(before, result.queue.current)
+        assertEquals(0, result.queue.currentIndex)
+    }
+
+    @Test
+    fun queueRestorationClearsFullyUnavailableQueue() {
+        val result = QueueRestoration.repair(listOf(null, null), storedCurrentIndex = 1)
+
+        assertTrue(result.queue.entries.isEmpty())
+        assertEquals(-1, result.queue.currentIndex)
+        assertEquals(2, result.omittedCount)
+        assertTrue(result.requiresRewrite)
+    }
+
     private fun entry(name: String): QueueEntry = QueueEntry(track(name, folder.id))
 
     private fun track(name: String, parentId: NodeId): AudioTrack = AudioTrack(

@@ -9,6 +9,58 @@ enum class QueueOperation {
     APPEND,
 }
 
+data class QueueRestorationResult(
+    val queue: PlaybackQueue,
+    val omittedCount: Int,
+    val requiresRewrite: Boolean,
+)
+
+object QueueRestoration {
+    /**
+     * Repairs a persisted queue without shifting the selected stable item when an
+     * earlier entry is unavailable. Null entries retain their original positions so
+     * the selected item can be mapped into the compacted queue deterministically.
+     */
+    fun repair(
+        restoredEntries: List<QueueEntry?>,
+        storedCurrentIndex: Int,
+        generation: Long = 1,
+    ): QueueRestorationResult {
+        val surviving = restoredEntries.mapIndexedNotNull { originalIndex, entry ->
+            entry?.let { originalIndex to it }
+        }
+        val omittedCount = restoredEntries.size - surviving.size
+        if (surviving.isEmpty()) {
+            val empty = PlaybackQueue(generation = generation)
+            return QueueRestorationResult(
+                queue = empty,
+                omittedCount = omittedCount,
+                requiresRewrite = omittedCount > 0 || storedCurrentIndex != -1,
+            )
+        }
+
+        val selectedOriginalIndex = when {
+            storedCurrentIndex < 0 -> null
+            restoredEntries.getOrNull(storedCurrentIndex) != null -> storedCurrentIndex
+            else -> surviving.firstOrNull { (originalIndex, _) -> originalIndex > storedCurrentIndex }?.first
+                ?: surviving.last().first
+        }
+        val repairedCurrentIndex = selectedOriginalIndex?.let { selected ->
+            surviving.indexOfFirst { (originalIndex, _) -> originalIndex == selected }
+        } ?: -1
+        val queue = PlaybackQueue(
+            generation = generation,
+            entries = surviving.map { it.second },
+            currentIndex = repairedCurrentIndex,
+        )
+        return QueueRestorationResult(
+            queue = queue,
+            omittedCount = omittedCount,
+            requiresRewrite = omittedCount > 0 || storedCurrentIndex != repairedCurrentIndex,
+        )
+    }
+}
+
 enum class DuplicatePolicy {
     PRESERVE,
     COLLAPSE_STABLE_ID,

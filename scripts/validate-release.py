@@ -8,6 +8,7 @@ import hashlib
 import re
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -131,6 +132,18 @@ def main() -> int:
         status = git(root, "status", "--porcelain", "--untracked-files=all")
         if status:
             errors.append("working tree is not clean")
+
+    metainfo_path = root / "packaging" / "linux" / "dev.properpcloud.app.metainfo.xml"
+    try:
+        metainfo = ET.parse(metainfo_path).getroot()
+        release_versions = {
+            release.attrib.get("version")
+            for release in metainfo.findall("./releases/release")
+        }
+        if version not in release_versions:
+            errors.append(f"AppStream metainfo has no release entry for {version}")
+    except (OSError, ET.ParseError) as error:
+        errors.append(f"AppStream metainfo is invalid: {error}")
 
     for error in errors:
         fail(error)

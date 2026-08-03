@@ -24,6 +24,7 @@ import dev.properpcloud.core.model.PlaybackCheckpointPolicy
 import dev.properpcloud.core.model.PlaybackObservation
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueEntry
+import dev.properpcloud.core.model.QueueRestoration
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.QueueReducer
 import dev.properpcloud.core.model.ResumePolicy
@@ -934,39 +935,33 @@ class MainViewModel(
 
     private suspend fun restoreQueue() {
         val stored = container.preferences.loadQueue()
-        var omitted = 0
-        val entries = stored.entries.mapNotNull { reference ->
+        val restoredEntries = stored.entries.map { reference ->
             val source = container.sources.source(reference.sourceId)
             if (source == null) {
-                omitted += 1
-                return@mapNotNull null
+                return@map null
             }
             val track = runCatching { source.load(reference.nodeId) as? AudioTrack }.getOrNull()
             if (track == null) {
-                omitted += 1
-                return@mapNotNull null
+                return@map null
             }
             QueueEntry(track, reference.originFolderId)
         }
-        if (entries.isEmpty()) {
+        val restoration = QueueRestoration.repair(restoredEntries, stored.currentIndex)
+        val queue = restoration.queue
+        if (queue.entries.isEmpty()) {
             if (stored.entries.isNotEmpty()) {
-                val empty = PlaybackQueue(generation = 1)
-                container.preferences.saveQueue(empty)
+                container.preferences.saveQueue(queue)
                 _state.value = _state.value.copy(
                     message = "The saved queue could not be restored and was cleared. Reconnect its source or build a new queue.",
                 )
             }
             return
         }
-        val queue = PlaybackQueue(
-            generation = 1,
-            entries = entries,
-            currentIndex = stored.currentIndex.coerceIn(0, entries.lastIndex),
-        )
+        if (restoration.requiresRewrite) container.preferences.saveQueue(queue)
         _state.value = _state.value.copy(
             queue = queue,
-            message = if (omitted > 0) {
-                "Restored ${entries.size} queue item(s); $omitted unavailable item(s) were removed."
+            message = if (restoration.omittedCount > 0) {
+                "Restored ${queue.entries.size} queue item(s); ${restoration.omittedCount} unavailable item(s) were removed."
             } else {
                 _state.value.message
             },

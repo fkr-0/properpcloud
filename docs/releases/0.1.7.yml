@@ -2,7 +2,7 @@ release:
   version: 0.1.7
   tag: v0.1.7
   date: 2026-08-03
-  status: verified_release_candidate
+  status: released
   license: MIT
   scope:
     - registered public pCloud application ID available to tagged Android builds

@@ -1,9 +1,34 @@
 linux_client:
   objective: Deliver the same folder, queue, progress, inspection, and cache semantics with desktop-native interaction at minimum duplicated implementation cost.
   status:
-    implementation: functional
-    release: pending_protected_provider_packaging_and_desktop_matrix_evidence
+    implementation: runtime_hardening_0.1.8
+    release: staged_through_0.1.9_before_0.2.0_parity
     implemented_on: 2026-08-03
+  release_train:
+    0.1.8:
+      purpose: shared restoration and desktop runtime hardening
+      public_ci_gates:
+        - stable-identity queue repair preserves the selected surviving item
+        - repaired queue snapshots are rewritten on Android and Linux
+        - final progress is force-flushed at explicit lifecycle and queue boundaries
+        - mpv replies are correlated by request ID and failures are redacted
+        - local credential and source removal precede remote revocation
+        - a durable disconnect tombstone prevents stale credential restoration after interrupted cleanup
+        - Secret Service processes and Flatpak host-mpv arguments are bounded
+    0.1.9:
+      purpose: distribution, recovery, desktop-environment, and accessibility evidence
+      external_gates:
+        - forced mpv crash and bounded restart/resume
+        - clean-profile AppImage and Flatpak smoke
+        - reproducible Arch package and license inventory
+        - GNOME, KDE Plasma, and i3 Secret Service/MPRIS matrix
+        - keyboard, focus, 200 percent text, high contrast, and non-drag review
+        - long-playback, suspend/resume, link-refresh, and failure soak
+    0.2.0:
+      purpose: promote the hardened line without adding another feature tranche
+      additional_gates:
+        - protected EU and US pCloud playback, expiry, logout, and restart evidence
+        - explicit browser OAuth decision based on provider-confirmed desktop redirect support
   current_implementation:
     module: desktop-app
     shared_jvm_modules:
@@ -19,7 +44,7 @@ linux_client:
     media_integration: MPRIS root and player interfaces over session D-Bus
     paths: XDG config, data, cache, and runtime roots
     verification:
-      - desktop unit tests for XDG, SQLite, deterministic media, and IPC encoding
+      - desktop unit tests for XDG, SQLite, deterministic media, correlated IPC responses, and Secret Service boundaries
       - host smoke for generated WAV, recursive queue, SQLite, and real mpv IPC
       - portable provider and metadata modules compile as JVM 17 bytecode
     packaging:
@@ -195,6 +220,11 @@ linux_client:
         - seek absolute and relative
         - set pause and speed
         - observe_property for time-pos, duration, pause, media-title, and idle-active
+      response_correlation:
+        - Every command carries a monotonically increasing request ID.
+        - Unrelated events and responses for other request IDs are ignored.
+        - Only an explicit success result may expose response data.
+        - Response size and connect, write, and read waits are bounded.
       URL_handling:
         - Resolve immediately before load.
         - Never place URL in persistent playlist files.
@@ -204,6 +234,9 @@ linux_client:
         - Detect exit and preserve shared queue.
         - Offer restart player and resume.
         - Bound automatic restart loops.
+      checkpoint_boundaries:
+        - periodic writes are coalesced during playback
+        - queue mutation, disconnect, playback failure, and orderly shutdown force the latest sample
     codec_strategy:
       reason_for_mpv: Mature codec and streaming support with minimal JNI complexity.
       packaging:
@@ -237,7 +270,7 @@ linux_client:
     Flatpak_boundaries:
       - browser OAuth through portal
       - Secret Service through D-Bus permission
-      - mpv bundled or invoked according to sandbox design
+      - host mpv invocation accepts only properpcloud's deterministic no-config launch flags and private IPC path
       - XDG cache and user-approved file access
   implementation_path:
     phase_0_shared_extraction:

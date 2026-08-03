@@ -255,7 +255,7 @@ is retained only as a fallback for OAuth-unavailable cases.
 
 ## `0.1.7` — registered OAuth activation and configuration hardening
 
-Status: **verified release candidate; automated gates passed and protected live OAuth evidence remains outstanding**.
+Status: **released on 2026-08-03 with Android, AppImage, Flatpak, checksums, attestations, and a verified signed tag**.
 
 - load only the public `PCLOUD_CLIENT_ID` from an ignored repository-root `.env`;
 - preserve explicit environment/Gradle overrides for CI and developer builds;
@@ -278,9 +278,63 @@ Status: **verified release candidate; automated gates passed and protected live 
 - bookmarks, sleep timer, variable speed policy, and aggregate book progress;
 - cross-device progress synchronization.
 
+## `0.1.8` — cross-platform restoration and desktop runtime hardening
+
+Status: **verified release candidate; all credential-free repository and Linux gates pass**.
+
+This patch release converts the first Linux implementation from a broad functional
+prototype into a fail-safe runtime. Its gates are deliberately credential-free and
+must pass in public CI:
+
+1. [x] repair partially stale queues through one shared stable-identity algorithm;
+2. [x] preserve the selected surviving track when unavailable entries precede it;
+3. [x] rewrite repaired Android and Linux queue snapshots instead of repeatedly
+   rediscovering the same stale records;
+4. [x] force the latest desktop progress sample on queue mutation, player failure,
+   disconnect, and orderly shutdown;
+5. [x] correlate mpv JSON IPC replies by request ID, ignore unrelated messages, bound
+   response size/time, and expose only redacted command failures;
+6. [x] durably tombstone and disconnect pCloud locally before attempting Secret Service
+   cleanup and typed remote session revocation;
+7. [x] bound Secret Service processes, kill timeouts, validate lookup keys, and clear
+   caller-owned credential buffers in `finally`;
+8. [x] constrain the Flatpak host-mpv bridge to the exact deterministic playback
+   arguments and private IPC path used by properpcloud;
+9. [x] complete the full Android, desktop, Linux package, documentation, and release
+   verification set and record exact evidence in `docs/releases/0.1.8.yml`.
+
+`0.1.8` may ship without protected provider credentials because it makes no new live
+provider compatibility claim. It must not weaken the already-published `0.1.7` OAuth,
+artifact, or signing guarantees.
+
+## `0.1.9` — Linux distribution and compatibility hardening
+
+Status: **planned release candidate after `0.1.8`**.
+
+`0.1.9` closes package and desktop-environment uncertainty before the parity release:
+
+1. [ ] forced mpv termination/restart tests preserve durable queue, selected identity,
+   and a bounded resume position without an automatic restart loop;
+2. [ ] AppImage and Flatpak package manifests, AppStream metadata, checksums,
+   attestations, and commit provenance are validated as one release graph;
+3. [ ] Secret Service and MPRIS evidence is recorded on GNOME, KDE Plasma, and i3,
+   including locked/unavailable keyring behavior;
+4. [ ] keyboard-only operation, focus order, 200% text, high contrast, and non-drag
+   queue alternatives pass a documented accessibility checklist;
+5. [ ] AppImage and Flatpak smoke tests run from clean user profiles, while an Arch
+   package recipe is reproducible from the immutable tag;
+6. [ ] a long-playback soak covers pause, seek, link refresh, suspend/resume, and
+   controlled mpv failure with redacted diagnostics;
+7. [ ] browser OAuth is enabled only if pCloud confirms a desktop redirect; otherwise
+   the signed-off fallback boundary is documented rather than simulated.
+
+The planned evidence schema lives in `docs/releases/0.1.9.yml`. Failed matrix cells
+remain explicit and block `0.2.0`; they are never converted into optimistic prose.
+
 ## `0.2.0` — native Linux desktop parity
 
-Status: **functional native implementation complete; packaging and protected live validation remain release gates**.
+Status: **parity release blocked on the completed `0.1.8` runtime gate and `0.1.9`
+distribution/compatibility gate, plus protected provider evidence**.
 
 Completed implementation:
 
@@ -295,17 +349,18 @@ Completed implementation:
 9. [x] deterministic generated-WAV demo source and real-host mpv/SQLite smoke entry point.
 10. [x] Compose Desktop application-image plus `.deb`/`.rpm` packaging configuration.
 
-Remaining release sequence:
+Final release sequence after `0.1.8` and `0.1.9`:
 
 1. [ ] protected EU and US pCloud account playback, expiry, disconnect, and restart evidence;
 2. [ ] browser OAuth after the desktop redirect registration is confirmed with pCloud;
 3. [ ] GNOME, KDE Plasma, and i3 Secret Service/MPRIS validation;
 4. [ ] keyboard-only, high-contrast, font-scaling, and accessibility review;
-5. [ ] reproducible Arch and broad-distribution artifacts with license review;
-6. [ ] long-duration playback and forced mpv crash/recovery soak tests.
+5. [ ] review the accumulated evidence and exceptions without adding another feature
+   tranche or silently relaxing a failed gate.
 
 `0.2.0` is not an Android feature bucket. It delivers a native Linux desktop
-client over the shared source-neutral contract; only the listed release evidence remains.
+client over the shared source-neutral contract. It is a promotion of the hardened
+`0.1.8`/`0.1.9` line, not a new implementation dump.
 
 ### Reuse boundary
 

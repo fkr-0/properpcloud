@@ -26,8 +26,8 @@ oauth-config-check: ## Validate public OAuth configuration without reading or ex
 	@python3 scripts/read-dotenv-public.py --check
 	@python3 scripts/validate-pcloud-client-id.py
 
-oauth-config-test: ## Run the host-side public dotenv parser regression tests.
-	@python3 -m unittest discover -s tests -p 'test_read_dotenv_public.py'
+oauth-config-test: ## Run host-side configuration and packaging boundary regression tests.
+	@python3 -m unittest discover -s tests -p 'test_*.py'
 
 toolchain-archive: ## Fetch and checksum-verify the resumable Android tools archive.
 	@ANDROID_CMDLINE_TOOLS_VERSION=$(ANDROID_CMDLINE_TOOLS_VERSION) \

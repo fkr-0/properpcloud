@@ -77,6 +77,8 @@ Safety and correctness invariants:
 - the provider URL exists only in memory and the IPC request;
 - mpv output is discarded so a signed URL cannot enter logs;
 - connect, write, and response waits are bounded;
+- every IPC command carries a request ID and ignores unrelated event/response lines;
+- response data is accepted only for an explicit successful matching command;
 - queue and progress remain authoritative in SQLite;
 - closing the application terminates mpv and removes the socket.
 
@@ -105,7 +107,7 @@ $XDG_RUNTIME_DIR/properpcloud
 
 ## Account handling
 
-The current desktop account UI uses the same bounded direct sign-in client as Android. The user selects exactly one regional pCloud HTTPS endpoint. The password is supplied as a mutable array and overwritten by the authentication client. Only the returned session token and regional host are stored in Secret Service.
+The current desktop account UI uses the same bounded direct sign-in client as Android. The user selects exactly one regional pCloud HTTPS endpoint. The password is supplied as a mutable array and overwritten by the authentication client. Only the returned session token and regional host are stored in Secret Service. Disconnect removes the active source and pCloud queue locally first and persists a disconnect tombstone before clearing Secret Service and attempting token-kind-aware remote revocation. A stale credential therefore cannot be restored after an interrupted cleanup, and an unconfirmed remote result cannot restore local access.
 
 Browser OAuth remains the preferred long-term route. Implementing it requires a confirmed desktop redirect registration in the pCloud application console; the desktop client does not invent or embed a client secret.
 
@@ -128,11 +130,24 @@ The current UI provides menu equivalents for queue operations. Drag-and-drop, ri
 make linux-ci
 ```
 
-The aggregate target runs `desktop-test`, `desktop-package`, `desktop-smoke`, and `desktop-mpris-smoke`. The unit suite covers XDG mapping, SQLite round trips, deterministic demo traversal and media generation, and mpv command encoding. The playback smoke covers the actual host Unix socket and mpv process. The MPRIS smoke verifies the packaged jlink runtime and externally queries root/player properties over an isolated session bus. `.github/workflows/linux.yml` installs the explicit host dependencies and runs the same gate on pull requests and `main`.
+The aggregate target runs `desktop-test`, `desktop-package`, `desktop-smoke`, and `desktop-mpris-smoke`. The unit suite covers XDG mapping, SQLite round trips, deterministic demo traversal and media generation, request-correlated mpv commands, and Secret Service boundaries. Host-side tests also enforce the Flatpak mpv argument allowlist. The playback smoke covers the actual host Unix socket and mpv process. The MPRIS smoke verifies the packaged jlink runtime and externally queries root/player properties over an isolated session bus. `.github/workflows/linux.yml` installs the explicit host dependencies and runs the same gate on pull requests and `main`.
+
+## Release train to 0.2.0
+
+- **0.1.8 runtime hardening:** shared stale-queue repair, selection preservation,
+  repaired snapshot rewrite, forced final checkpoints, correlated/redacted mpv IPC,
+  local-first remote revocation, bounded Secret Service processes, and an allowlisted
+  Flatpak host-player bridge.
+- **0.1.9 compatibility hardening:** forced crash/restart and long-playback evidence,
+  clean-profile packages, reproducible Arch packaging, GNOME/KDE/i3 keyring and MPRIS
+  matrix, and keyboard/text-scale/high-contrast review.
+- **0.2.0 parity promotion:** protected EU/US provider evidence and an explicit browser
+  OAuth decision, with no additional feature tranche hidden in the release.
 
 ## Remaining release gates
 
-Before declaring the Linux `0.2.0` release complete:
+Before declaring the Linux `0.2.0` release complete, the `0.1.8` and `0.1.9`
+evidence manifests must be complete and the following protected gates must pass:
 
 1. run interactive pCloud tests against protected EU and US test accounts;
 2. verify Secret Service behavior under GNOME, KDE Plasma, and an i3 keyring session;

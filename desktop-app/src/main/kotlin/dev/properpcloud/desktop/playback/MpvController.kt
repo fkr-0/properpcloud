@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 data class MpvState(
     val running: Boolean = false,
@@ -41,6 +42,8 @@ class MpvController(
     private val socketPath = runtimeDirectory.resolve("mpv-${ProcessHandle.current().pid()}.sock")
     private var process: Process? = null
     private var polling: Job? = null
+    private val requestIds = AtomicLong(0)
+    private val commandLock = Any()
     private val mutableState = MutableStateFlow(MpvState())
     val state: StateFlow<MpvState> = mutableState.asStateFlow()
 
@@ -116,8 +119,16 @@ class MpvController(
         if (process?.isAlive == true) command(listOf("stop"))
     }
 
-    internal fun commandJson(arguments: List<Any?>): String =
-        gson.toJson(mapOf("command" to arguments)) + "\n"
+    internal fun commandJson(arguments: List<Any?>, requestId: Long): String =
+        gson.toJson(mapOf("command" to arguments, "request_id" to requestId)) + "\n"
+
+    internal fun responseForRequest(line: String, requestId: Long): JsonObject? {
+        val response = gson.fromJson(line, JsonObject::class.java)
+        val responseId = response.get("request_id")?.takeUnless { it.isJsonNull }?.asLong ?: return null
+        if (responseId != requestId) return null
+        check(response.get("error")?.asString == "success") { "mpv command failed" }
+        return response
+    }
 
     private suspend fun pollState() {
         while (scope.isActive && process?.isAlive == true) {
@@ -141,7 +152,8 @@ class MpvController(
     private fun propertyBoolean(name: String): Boolean? = command(listOf("get_property", name))
         ?.get("data")?.takeUnless { it.isJsonNull }?.asBoolean
 
-    private fun command(arguments: List<Any?>): JsonObject? {
+    private fun command(arguments: List<Any?>): JsonObject? = synchronized(commandLock) {
+        val requestId = requestIds.incrementAndGet()
         val address = UnixDomainSocketAddress.of(socketPath)
         SocketChannel.open(StandardProtocolFamily.UNIX).use { channel ->
             channel.configureBlocking(false)
@@ -151,22 +163,26 @@ class MpvController(
                 check(System.nanoTime() < deadline) { "timed out connecting to mpv" }
                 Thread.sleep(5)
             }
-            val request = ByteBuffer.wrap(commandJson(arguments).toByteArray(StandardCharsets.UTF_8))
+            val request = ByteBuffer.wrap(commandJson(arguments, requestId).toByteArray(StandardCharsets.UTF_8))
             while (request.hasRemaining()) {
                 check(System.nanoTime() < deadline) { "timed out writing to mpv" }
                 if (channel.write(request) == 0) Thread.sleep(5)
             }
             val bytes = ByteArray(65_536)
             val buffer = ByteBuffer.wrap(bytes)
+            var scanFrom = 0
             while (System.nanoTime() < deadline) {
                 val read = channel.read(buffer)
                 if (read < 0) break
                 val length = buffer.position()
-                val newline = bytes.indexOf('\n'.code.toByte(), 0, length)
-                if (newline >= 0) {
-                    val response = String(bytes, 0, newline, StandardCharsets.UTF_8)
-                    return gson.fromJson(response, JsonObject::class.java)
+                var newline = bytes.indexOf('\n'.code.toByte(), scanFrom, length)
+                while (newline >= 0) {
+                    val line = String(bytes, scanFrom, newline - scanFrom, StandardCharsets.UTF_8)
+                    responseForRequest(line, requestId)?.let { return it }
+                    scanFrom = newline + 1
+                    newline = bytes.indexOf('\n'.code.toByte(), scanFrom, length)
                 }
+                check(buffer.hasRemaining()) { "mpv response exceeded limit" }
                 if (read == 0) Thread.sleep(5)
             }
             error("timed out waiting for mpv response")
