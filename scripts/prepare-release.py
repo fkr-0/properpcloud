@@ -98,6 +98,12 @@ def main() -> int:
             "fallback_direct_login_available": True,
             "password_persisted": False,
         },
+        "player_recovery": {
+            "automatic_restart_attempts": 0,
+            "manual_restart_re_resolves_stream": True,
+            "maximum_resume_drift_millis": 5_000,
+        },
+        "release_graph_policy": "finalized artifacts must match exact version, tag, commit, size, and SHA-256 evidence before attestation",
         "live_pcloud_validation": "requires maintainer sandbox credentials and is not performed in public CI",
     }
     (dist / "release-evidence.json").write_text(

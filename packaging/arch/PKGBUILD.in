@@ -1,0 +1,33 @@
+pkgname=properpcloud
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='Filesystem-first pCloud audio client for Android and Linux'
+arch=('x86_64')
+url='https://properpcloud.fkr.dev/'
+license=('MIT')
+depends=('mpv' 'libsecret' 'dbus')
+makedepends=('jdk21-openjdk')
+source=("$pkgname-$pkgver.tar.gz::@SOURCE_URL@")
+sha256sums=('@SOURCE_SHA256@')
+
+build() {
+  cd "$pkgname-$pkgver"
+  export JAVA_HOME=/usr/lib/jvm/java-21-openjdk
+  export GRADLE_USER_HOME="$srcdir/gradle-cache"
+  ./gradlew --no-daemon --stacktrace :desktop-app:createDistributable
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -d "$pkgdir/opt/properpcloud" "$pkgdir/usr/bin"
+  cp -a desktop-app/build/compose/binaries/main/app/properpcloud/. "$pkgdir/opt/properpcloud/"
+  ln -s /opt/properpcloud/bin/properpcloud "$pkgdir/usr/bin/properpcloud"
+  install -Dm644 packaging/linux/dev.properpcloud.app.desktop \
+    "$pkgdir/usr/share/applications/dev.properpcloud.app.desktop"
+  install -Dm644 packaging/linux/dev.properpcloud.app.metainfo.xml \
+    "$pkgdir/usr/share/metainfo/dev.properpcloud.app.metainfo.xml"
+  install -Dm644 packaging/linux/dev.properpcloud.app.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/dev.properpcloud.app.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 THIRD_PARTY_NOTICES.md "$pkgdir/usr/share/licenses/$pkgname/THIRD_PARTY_NOTICES.md"
+}

@@ -309,20 +309,22 @@ artifact, or signing guarantees.
 
 ## `0.1.9` — Linux distribution and compatibility hardening
 
-Status: **planned release candidate after `0.1.8`**.
+Status: **verified automated candidate; external desktop, accessibility, soak,
+immutable-tag, final Arch clean-build, and protected-provider evidence remains
+outstanding**.
 
 `0.1.9` closes package and desktop-environment uncertainty before the parity release:
 
-1. [ ] forced mpv termination/restart tests preserve durable queue, selected identity,
-   and a bounded resume position without an automatic restart loop;
-2. [ ] AppImage and Flatpak package manifests, AppStream metadata, checksums,
-   attestations, and commit provenance are validated as one release graph;
+1. [x] forced mpv termination/restart tests preserve durable queue, selected identity,
+   and a bounded resume position with exactly zero automatic restart attempts;
+2. [x] package filenames, AppStream metadata, checksums, evidence records, release notes,
+   secret exclusions, and immutable commit provenance are validated as one release graph;
 3. [ ] Secret Service and MPRIS evidence is recorded on GNOME, KDE Plasma, and i3,
    including locked/unavailable keyring behavior;
 4. [ ] keyboard-only operation, focus order, 200% text, high contrast, and non-drag
    queue alternatives pass a documented accessibility checklist;
-5. [ ] AppImage and Flatpak smoke tests run from clean user profiles, while an Arch
-   package recipe is reproducible from the immutable tag;
+5. [ ] clean-profile execution is enforced for the packaged image and wired into tagged
+   AppImage/Flatpak jobs; the immutable-tag package runs and final Arch clean build remain;
 6. [ ] a long-playback soak covers pause, seek, link refresh, suspend/resume, and
    controlled mpv failure with redacted diagnostics;
 7. [ ] browser OAuth is enabled only if pCloud confirms a desktop redirect; otherwise

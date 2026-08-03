@@ -16,8 +16,8 @@ PCLOUD_CLIENT_ID ?= $(DOTENV_PCLOUD_CLIENT_ID)
 export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
 export PCLOUD_CLIENT_ID
 
-.PHONY: help oauth-config-check oauth-config-test toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts dependencies test desktop-test desktop-smoke desktop-mpris-smoke desktop-run desktop-package desktop-appimage desktop-flatpak linux-packages linux-ci docs-install docs-build lint build check ci shell compose install clean
-.NOTPARALLEL: linux-ci linux-packages
+.PHONY: help oauth-config-check oauth-config-test toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts dependencies test desktop-test desktop-smoke desktop-crash-recovery-smoke desktop-clean-profile-smoke desktop-mpris-smoke desktop-run desktop-package desktop-appimage desktop-appimage-smoke desktop-flatpak desktop-flatpak-smoke linux-packages linux-package-smoke linux-ci docs-install docs-build lint build check ci shell compose install clean
+.NOTPARALLEL: linux-ci linux-packages linux-package-smoke
 
 help: ## Show available targets.
 	@awk 'BEGIN {FS = ":.*## "; printf "properpcloud targets:\n\n"} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -110,6 +110,18 @@ desktop-smoke: desktop-package ## Verify generated media, SQLite, and a real hos
 	@JAVA_HOME="$(DESKTOP_JAVA_HOME)" GRADLE_USER_HOME="$$PWD/.cache/gradle" \
 	  ./gradlew --no-daemon :desktop-app:run --args='--smoke'
 
+desktop-crash-recovery-smoke: desktop-package ## Force mpv exit and verify explicit restart, stable identity, and bounded resume.
+	@command -v mpv >/dev/null || { echo "mpv is required" >&2; exit 1; }
+	@test -x "$(DESKTOP_JAVA_HOME)/bin/java" || { echo "JDK 21 not found at $(DESKTOP_JAVA_HOME)" >&2; exit 1; }
+	@mkdir -p .cache/gradle
+	@JAVA_HOME="$(DESKTOP_JAVA_HOME)" GRADLE_USER_HOME="$$PWD/.cache/gradle" \
+	  ./gradlew --no-daemon :desktop-app:run --args='--crash-recovery-smoke'
+
+desktop-clean-profile-smoke: desktop-package ## Run the packaged application smoke with isolated HOME and XDG state.
+	@command -v mpv >/dev/null || { echo "mpv is required" >&2; exit 1; }
+	@bash scripts/run-clean-profile.sh \
+	  desktop-app/build/compose/binaries/main/app/properpcloud/bin/properpcloud --smoke
+
 desktop-run: ## Launch the Compose Desktop client on the host.
 	@test -x "$(DESKTOP_JAVA_HOME)/bin/java" || { echo "JDK 21 not found at $(DESKTOP_JAVA_HOME)" >&2; exit 1; }
 	@mkdir -p .cache/gradle
@@ -129,6 +141,11 @@ desktop-appimage: ## Build an x86_64 AppImage from the Compose Desktop image.
 	fi
 	@bash scripts/package-appimage.sh
 
+desktop-appimage-smoke: desktop-appimage ## Verify the built AppImage through private extraction and a clean profile.
+	@image=$$(find build/releases -maxdepth 1 -type f -name 'properpcloud-*-x86_64.AppImage' -print -quit); \
+	  test -n "$$image"; \
+	  bash scripts/run-clean-profile.sh bash scripts/appimage-smoke.sh "$$image"
+
 desktop-flatpak: ## Build an x86_64 single-file Flatpak bundle from the desktop image.
 	@if [[ "$(PREBUILT_DESKTOP_IMAGE)" == "1" ]]; then \
 	  test -x desktop-app/build/compose/binaries/main/app/properpcloud/bin/properpcloud || { \
@@ -139,14 +156,21 @@ desktop-flatpak: ## Build an x86_64 single-file Flatpak bundle from the desktop 
 	fi
 	@bash scripts/package-flatpak.sh
 
+desktop-flatpak-smoke: desktop-flatpak ## Temporarily install and verify the built Flatpak bundle.
+	@bundle=$$(find build/releases -maxdepth 1 -type f -name 'properpcloud-*-x86_64.flatpak' -print -quit); \
+	  test -n "$$bundle"; \
+	  bash scripts/flatpak-bundle-smoke.sh "$$bundle"
+
 linux-packages: desktop-appimage desktop-flatpak ## Build AppImage and Flatpak release packages.
+
+linux-package-smoke: desktop-appimage-smoke desktop-flatpak-smoke ## Build and verify both Linux release packages.
 
 desktop-mpris-smoke: desktop-package ## Verify packaged MPRIS properties over an isolated session bus.
 	@command -v dbus-run-session >/dev/null || { echo "dbus-run-session is required" >&2; exit 1; }
 	@command -v gdbus >/dev/null || { echo "gdbus is required" >&2; exit 1; }
 	@dbus-run-session -- bash scripts/desktop-mpris-smoke.sh
 
-linux-ci: desktop-test desktop-package desktop-smoke desktop-mpris-smoke ## Run the complete native Linux unit, package, mpv, SQLite, and MPRIS gate.
+linux-ci: desktop-test desktop-package desktop-smoke desktop-crash-recovery-smoke desktop-clean-profile-smoke desktop-mpris-smoke ## Run native Linux unit, package, recovery, clean-profile, mpv, SQLite, and MPRIS gates.
 
 docs-install: ## Install the pinned documentation renderer dependencies.
 	@cd website && $(NPM) ci

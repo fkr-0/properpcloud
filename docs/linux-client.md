@@ -130,7 +130,7 @@ The current UI provides menu equivalents for queue operations. Drag-and-drop, ri
 make linux-ci
 ```
 
-The aggregate target runs `desktop-test`, `desktop-package`, `desktop-smoke`, and `desktop-mpris-smoke`. The unit suite covers XDG mapping, SQLite round trips, deterministic demo traversal and media generation, request-correlated mpv commands, and Secret Service boundaries. Host-side tests also enforce the Flatpak mpv argument allowlist. The playback smoke covers the actual host Unix socket and mpv process. The MPRIS smoke verifies the packaged jlink runtime and externally queries root/player properties over an isolated session bus. `.github/workflows/linux.yml` installs the explicit host dependencies and runs the same gate on pull requests and `main`.
+The aggregate target runs desktop unit/package checks, the normal real-mpv/SQLite smoke, a forced crash/recovery smoke, the packaged clean-profile smoke, and MPRIS verification. The crash path detects unexpected process exit, performs no automatic restart, preserves the selected stable queue identity, and resumes only after an explicit action that re-resolves the stream. The unit suite covers XDG mapping, SQLite round trips, deterministic demo traversal and media generation, request-correlated mpv commands, Secret Service boundaries, and fixed exit states. Host-side tests also enforce the Flatpak mpv argument allowlist, clean-profile environment, release graph, and Arch recipe renderer. The MPRIS smoke verifies the packaged jlink runtime and externally queries root/player properties over an isolated session bus. `.github/workflows/linux.yml` installs the explicit host dependencies and runs the same gate on pull requests and `main`.
 
 ## Release train to 0.2.0
 
@@ -138,9 +138,10 @@ The aggregate target runs `desktop-test`, `desktop-package`, `desktop-smoke`, an
   repaired snapshot rewrite, forced final checkpoints, correlated/redacted mpv IPC,
   local-first remote revocation, bounded Secret Service processes, and an allowlisted
   Flatpak host-player bridge.
-- **0.1.9 compatibility hardening:** forced crash/restart and long-playback evidence,
-  clean-profile packages, reproducible Arch packaging, GNOME/KDE/i3 keyring and MPRIS
-  matrix, and keyboard/text-scale/high-contrast review.
+- **0.1.9 compatibility hardening:** explicit crash/restart evidence with zero automatic
+  retries, clean-profile package execution, exact release-graph validation,
+  immutable-source Arch recipe preparation, GNOME/KDE/i3 keyring and MPRIS matrix,
+  long-playback soak, and keyboard/text-scale/high-contrast review.
 - **0.2.0 parity promotion:** protected EU/US provider evidence and an explicit browser
   OAuth decision, with no additional feature tranche hidden in the release.
 
@@ -152,7 +153,7 @@ evidence manifests must be complete and the following protected gates must pass:
 1. run interactive pCloud tests against protected EU and US test accounts;
 2. verify Secret Service behavior under GNOME, KDE Plasma, and an i3 keyring session;
 3. exercise MPRIS through common media-key daemons;
-4. validate long playback, expired direct-link recovery, mpv crash recovery, and process restart;
+4. validate long playback, expired direct-link recovery, suspend/resume, and repeated manual player recovery;
 5. validate AppImage and Flatpak on a broader distribution and desktop matrix;
 6. perform keyboard-only, high-contrast, font-scaling, and accessibility review;
 7. add browser OAuth after provider redirect registration is confirmed.

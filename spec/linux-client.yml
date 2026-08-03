@@ -1,7 +1,7 @@
 linux_client:
   objective: Deliver the same folder, queue, progress, inspection, and cache semantics with desktop-native interaction at minimum duplicated implementation cost.
   status:
-    implementation: runtime_hardening_0.1.8
+    implementation: compatibility_hardening_0.1.9
     release: staged_through_0.1.9_before_0.2.0_parity
     implemented_on: 2026-08-03
   release_train:
@@ -17,9 +17,15 @@ linux_client:
         - Secret Service processes and Flatpak host-mpv arguments are bounded
     0.1.9:
       purpose: distribution, recovery, desktop-environment, and accessibility evidence
+      automated_gates:
+        - unexpected mpv exit exposes fixed restart-available state
+        - automatic mpv restart count is zero
+        - manual restart re-resolves the stream and resumes within five seconds
+        - packaged application runs with isolated HOME and XDG persistent state
+        - finalized release checksum and evidence graph matches immutable commit
+        - Arch recipe renderer requires HTTPS source and calculated SHA-256
       external_gates:
-        - forced mpv crash and bounded restart/resume
-        - clean-profile AppImage and Flatpak smoke
+        - immutable-tag clean-profile AppImage and Flatpak smoke
         - reproducible Arch package and license inventory
         - GNOME, KDE Plasma, and i3 Secret Service/MPRIS matrix
         - keyboard, focus, 200 percent text, high contrast, and non-drag review
@@ -233,7 +239,7 @@ linux_client:
       process_failure:
         - Detect exit and preserve shared queue.
         - Offer restart player and resume.
-        - Bound automatic restart loops.
+        - Perform zero automatic restart attempts.
       checkpoint_boundaries:
         - periodic writes are coalesced during playback
         - queue mutation, disconnect, playback failure, and orderly shutdown force the latest sample

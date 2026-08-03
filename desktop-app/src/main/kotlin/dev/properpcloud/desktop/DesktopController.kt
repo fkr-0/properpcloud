@@ -270,6 +270,17 @@ class DesktopController(
     fun seek(offsetMillis: Long) = scope.launch { runCatching { mpv.seekRelative(offsetMillis) }.onFailure(::playbackFailure) }
     fun seekAbsolute(positionMillis: Long) = scope.launch { runCatching { mpv.seekAbsolute(positionMillis) }.onFailure(::playbackFailure) }
 
+    fun restartPlayer() = scope.launch {
+        val current = mutableState.value.queue.current?.track
+        if (current == null) {
+            mutableState.value = mutableState.value.copy(status = "Choose a track before restarting the player")
+            return@launch
+        }
+        checkpoint(mutableState.value.playback, force = true)
+        mutableState.value = mutableState.value.copy(status = "Restarting mpv and restoring ${current.name}…")
+        playCurrent()
+    }
+
     fun next() = scope.launch {
         val queue = mutableState.value.queue
         if (queue.currentIndex < queue.entries.lastIndex) { updateQueue(QueueReducer.select(queue, queue.currentIndex + 1)); playCurrent() }

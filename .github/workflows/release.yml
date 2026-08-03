@@ -174,7 +174,7 @@ jobs:
           appimage=$(find build/releases -maxdepth 1 -type f \
             -name 'properpcloud-*-x86_64.AppImage' -print -quit)
           test -n "$appimage"
-          APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --smoke
+          bash scripts/run-clean-profile.sh bash scripts/appimage-smoke.sh "$appimage"
 
       - name: Upload AppImage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -227,9 +227,7 @@ jobs:
           bundle=$(find build/releases -maxdepth 1 -type f \
             -name 'properpcloud-*-x86_64.flatpak' -print -quit)
           test -n "$bundle"
-          flatpak install --user --noninteractive --reinstall "$bundle"
-          dbus-run-session -- bash scripts/flatpak-smoke.sh
-          flatpak uninstall --user --noninteractive dev.properpcloud.app
+          bash scripts/flatpak-bundle-smoke.sh "$bundle"
 
       - name: Upload Flatpak
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -291,6 +289,10 @@ jobs:
             --flatpak "$flatpak" \
             --flatpak-runtime-version 25.08
           (cd dist && sha256sum --check --strict SHA256SUMS)
+          python3 scripts/release_graph.py \
+            --dist dist \
+            --version "${RELEASE_TAG#v}" \
+            --commit "$GITHUB_SHA"
 
       - name: Attest release distributables
         uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4

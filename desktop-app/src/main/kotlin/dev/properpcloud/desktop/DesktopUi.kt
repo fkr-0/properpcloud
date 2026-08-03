@@ -271,6 +271,11 @@ private fun PlayerBar(state: DesktopUiState, controller: DesktopController) {
             }
             IconButton(onClick = controller::previous) { Icon(Icons.Default.SkipPrevious, "Previous") }
             IconButton(onClick = controller::playPause) { Icon(if (state.playback.paused) Icons.Default.PlayArrow else Icons.Default.Pause, "Play or pause") }
+            if (state.playback.restartAvailable) {
+                IconButton(onClick = controller::restartPlayer) {
+                    Icon(Icons.Default.Refresh, "Restart player and resume")
+                }
+            }
             IconButton(onClick = controller::next) { Icon(Icons.Default.SkipNext, "Next") }
             IconButton(onClick = { controller.seek(-15_000) }) { Icon(Icons.Default.KeyboardArrowLeft, "Back 15 seconds") }
             IconButton(onClick = { controller.seek(30_000) }) { Icon(Icons.Default.KeyboardArrowRight, "Forward 30 seconds") }

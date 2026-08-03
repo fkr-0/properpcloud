@@ -348,9 +348,14 @@ testing:
         - Android, Linux, documentation, and release metadata gates remain green.
     linux_0_1_9:
       required:
-        - Forced mpv crash/restart and long-playback soak evidence is retained.
-        - Clean-profile AppImage and Flatpak tests pass.
-        - Arch package reproduction and license inventory pass.
+        - Forced mpv crash detection and explicit restart preserve stable identity and resume within five seconds.
+        - Automatic player restart attempts are zero.
+        - Packaged application clean-profile smoke passes.
+        - Finalized release graph matches exact version, tag, commit, artifact evidence, and checksums.
+        - Arch recipe rendering rejects insecure sources and skipped checksums.
+        - Immutable-tag clean-profile AppImage and Flatpak tests pass.
+        - Arch package cleanbuild and license inventory pass.
+        - Long-playback soak evidence is retained.
         - GNOME, KDE Plasma, and i3 Secret Service/MPRIS cells are explicit.
         - Keyboard-only, focus, text-scale, contrast, and non-drag checks have no critical finding.
   evidence:

@@ -9,13 +9,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- `0.1.9` distribution hardening: forced mpv crash/restart evidence, clean-profile
-  AppImage/Flatpak checks, reproducible Arch packaging, desktop-environment keyring/MPRIS
-  matrix, accessibility review, and long-playback soak testing.
 - `0.2.0` promotion only after the `0.1.8` runtime and `0.1.9` compatibility gates plus
   protected EU/US provider evidence are complete.
 - Verified offline pinning, saved roots, long-form controls, and Android Auto after
   cross-platform queue/progress semantics stabilize.
+
+## [0.1.9] - 2026-08-03
+
+### Added
+
+- Explicit unexpected-mpv-exit state with a user-controlled restart-and-resume action;
+  automatic player restart attempts remain exactly zero.
+- A real-host crash-recovery smoke that forcibly terminates mpv, verifies stable queue
+  identity, and requires resumed playback to remain within a five-second checkpoint bound.
+- A clean-profile runner for packaged desktop and AppImage smoke tests, including an
+  isolated temporary directory that prevents stale extract-and-run state, plus isolated
+  Flatpak application HOME/config/data/cache/state paths.
+- A deterministic AppImage smoke path that explicitly extracts into a private directory,
+  verifies the reviewed `AppRun`, embedded version metadata, and launcher containment,
+  then executes the packaged smoke instead of trusting runtime extract-and-run caching.
+- Retrying MPRIS identity and playback-status probes so transient D-Bus registration
+  races cannot fail an otherwise healthy Flatpak package run.
+- A complete release-graph validator covering immutable version/tag/commit provenance,
+  required artifact kinds and filenames, sizes, SHA-256 evidence, checksum closure,
+  release notes, symlink rejection, and forbidden secret/ephemeral fields.
+- An Arch `PKGBUILD` renderer that requires a real HTTPS source archive and calculates
+  its checksum instead of accepting `SKIP` or unresolved placeholders.
+- A detailed GNOME/KDE/i3, accessibility, package, and soak evidence matrix whose
+  unverified cells remain explicit blockers for `0.2.0`.
+
+### Changed
+
+- The Linux gate now includes forced crash recovery and packaged clean-profile smokes in
+  addition to unit, application-image, normal mpv/SQLite, and MPRIS checks.
+- Tagged AppImage and Flatpak jobs run application smokes with isolated user state, and
+  publication revalidates the finalized artifact graph against `GITHUB_SHA`.
+- Player IPC polling reports fixed local health messages and cannot expose provider
+  response data through process-exit diagnostics.
+
+### Security
+
+- A crashed player is never restarted automatically; recovery requires an observable
+  user action that re-resolves the current stream and uses durable progress.
+- Release publication rejects artifact symlinks, unsafe paths, missing or extra checksum
+  entries, mismatched evidence, and secret-bearing evidence keys.
+- Arch package preparation rejects insecure source URLs and floating/skipped checksums.
+
+### Testing
+
+- Added pure exit-state tests, real mpv termination/restart coverage, clean-profile
+  environment tests, release-graph mutation tests, Arch renderer tests, and a simulated
+  delayed Flatpak playback-status registration regression.
+
+### Known limitations
+
+- Clean-profile workflow wiring is automated, but final AppImage/Flatpak evidence still
+  belongs to the immutable tagged release run.
+- GNOME, KDE Plasma, and i3 keyring/MPRIS/suspend cells, the manual accessibility matrix,
+  a four-hour soak, the final Arch `makepkg --cleanbuild`, and protected EU/US provider
+  validation remain external blockers for `0.2.0`.
 
 ## [0.1.8] - 2026-08-03
 
@@ -458,7 +510,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/fkr-0/properpcloud/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/fkr-0/properpcloud/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/fkr-0/properpcloud/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/fkr-0/properpcloud/compare/v0.1.5...v0.1.6

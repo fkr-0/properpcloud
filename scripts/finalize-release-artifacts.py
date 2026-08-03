@@ -9,6 +9,8 @@ import json
 import shutil
 from pathlib import Path
 
+from release_graph import validate_release_graph
+
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -66,6 +68,7 @@ def main() -> int:
             "host mpv invoked through flatpak-spawn with only "
             "xdg-run/properpcloud shared for private IPC"
         ),
+        "clean_profile_smoke": "required for packaged image, AppImage, and Flatpak release jobs",
     }
     evidence_path.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -90,6 +93,14 @@ def main() -> int:
         "Install the Flatpak bundle with `flatpak install ./properpcloud-*.flatpak`.\n"
     )
     notes_path.write_text(notes + "\n", encoding="utf-8")
+
+    errors = validate_release_graph(
+        dist,
+        str(evidence["version"]),
+        str(evidence["commit"]),
+    )
+    if errors:
+        raise SystemExit("release error: invalid finalized graph: " + "; ".join(errors))
 
     for kind, path in copied.items():
         print(f"release artifact: {kind}={path.name} sha256={sha256(path)}")

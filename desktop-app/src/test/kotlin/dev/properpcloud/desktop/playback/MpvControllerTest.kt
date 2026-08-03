@@ -6,6 +6,8 @@ import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Path
 
@@ -46,5 +48,20 @@ class MpvControllerTest {
             )
         }
         assertEquals("mpv command failed", error.message)
+    }
+
+    @Test
+    fun `unexpected process exit requires an explicit manual restart`() {
+        val failed = mpvExitState(MpvState(running = true, paused = false, positionMillis = 12_000), expected = false)
+        assertFalse(failed.running)
+        assertTrue(failed.paused)
+        assertTrue(failed.unexpectedExit)
+        assertTrue(failed.restartAvailable)
+        assertEquals("mpv exited unexpectedly", failed.error)
+
+        val closed = mpvExitState(failed, expected = true)
+        assertFalse(closed.unexpectedExit)
+        assertFalse(closed.restartAvailable)
+        assertNull(closed.error)
     }
 }

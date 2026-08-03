@@ -41,6 +41,7 @@ agent:
     - Published v0.1.7 with verified signed tag, Android/AppImage/Flatpak artifacts, checksums, and attestations.
     - Prepared 0.1.8 with shared queue repair, forced desktop checkpoints, correlated mpv IPC, local-first revocation, and hardened Secret Service/Flatpak boundaries.
     - Split 0.1.9 compatibility evidence from the final 0.2.0 parity promotion.
+    - Prepared 0.1.9 automated gates for explicit mpv recovery, clean-profile packages, exact release graphs, and immutable-source Arch recipe rendering.
 
 commands:
   image:

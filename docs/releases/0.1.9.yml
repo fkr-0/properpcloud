@@ -1,15 +1,84 @@
 release:
   version: 0.1.9
   tag: v0.1.9
-  status: planned_evidence_gate
+  status: verified_automated_candidate_external_gates_outstanding
   predecessor: v0.1.8
   promotes_to: v0.2.0
   objective: close Linux distribution, desktop-environment, accessibility, and recovery uncertainty
+  automated_evidence:
+    crash_recovery:
+      status: passed
+      automatic_restart_attempts: 0
+      manual_restart: re-resolves the current stream and resumes from durable progress
+      stable_queue_identity: required
+      maximum_resume_drift_millis: 5000
+      command: make desktop-crash-recovery-smoke
+    clean_profile:
+      packaged_application_image: passed
+      appimage_extraction_policy: explicit private extraction with reviewed AppRun and version verification
+      appimage_local_package: passed
+      appimage_tag_workflow: enforced_pending_immutable_tag_run
+      flatpak_local_package: passed
+      flatpak_tag_workflow: enforced_pending_immutable_tag_run
+      flatpak_install_policy: refuse existing user install, install bundle temporarily, always remove test install
+      flatpak_mpris_probe_policy: retry identity and playback status while the smoke process remains alive
+      isolated_paths: [HOME, XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_CACHE_HOME, XDG_STATE_HOME, TMPDIR]
+    release_graph:
+      status: passed_in_host_regressions_and_required_before_attestation
+      validates: [version, tag, commit, artifact kinds, filenames, sizes, sha256, checksum closure, release notes, safe paths, no symlinks, no secret fields]
+    arch_recipe:
+      renderer: passed
+      source_policy: immutable HTTPS archive with calculated SHA-256 and no SKIP
+      final_tag_archive_and_cleanbuild: pending_external
+    compatibility_matrix: docs/reviews/0.1.9-linux-compatibility-matrix.md
+  verification:
+    result: passed
+    specifications:
+      documents: 11
+      requirements: 19
+      use_cases: 19
+    host_regressions:
+      tests: 20
+      failures: 0
+    gradle_tests:
+      suites: 28
+      total: 97
+      failures: 0
+      errors: 0
+      skipped: 0
+    documentation:
+      pages: 40
+      errors: 0
+      warnings: 0
+      hints: 0
+    android_lint:
+      errors: 0
+      warnings: 0
+    linux_integration:
+      desktop_unit_tests: passed
+      packaged_application_image: passed
+      real_mpv_sqlite_smoke: passed
+      forced_mpv_crash_manual_recovery: passed
+      packaged_clean_profile_smoke: passed
+      packaged_mpris_dbus_smoke: passed
+    local_linux_packages:
+      appimage_build_and_clean_profile_smoke: passed
+      flatpak_build_and_clean_profile_smoke: passed
+      exact_commit_digests: generated after the signed local candidate commit
+  android_artifact:
+    path: app/build/outputs/apk/debug/app-debug.apk
+    package: dev.properpcloud.app
+    version_code: 1009
+    version_name: 0.1.9
+    production_signed: false
+    bundled_pcloud_client_id: true
+    size_bytes: 24691633
+    digest_policy: exact SHA-256 is retained in generated release-evidence.json for the immutable candidate build
   required_evidence:
     crash_recovery:
       - forced mpv exit preserves durable queue and selected stable identity
-      - restart resumes within the documented progress-loss bound
-      - automatic restart attempts are bounded and observable
+      - explicit restart resumes within the documented progress-loss bound
+      - automatic restart attempts remain zero
     packaging:
       - clean-profile AppImage smoke
       - clean-profile Flatpak smoke
@@ -25,3 +94,4 @@ release:
     oauth_decision:
       rule: enable browser OAuth only after a provider-confirmed desktop redirect; otherwise retain and document the fallback boundary
   promotion_rule: every failed or unavailable matrix cell remains explicit and blocks v0.2.0
+  release_decision: no tag or push without explicit maintainer confirmation

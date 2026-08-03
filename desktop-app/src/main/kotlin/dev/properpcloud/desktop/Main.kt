@@ -37,7 +37,68 @@ fun main(args: Array<String>) {
         runDesktopSmoke()
         return
     }
+    if (args.contains("--crash-recovery-smoke")) {
+        runCrashRecoverySmoke()
+        return
+    }
     launchDesktop()
+}
+
+private fun runCrashRecoverySmoke() = runBlocking {
+    val root = Files.createTempDirectory("properpcloud-crash-recovery-")
+    val paths = XdgPaths(root.resolve("config"), root.resolve("data"), root.resolve("cache"), root.resolve("runtime")).create()
+    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val source = DesktopDemoAudioSource(paths.cache.resolve("media"))
+    val repository = SqliteStateRepository(paths.data.resolve("state.db"))
+    val mpv = MpvController(paths.runtime, scope, extraArguments = listOf("--ao=null"))
+    try {
+        val folder = source.list(source.root.id).filterIsInstance<AudioFolder>().first()
+        val queue = PlaybackQueue(entries = FolderQueueAssembler(source).build(folder.id, recursive = true).entries, currentIndex = 0)
+        val track = requireNotNull(queue.current).track
+        repository.saveQueue(queue)
+        mpv.load(source.resolveStream(track.id))
+        awaitSmokeCondition("initial mpv playback", attempts = 40, delayMillis = 50) {
+            mpv.state.value.running && mpv.state.value.positionMillis > 0
+        }
+        val before = mpv.state.value.positionMillis.coerceAtLeast(0)
+        repository.saveProgress(PlaybackProgress(track.sourceId, track.id, before, track.durationMillis, 1f, System.currentTimeMillis()))
+        mpv.terminateProcessForSmoke()
+        awaitSmokeCondition("unexpected mpv exit", attempts = 80, delayMillis = 25) {
+            mpv.state.value.unexpectedExit
+        }
+        check(mpv.state.value.unexpectedExit && mpv.state.value.restartAvailable) { "unexpected mpv exit was not detected" }
+        val persisted = requireNotNull(repository.loadProgress(track.sourceId, track.id))
+        mpv.load(source.resolveStream(track.id), persisted.positionMillis)
+        awaitSmokeCondition("manual mpv restart", attempts = 80, delayMillis = 25) {
+            mpv.state.value.running && !mpv.state.value.unexpectedExit
+        }
+        check(mpv.state.value.running) { "mpv did not restart" }
+        check(repository.loadQueue().entries[repository.loadQueue().currentIndex].nodeId == track.id) {
+            "selected stable queue identity changed during recovery"
+        }
+        check(kotlin.math.abs(mpv.state.value.positionMillis - persisted.positionMillis) <= 5_000) {
+            "restarted playback exceeded the five-second recovery bound"
+        }
+        println("properpcloud crash recovery smoke: OK (detected exit, zero automatic restarts, stable queue identity, bounded resume)")
+    } finally {
+        mpv.close()
+        repository.close()
+        scope.cancel()
+        root.toFile().deleteRecursively()
+    }
+}
+
+private suspend fun awaitSmokeCondition(
+    description: String,
+    attempts: Int,
+    delayMillis: Long,
+    condition: () -> Boolean,
+) {
+    repeat(attempts) {
+        if (condition()) return
+        delay(delayMillis)
+    }
+    error("timed out waiting for $description")
 }
 
 private fun runMprisSmoke() = runBlocking {

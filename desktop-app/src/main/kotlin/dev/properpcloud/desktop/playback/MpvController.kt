@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 data class MpvState(
@@ -30,6 +31,8 @@ data class MpvState(
     val durationMillis: Long? = null,
     val idle: Boolean = true,
     val error: String? = null,
+    val unexpectedExit: Boolean = false,
+    val restartAvailable: Boolean = false,
 )
 
 class MpvController(
@@ -42,6 +45,8 @@ class MpvController(
     private val socketPath = runtimeDirectory.resolve("mpv-${ProcessHandle.current().pid()}.sock")
     private var process: Process? = null
     private var polling: Job? = null
+    private val closing = AtomicBoolean(false)
+    private val processGeneration = AtomicLong(0)
     private val requestIds = AtomicLong(0)
     private val commandLock = Any()
     private val mutableState = MutableStateFlow(MpvState())
@@ -50,6 +55,8 @@ class MpvController(
     suspend fun ensureStarted() = withContext(Dispatchers.IO) {
         val current = process
         if (current?.isAlive == true && Files.exists(socketPath)) return@withContext
+        closing.set(false)
+        val generation = processGeneration.incrementAndGet()
         polling?.cancel()
         current?.destroyForcibly()
         Files.createDirectories(runtimeDirectory)
@@ -75,7 +82,8 @@ class MpvController(
         }
         check(Files.exists(socketPath)) { "mpv IPC socket did not become ready" }
         mutableState.value = MpvState(running = true)
-        polling = scope.launch(Dispatchers.IO) { pollState() }
+        val monitoredProcess = requireNotNull(process)
+        polling = scope.launch(Dispatchers.IO) { pollState(monitoredProcess, generation) }
     }
 
     suspend fun load(handle: StreamHandle, resumeMillis: Long = 0) {
@@ -119,6 +127,10 @@ class MpvController(
         if (process?.isAlive == true) command(listOf("stop"))
     }
 
+    internal fun terminateProcessForSmoke() {
+        process?.takeIf { it.isAlive }?.destroyForcibly()
+    }
+
     internal fun commandJson(arguments: List<Any?>, requestId: Long): String =
         gson.toJson(mapOf("command" to arguments, "request_id" to requestId)) + "\n"
 
@@ -130,20 +142,22 @@ class MpvController(
         return response
     }
 
-    private suspend fun pollState() {
-        while (scope.isActive && process?.isAlive == true) {
+    private suspend fun pollState(monitoredProcess: Process, generation: Long) {
+        while (scope.isActive && monitoredProcess.isAlive && generation == processGeneration.get()) {
             runCatching {
                 val position = propertyDouble("time-pos")?.times(1_000)?.toLong() ?: 0
                 val duration = propertyDouble("duration")?.times(1_000)?.toLong()
                 val paused = propertyBoolean("pause") ?: true
                 val idle = propertyBoolean("idle-active") ?: true
                 mutableState.value = MpvState(true, paused, position, duration, idle)
-            }.onFailure { error ->
-                mutableState.value = mutableState.value.copy(error = error.message)
+            }.onFailure {
+                mutableState.value = mutableState.value.copy(error = "mpv IPC became unavailable")
             }
             delay(500)
         }
-        mutableState.value = mutableState.value.copy(running = false, paused = true)
+        if (generation == processGeneration.get()) {
+            mutableState.value = mpvExitState(mutableState.value, expected = closing.get())
+        }
     }
 
     private fun propertyDouble(name: String): Double? = command(listOf("get_property", name))
@@ -190,6 +204,8 @@ class MpvController(
     }
 
     override fun close() {
+        closing.set(true)
+        processGeneration.incrementAndGet()
         polling?.cancel()
         process?.let { running ->
             runCatching { if (running.isAlive) running.destroy() }
@@ -198,6 +214,15 @@ class MpvController(
         Files.deleteIfExists(socketPath)
     }
 }
+
+internal fun mpvExitState(previous: MpvState, expected: Boolean): MpvState =
+    previous.copy(
+        running = false,
+        paused = true,
+        error = if (expected) null else "mpv exited unexpectedly",
+        unexpectedExit = !expected,
+        restartAvailable = !expected,
+    )
 
 private fun ByteArray.indexOf(value: Byte, fromIndex: Int, toIndex: Int): Int {
     for (index in fromIndex until toIndex) if (this[index] == value) return index
