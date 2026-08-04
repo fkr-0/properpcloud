@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The documentation header now exposes the latest published release from canonical
+  changelog data, and the landing page provides direct Android APK, AppImage, Flatpak,
+  checksum, evidence, source, and package-channel links.
+- The repository changelog is now generated as a first-class searchable documentation
+  page, and the Pages workflow rebuilds when `VERSION` or `CHANGELOG.md` changes.
+- Documentation synchronization removes duplicate copied page headings and validates the
+  rendered release badge, binary links, changelog route, and release-token closure.
+
 ### Planned
 
 - `0.2.0` promotion only after the `0.1.8` runtime and `0.1.9` compatibility gates plus

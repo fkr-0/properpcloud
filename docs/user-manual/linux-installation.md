@@ -2,6 +2,31 @@
 
 The Linux client is a native JVM desktop application. It does not require Android, Waydroid, an emulator, or a mounted pCloud filesystem.
 
+## Download the latest Linux packages
+
+| Package | Direct download | Notes |
+| --- | --- | --- |
+| AppImage | [properpcloud {{LATEST_RELEASE_TAG}} x86_64]({{LATEST_APPIMAGE_URL}}) | Portable package with bundled JVM runtime; host `mpv` remains required. |
+| Flatpak bundle | [properpcloud {{LATEST_RELEASE_TAG}} x86_64]({{LATEST_FLATPAK_URL}}) | Directly installable bundle; not yet published on Flathub. |
+| Checksums | [SHA256SUMS]({{LATEST_CHECKSUMS_URL}}) | Verify downloaded bytes before installation. |
+| Release evidence | [release-evidence.json]({{LATEST_EVIDENCE_URL}}) | Records the immutable commit and artifact graph. |
+
+An Arch packaging recipe is [prepared in the repository]({{ARCH_RECIPE_URL}}), but properpcloud is not yet published in the AUR. A Debian/Ubuntu `.deb` is also not currently published.
+
+### Run the AppImage
+
+```bash
+chmod +x properpcloud-{{LATEST_RELEASE_VERSION}}-x86_64.AppImage
+./properpcloud-{{LATEST_RELEASE_VERSION}}-x86_64.AppImage
+```
+
+### Install the Flatpak bundle
+
+```bash
+flatpak install --user ./properpcloud-{{LATEST_RELEASE_VERSION}}-x86_64.flatpak
+flatpak run dev.properpcloud.app
+```
+
 ## Runtime requirements
 
 | Component | Purpose |
@@ -53,10 +78,10 @@ the existing `mpv` system dependency. The AppImage resolves `mpv` from the norma
 `PATH`. The Flatpak uses its narrowly declared `org.freedesktop.Flatpak` D-Bus permission
 to invoke the host `mpv` through `flatpak-spawn` and shares only
 `$XDG_RUNTIME_DIR/properpcloud` for the private IPC socket; it does not grant broad
-host-filesystem access. Install a release bundle with:
+host-filesystem access. Install a locally downloaded release bundle with:
 
 ```bash
-flatpak install ./properpcloud-*-x86_64.flatpak
+flatpak install --user ./properpcloud-*-x86_64.flatpak
 ```
 
 The GitHub Linux workflow builds and smoke-tests both package formats, and tagged release

@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
     paths:
+      - CHANGELOG.md
+      - VERSION
       - docs/**
       - website/**
       - .github/workflows/pages.yml

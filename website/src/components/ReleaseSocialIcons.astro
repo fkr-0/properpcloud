@@ -1,0 +1,55 @@
+---
+import DefaultSocialIcons from '@astrojs/starlight/components/SocialIcons.astro';
+import { readReleaseData } from '../lib/release-data.mjs';
+
+const release = await readReleaseData();
+---
+
+<a
+  class="release-link"
+  href={release.latestReleaseUrl}
+  aria-label={`Download the latest properpcloud release, ${release.tag}`}
+  title={`Download properpcloud ${release.tag}`}
+>
+  <span class="release-link__label">Latest</span>
+  <span class="release-link__version">{release.tag}</span>
+</a>
+<DefaultSocialIcons />
+
+<style>
+  @layer starlight.core {
+    .release-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      min-height: 2rem;
+      padding: 0.3rem 0.65rem;
+      border: 1px solid color-mix(in srgb, var(--sl-color-accent) 45%, var(--sl-color-gray-5));
+      border-radius: 999px;
+      color: var(--sl-color-white);
+      background: color-mix(in srgb, var(--sl-color-accent-low) 72%, transparent);
+      font-size: 0.75rem;
+      line-height: 1;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
+    }
+
+    .release-link:hover {
+      border-color: var(--sl-color-accent);
+      background: color-mix(in srgb, var(--sl-color-accent-low) 88%, transparent);
+      transform: translateY(-1px);
+    }
+
+    .release-link__label {
+      color: var(--sl-color-gray-2);
+      font-weight: 600;
+    }
+
+    .release-link__version {
+      color: var(--sl-color-text-accent);
+      font-weight: 800;
+      letter-spacing: 0.015em;
+    }
+  }
+</style>

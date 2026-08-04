@@ -1,5 +1,11 @@
 # Android installation
 
+## Latest published build
+
+[Download properpcloud {{LATEST_RELEASE_TAG}} for Android]({{LATEST_APK_URL}}) from the verified GitHub release. The same release provides [SHA-256 checksums]({{LATEST_CHECKSUMS_URL}}) and [commit-bound build evidence]({{LATEST_EVIDENCE_URL}}).
+
+The current APK is an installable **debug-signed evaluation build**, not a Google Play production package. Existing data normally survives an upgrade when the package identity and signing key match, but keep normal backups of important provider data and playlists.
+
 ## Requirements
 
 - Android 8.0 or newer (`minSdk 26`).
@@ -8,7 +14,7 @@
 
 ## Install a release APK
 
-1. Download the APK from the matching GitHub release.
+1. Download the APK from the [matching GitHub release]({{LATEST_RELEASE_URL}}).
 2. Verify the published SHA-256 checksum when one is provided.
 3. Allow installation from the browser or file manager used for the download.
 4. Install the APK and revoke the temporary installer permission afterward.

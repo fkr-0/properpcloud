@@ -4,8 +4,9 @@
   "type": "module",
   "scripts": {
     "sync": "node scripts/sync-docs.mjs",
+    "test": "node --test scripts/*.test.mjs",
     "dev": "npm run sync && astro dev",
-    "build": "npm run sync && astro check && astro build",
+    "build": "npm test && npm run sync && astro check && astro build && node scripts/check-built-site.mjs",
     "preview": "astro preview"
   },
   "dependencies": {

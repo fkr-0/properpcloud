@@ -42,3 +42,128 @@
 code {
   font-variant-ligatures: none;
 }
+
+.release-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.5rem;
+  align-items: center;
+  margin-block: 1.25rem 2.5rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid color-mix(in srgb, var(--sl-color-accent) 35%, var(--sl-color-gray-5));
+  border-radius: 1.25rem;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--sl-color-accent) 18%, transparent), transparent 45%),
+    var(--sl-color-bg-nav);
+  box-shadow: 0 18px 50px color-mix(in srgb, var(--sl-color-black) 12%, transparent);
+}
+
+.release-overview__eyebrow,
+.download-card__platform {
+  margin: 0;
+  color: var(--sl-color-text-accent);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.release-overview h2 {
+  margin-block: 0.3rem 0.55rem;
+  font-size: clamp(1.6rem, 4vw, 2.5rem);
+}
+
+.release-overview__summary {
+  max-width: 48rem;
+  margin: 0;
+  color: var(--sl-color-gray-2);
+}
+
+.release-overview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: flex-end;
+}
+
+.release-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.6rem;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.75rem;
+  color: var(--sl-color-white);
+  background: var(--sl-color-bg);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.release-action:hover {
+  border-color: var(--sl-color-accent);
+}
+
+.release-action--primary {
+  border-color: var(--sl-color-accent);
+  color: var(--sl-color-black);
+  background: var(--sl-color-accent);
+}
+
+.download-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-block: 1rem 2rem;
+}
+
+.download-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-height: 11rem;
+  padding: 1.15rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 1rem;
+  color: var(--sl-color-white);
+  background: color-mix(in srgb, var(--sl-color-bg-nav) 92%, var(--sl-color-accent-low));
+  text-decoration: none;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.download-card:hover {
+  border-color: var(--sl-color-accent);
+  transform: translateY(-2px);
+}
+
+.download-card strong {
+  font-size: 1.2rem;
+}
+
+.download-card__description {
+  color: var(--sl-color-gray-2);
+  font-size: 0.9rem;
+}
+
+.download-card__action {
+  margin-top: auto;
+  color: var(--sl-color-text-accent);
+  font-weight: 750;
+}
+
+@media (max-width: 50rem) {
+  .release-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .release-overview__actions {
+    justify-content: flex-start;
+  }
+
+  .download-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .download-card {
+    min-height: auto;
+  }
+}

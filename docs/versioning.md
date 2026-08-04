@@ -2,6 +2,12 @@
 
 properpcloud follows Semantic Versioning 2.0.0.
 
+## Current published release
+
+The latest stable release is **[properpcloud {{LATEST_RELEASE_TAG}}]({{LATEST_RELEASE_URL}})**, published {{LATEST_RELEASE_DATE}}. The documentation build derives this value from the first dated release section in the canonical `CHANGELOG.md`, while development builds continue to read their working version from `VERSION`.
+
+Every published release groups the Android APK, AppImage, Flatpak bundle, checksums, and machine-readable evidence on one immutable GitHub release page. The site header links to GitHub's `/releases/latest` route so it remains a stable discovery point.
+
 ## Canonical version
 
 `VERSION` is the only manually edited version source. It contains one normal

@@ -2,6 +2,55 @@
 
 properpcloud is a folder-first audio player for pCloud libraries. It treats cloud folders as the primary catalog, builds deterministic playback queues without requiring complete tags, and keeps signed provider URLs out of persistent state.
 
+<section class="release-overview" aria-labelledby="latest-release-heading">
+  <div>
+    <p class="release-overview__eyebrow">Latest stable release · published {{LATEST_RELEASE_DATE}}</p>
+    <h2 id="latest-release-heading">properpcloud {{LATEST_RELEASE_TAG}}</h2>
+    <p class="release-overview__summary">Verified Android and Linux builds are published together with SHA-256 checksums and commit-bound release evidence.</p>
+  </div>
+  <div class="release-overview__actions">
+    <a class="release-action release-action--primary" href="{{LATEST_RELEASE_URL}}">Open release</a>
+    <a class="release-action" href="{{LATEST_CHECKSUMS_URL}}">Checksums</a>
+    <a class="release-action" href="changelog/">Changelog</a>
+  </div>
+</section>
+
+## Download and install
+
+<div class="download-grid">
+  <a class="download-card" href="{{LATEST_APK_URL}}">
+    <span class="download-card__platform">Android 8+</span>
+    <strong>Installable APK</strong>
+    <span class="download-card__description">Debug-signed evaluation build with Media3 background playback and the native pCloud client.</span>
+    <span class="download-card__action">Download APK →</span>
+  </a>
+  <a class="download-card" href="{{LATEST_APPIMAGE_URL}}">
+    <span class="download-card__platform">Linux x86_64</span>
+    <strong>AppImage</strong>
+    <span class="download-card__description">Portable desktop package with its JVM runtime bundled; install <code>mpv</code> on the host.</span>
+    <span class="download-card__action">Download AppImage →</span>
+  </a>
+  <a class="download-card" href="{{LATEST_FLATPAK_URL}}">
+    <span class="download-card__platform">Linux x86_64</span>
+    <strong>Flatpak bundle</strong>
+    <span class="download-card__description">Single-file Freedesktop 25.08 bundle, smoke-tested with MPRIS and narrowly bridged host mpv IPC.</span>
+    <span class="download-card__action">Download Flatpak →</span>
+  </a>
+</div>
+
+The release also includes [machine-readable evidence]({{LATEST_EVIDENCE_URL}}), a [source archive]({{LATEST_SOURCE_ARCHIVE_URL}}), and one checksum manifest covering every distributable.
+
+### Package-channel availability
+
+| Channel | Availability |
+| --- | --- |
+| Android APK | Published on the [latest GitHub release]({{LATEST_RELEASE_URL}}); Google Play is not used yet. |
+| AppImage | Published and smoke-tested on the release page. |
+| Flatpak | A directly installable `.flatpak` bundle is published; it is not yet listed on Flathub. |
+| Arch Linux / AUR | An [immutable-source PKGBUILD renderer]({{ARCH_RECIPE_URL}}) is prepared, but no AUR package is published yet. |
+| Debian / Ubuntu `.deb` | Not currently published. Use AppImage or the Flatpak bundle. |
+| Source | Clone the repository or download the tagged source archive. |
+
 ## Choose a starting point
 
 | Goal | Start here |
@@ -12,6 +61,7 @@ properpcloud is a folder-first audio player for pCloud libraries. It treats clou
 | Build or contribute | [Developer guide](development/README.md) |
 | Integrate a new source or persistence adapter | [API reference](api/README.md) |
 | Understand trust boundaries | [Architecture](architecture.md) and [privacy](privacy.md) |
+| Review changes and known limitations | [Changelog](changelog/) |
 
 ## Current clients
 
@@ -27,6 +77,12 @@ properpcloud is a folder-first audio player for pCloud libraries. It treats clou
 4. Credentials are delegated to platform credential stores.
 5. Metadata repair is explicit, previewable, and separate from ordinary playback.
 
+## Recent releases
+
+{{RECENT_RELEASES_TABLE}}
+
+For complete user-visible changes, security notes, tests, and known limitations, read the [full changelog](changelog/).
+
 ## Documentation as code
 
-All published pages originate as Markdown under `docs/`. The static documentation site synchronizes those files into an Astro Starlight build and deploys the generated HTML through GitHub Pages.
+All published pages originate as Markdown under `docs/`, with the root changelog and canonical version data incorporated during the Astro Starlight build. GitHub Pages serves the generated static HTML.

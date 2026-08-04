@@ -1,11 +1,13 @@
 import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readReleaseData, replaceReleaseTokens } from '../src/lib/release-data.mjs';
 
 const websiteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryRoot = path.resolve(websiteRoot, '..');
 const sourceRoot = path.join(repositoryRoot, 'docs');
 const targetRoot = path.join(websiteRoot, 'src', 'content', 'docs');
+const release = await readReleaseData(repositoryRoot);
 
 await rm(targetRoot, { recursive: true, force: true });
 await mkdir(targetRoot, { recursive: true });
@@ -22,7 +24,9 @@ async function copyDirectory(sourceDirectory, targetDirectory) {
     if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
     const outputName = entry.name.toLowerCase() === 'readme.md' ? 'index.md' : entry.name;
     const target = path.join(targetDirectory, outputName);
-    const markdown = await readFile(source, 'utf8');
+    const sourcePath = path.relative(sourceRoot, source).split(path.sep).join('/');
+    const editUrl = `${release.repositoryUrl}/edit/main/docs/${sourcePath}`;
+    const markdown = replaceReleaseTokens(await readFile(source, 'utf8'), release);
     const title = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? path.basename(entry.name, '.md');
     const description = markdown
       .split(/\r?\n/)
@@ -30,18 +34,35 @@ async function copyDirectory(sourceDirectory, targetDirectory) {
       .find((line) => line && !line.startsWith('#') && !line.startsWith('```') && !line.startsWith('---'))
       ?.replace(/["\\]/g, '')
       .slice(0, 180) ?? `properpcloud documentation: ${title}`;
-    const frontmatter = markdown.startsWith('---\n')
-      ? ''
-      : `---\ntitle: ${JSON.stringify(title)}\ndescription: ${JSON.stringify(description)}\n---\n\n`;
-    await writeFile(target, frontmatter + markdown, 'utf8');
+    const frontmatter = `---\ntitle: ${JSON.stringify(title)}\ndescription: ${JSON.stringify(description)}\neditUrl: ${JSON.stringify(editUrl)}\n---\n\n`;
+    const body = markdown.replace(/^#\s+.+(?:\r?\n){1,2}/, '');
+    await writeFile(target, frontmatter + body, 'utf8');
   }
 }
 
 await copyDirectory(sourceRoot, targetRoot);
+
+const changelog = replaceReleaseTokens(
+  await readFile(path.join(repositoryRoot, 'CHANGELOG.md'), 'utf8'),
+  release,
+).replace(/^#\s+.+(?:\r?\n){1,2}/, '');
+const changelogIntro = [
+  'The canonical project changelog is published here directly from the repository. ',
+  `[Download ${release.tag}](${release.releaseUrl}), `,
+  `[browse every GitHub release](${release.allReleasesUrl}), or `,
+  `[verify the latest checksums](${release.checksumsUrl}).`,
+].join('');
+await writeFile(
+  path.join(targetRoot, 'changelog.md'),
+  `---\ntitle: "Changelog"\ndescription: "Release history, changes, security notes, tests, and known limitations for properpcloud."\neditUrl: "${release.repositoryUrl}/edit/main/CHANGELOG.md"\n---\n\n${changelogIntro}\n\n${changelog}`,
+  'utf8',
+);
 await mkdir(path.join(websiteRoot, 'src', 'assets'), { recursive: true });
 await mkdir(path.join(websiteRoot, 'public'), { recursive: true });
 await rm(path.join(websiteRoot, 'public', 'CNAME'), { force: true });
 await cp(path.join(sourceRoot, 'assets', 'logo.png'), path.join(websiteRoot, 'src', 'assets', 'logo.png'));
 await cp(path.join(sourceRoot, 'assets', 'logo.png'), path.join(websiteRoot, 'public', 'favicon.png'));
 
-console.log(`Synced Markdown documentation from ${sourceRoot} to ${targetRoot}`);
+console.log(
+  `Synced Markdown documentation and ${release.tag} release data from ${sourceRoot} to ${targetRoot}`,
+);
