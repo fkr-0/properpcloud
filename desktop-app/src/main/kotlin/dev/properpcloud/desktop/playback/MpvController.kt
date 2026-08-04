@@ -33,6 +33,7 @@ data class MpvState(
     val error: String? = null,
     val unexpectedExit: Boolean = false,
     val restartAvailable: Boolean = false,
+    val streamFailure: Boolean = false,
 )
 
 class MpvController(
@@ -46,6 +47,7 @@ class MpvController(
     private var process: Process? = null
     private var polling: Job? = null
     private val closing = AtomicBoolean(false)
+    private val expectedIdle = AtomicBoolean(true)
     private val processGeneration = AtomicLong(0)
     private val requestIds = AtomicLong(0)
     private val commandLock = Any()
@@ -89,12 +91,21 @@ class MpvController(
     suspend fun load(handle: StreamHandle, resumeMillis: Long = 0) {
         ensureStarted()
         require(handle.url.startsWith("https://") || handle.url.startsWith("file:")) { "unsupported playback URL scheme" }
+        expectedIdle.set(true)
         command(listOf("loadfile", handle.url, "replace"))
         if (resumeMillis > 0) {
             delay(80)
             command(listOf("seek", resumeMillis / 1_000.0, "absolute+exact"))
         }
         command(listOf("set_property", "pause", false))
+        expectedIdle.set(false)
+        mutableState.value = mutableState.value.copy(
+            idle = false,
+            error = null,
+            unexpectedExit = false,
+            restartAvailable = false,
+            streamFailure = false,
+        )
     }
 
     suspend fun togglePause() {
@@ -124,6 +135,7 @@ class MpvController(
     }
 
     suspend fun stop() {
+        expectedIdle.set(true)
         if (process?.isAlive == true) command(listOf("stop"))
     }
 
@@ -149,7 +161,16 @@ class MpvController(
                 val duration = propertyDouble("duration")?.times(1_000)?.toLong()
                 val paused = propertyBoolean("pause") ?: true
                 val idle = propertyBoolean("idle-active") ?: true
-                mutableState.value = MpvState(true, paused, position, duration, idle)
+                val eofReached = propertyBoolean("eof-reached") ?: false
+                mutableState.value = mpvPlaybackState(
+                    previous = mutableState.value,
+                    paused = paused,
+                    positionMillis = position,
+                    durationMillis = duration,
+                    idle = idle,
+                    eofReached = eofReached,
+                    expectedIdle = expectedIdle.get(),
+                )
             }.onFailure {
                 mutableState.value = mutableState.value.copy(error = "mpv IPC became unavailable")
             }
@@ -222,7 +243,33 @@ internal fun mpvExitState(previous: MpvState, expected: Boolean): MpvState =
         error = if (expected) null else "mpv exited unexpectedly",
         unexpectedExit = !expected,
         restartAvailable = !expected,
+        streamFailure = false,
     )
+
+internal fun mpvPlaybackState(
+    previous: MpvState,
+    paused: Boolean,
+    positionMillis: Long,
+    durationMillis: Long?,
+    idle: Boolean,
+    eofReached: Boolean,
+    expectedIdle: Boolean,
+): MpvState {
+    val failed = previous.running && !previous.idle && idle && !eofReached && !expectedIdle
+    val recoveryPending = previous.restartAvailable && idle && !expectedIdle
+    val failureVisible = failed || recoveryPending
+    return MpvState(
+        running = true,
+        paused = paused,
+        positionMillis = positionMillis,
+        durationMillis = durationMillis,
+        idle = idle,
+        error = if (failureVisible) previous.error ?: "mpv playback failed" else null,
+        unexpectedExit = false,
+        restartAvailable = failureVisible,
+        streamFailure = failed,
+    )
+}
 
 private fun ByteArray.indexOf(value: Byte, fromIndex: Int, toIndex: Int): Int {
     for (index in fromIndex until toIndex) if (this[index] == value) return index

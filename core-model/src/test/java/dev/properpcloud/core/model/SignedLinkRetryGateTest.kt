@@ -1,4 +1,4 @@
-package dev.properpcloud.app.playback
+package dev.properpcloud.core.model
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -6,7 +6,7 @@ import org.junit.Test
 
 class SignedLinkRetryGateTest {
     @Test
-    fun allowsOneImmediateRetryThenRequiresCooldown() {
+    fun `allows one immediate retry then requires cooldown`() {
         val gate = SignedLinkRetryGate(retryCooldownMillis = 60_000)
 
         assertTrue(gate.acquire("pcloud:file:42", 1_000))
@@ -16,7 +16,7 @@ class SignedLinkRetryGateTest {
     }
 
     @Test
-    fun independentMediaAndExplicitResetDoNotShareBudget() {
+    fun `independent media and explicit reset do not share budget`() {
         val gate = SignedLinkRetryGate(retryCooldownMillis = 60_000)
 
         assertTrue(gate.acquire("one", 1_000))
@@ -26,7 +26,7 @@ class SignedLinkRetryGateTest {
     }
 
     @Test
-    fun blankMediaIdentityNeverConsumesRetry() {
+    fun `blank media identity never consumes retry`() {
         assertFalse(SignedLinkRetryGate().acquire("", 1_000))
     }
 }

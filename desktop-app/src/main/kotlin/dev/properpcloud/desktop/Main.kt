@@ -41,6 +41,10 @@ fun main(args: Array<String>) {
         runCrashRecoverySmoke()
         return
     }
+    if (args.contains("--resilience-soak")) {
+        runResilienceSoak()
+        return
+    }
     launchDesktop()
 }
 

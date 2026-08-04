@@ -1,5 +1,11 @@
-package dev.properpcloud.app.playback
+package dev.properpcloud.core.model
 
+/**
+ * Bounds capability-link re-resolution independently for each stable media identity.
+ *
+ * The gate deliberately stores only stable IDs and timestamps. Provider URLs, response
+ * bodies, and credentials never enter this policy object.
+ */
 class SignedLinkRetryGate(
     private val retryCooldownMillis: Long = 60_000,
 ) {

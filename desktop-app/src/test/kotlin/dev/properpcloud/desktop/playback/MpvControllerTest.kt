@@ -64,4 +64,49 @@ class MpvControllerTest {
         assertFalse(closed.restartAvailable)
         assertNull(closed.error)
     }
+
+    @Test
+    fun `unexpected idle transition is a redacted stream failure`() {
+        val playing = MpvState(running = true, paused = false, idle = false, positionMillis = 12_000)
+
+        val failed = mpvPlaybackState(
+            previous = playing,
+            paused = true,
+            positionMillis = 12_000,
+            durationMillis = 60_000,
+            idle = true,
+            eofReached = false,
+            expectedIdle = false,
+        )
+
+        assertTrue(failed.streamFailure)
+        assertTrue(failed.restartAvailable)
+        assertEquals("mpv playback failed", failed.error)
+
+        val nextPoll = mpvPlaybackState(
+            previous = failed,
+            paused = true,
+            positionMillis = 12_000,
+            durationMillis = 60_000,
+            idle = true,
+            eofReached = false,
+            expectedIdle = false,
+        )
+        assertFalse(nextPoll.streamFailure)
+        assertTrue(nextPoll.restartAvailable)
+        assertEquals("mpv playback failed", nextPoll.error)
+    }
+
+    @Test
+    fun `normal eof and explicit stop do not request link refresh`() {
+        val playing = MpvState(running = true, paused = false, idle = false, positionMillis = 12_000)
+
+        val eof = mpvPlaybackState(playing, true, 60_000, 60_000, true, eofReached = true, expectedIdle = false)
+        val stopped = mpvPlaybackState(playing, true, 12_000, 60_000, true, eofReached = false, expectedIdle = true)
+
+        assertFalse(eof.streamFailure)
+        assertFalse(stopped.streamFailure)
+        assertNull(eof.error)
+        assertNull(stopped.error)
+    }
 }

@@ -354,10 +354,20 @@ testing:
         - Finalized release graph matches exact version, tag, commit, artifact evidence, and checksums.
         - Arch recipe rendering rejects insecure sources and skipped checksums.
         - Immutable-tag clean-profile AppImage and Flatpak tests pass.
-        - Arch package cleanbuild and license inventory pass.
-        - Long-playback soak evidence is retained.
+        - Arch package cleanbuild and license inventory are executable against immutable tags.
+        - Credential-free resilience-soak evidence is retained.
         - GNOME, KDE Plasma, and i3 Secret Service/MPRIS cells are explicit.
-        - Keyboard-only, focus, text-scale, contrast, and non-drag checks have no critical finding.
+        - Keyboard-only and non-drag operations are automated; text-scale, contrast, and screen-reader checks remain manual.
+    linux_0_2_0:
+      required:
+        - Shared Android/Linux signed-link retry and desktop stream-failure tests pass.
+        - Current i3 Secret Service and packaged MPRIS audit evidence is redacted and retained.
+        - Immutable current-tag Arch cleanbuild, installation, license inventory, and installed smoke pass.
+        - Bounded demo soak and protected four-hour provider soak pass their stated scope.
+        - EU and US protected account expiry, disconnect, cleanup, and restart evidence is retained without secrets or media.
+        - GNOME/KDE and visual accessibility observations are complete or explicitly accepted.
+        - Pre-tag 0.2.0 readiness exits zero before tag creation, allowing only explicitly post-tag checks.
+        - Strict publication readiness exits zero after exact-tag package verification.
   evidence:
     retain: [JUnit XML, HTML reports, lint reports, APK SHA-256, dependency verification, emulator API, sandbox cleanup]
     prohibit: [OAuth tokens, signed URLs, passwords, private media bytes]

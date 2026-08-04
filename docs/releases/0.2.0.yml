@@ -1,0 +1,60 @@
+release:
+  version: 0.2.0
+  tag: v0.2.0
+  status: implementation_hardened_promotion_gates_explicit
+  base_release: v0.1.9
+  objective: promote the native Linux client after automated, current-session, visual, soak, and protected-provider evidence is complete
+  implementation:
+    shared_semantics:
+      - queue restoration and stable selected identity
+      - progress checkpoint and resume policy
+      - bounded signed-link capability refresh shared by Android and Linux
+    desktop:
+      - Compose Desktop folder browser, inspector, queue, and player
+      - SQLite state, Secret Service credentials, mpv JSON IPC, and MPRIS
+      - explicit process restart and one bounded stream-capability refresh
+      - keyboard-first library and queue operations with no drag-only action
+    packaging:
+      - application image
+      - tagged AppImage and Flatpak packages
+      - immutable-source Arch PKGBUILD and executable clean-build gate
+  automated_evidence:
+    required_commands:
+      - make release-020-readiness
+      - make test
+      - make desktop-test
+      - make linux-ci
+      - PROPERPCLOUD_SOAK_SECONDS=120 make desktop-resilience-soak
+      - make docs-build
+    readiness_matrix: docs/reviews/0.2.0-promotion-matrix.yml
+    pre_tag_gate: python3 scripts/validate-020-readiness.py --pre-tag
+    publication_gate: python3 scripts/validate-020-readiness.py --strict
+  current_session_evidence:
+    command: make desktop-session-audit
+    result: passed_on_current_gnome_i3_x11_session
+    evidence: build/evidence/0.2.0-current-session.json
+    privacy: disposable random Secret Service value only; value and D-Bus address are never recorded
+    limitations:
+      - actual locked-keyring behavior requires deliberate manual observation
+      - hardware media-key behavior requires the active desktop daemon or keyboard
+      - suspend and resume requires an operator-controlled session transition
+  current_host_evidence:
+    arch_v0_1_9:
+      result: passed
+      evidence: build/evidence/0.1.9-arch-package.json
+      package_sha256: ab302413fe19a44e0065afe28acdb3f1f111be54b846e827b6906234e3bd63c9
+    resilience_soak:
+      result: passed
+      evidence: build/evidence/0.2.0-resilience-soak.json
+      duration_seconds: 120
+      cycles: 340
+      maximum_resume_drift_millis: 725
+  remaining_blockers:
+    - exact immutable v0.2.0 Arch archive rebuild after tag creation
+    - protected Europe pCloud playback, expiry, disconnect, and restart
+    - protected United States pCloud playback, expiry, disconnect, and restart
+    - four-hour retained provider soak with one real capability expiry and suspend/resume
+    - GNOME and KDE Plasma session observations beyond the current i3 session
+    - screen-reader semantics, 200 percent text, and high-contrast visual review
+    - explicit acceptance of the documented direct-sign-in fallback while desktop OAuth redirect registration remains unconfirmed
+  publication_rule: no version bump or tag until pre-tag readiness passes; no publication until strict post-tag readiness passes or every exception is explicitly accepted by the maintainer

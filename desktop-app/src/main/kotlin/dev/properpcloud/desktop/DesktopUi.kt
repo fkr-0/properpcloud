@@ -71,10 +71,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
@@ -94,17 +91,60 @@ import java.awt.SystemColor
 fun DesktopApp(controller: DesktopController) {
     val state by controller.state.collectAsState()
     var accountDialog by remember { mutableStateOf(false) }
+    var keyboardHelp by remember { mutableStateOf(false) }
+    var focusTarget by remember { mutableStateOf(DesktopFocusTarget.LIBRARY) }
+    var librarySelection by remember { mutableStateOf(0) }
+    var queueSelection by remember { mutableStateOf(0) }
     val dark = SystemColor.window.rgb and 0xff < 128
     MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
         Scaffold(
             modifier = Modifier.fillMaxSize().onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                when {
-                    event.key == Key.Spacebar -> { controller.playPause(); true }
-                    event.key == Key.DirectionRight && event.isCtrlPressed -> { controller.next(); true }
-                    event.key == Key.DirectionLeft && event.isCtrlPressed -> { controller.previous(); true }
-                    else -> false
+                when (val shortcut = resolveDesktopShortcut(event, focusTarget, accountDialog || keyboardHelp)) {
+                    DesktopShortcut.PlayPause -> controller.playPause()
+                    DesktopShortcut.Next -> controller.next()
+                    DesktopShortcut.Previous -> controller.previous()
+                    DesktopShortcut.FocusLibrary -> focusTarget = DesktopFocusTarget.LIBRARY
+                    DesktopShortcut.FocusQueue -> focusTarget = DesktopFocusTarget.QUEUE
+                    DesktopShortcut.ShowHelp -> keyboardHelp = true
+                    is DesktopShortcut.SelectLibrary -> {
+                        focusTarget = DesktopFocusTarget.LIBRARY
+                        librarySelection = moveSelection(librarySelection, shortcut.delta, state.nodes.size)
+                    }
+                    is DesktopShortcut.OpenLibrary -> {
+                        val node = state.nodes.getOrNull(librarySelection) ?: return@onPreviewKeyEvent true
+                        when (shortcut.operation) {
+                            LibraryKeyboardOperation.OPEN_OR_PLAY -> controller.open(node)
+                            LibraryKeyboardOperation.APPEND -> when (node) {
+                                is AudioTrack -> controller.enqueue(node)
+                                is AudioFolder -> controller.enqueueFolder(node, recursive = true, QueueOperation.APPEND)
+                            }
+                            LibraryKeyboardOperation.PLAY_REPLACE -> when (node) {
+                                is AudioTrack -> controller.play(node)
+                                is AudioFolder -> controller.enqueueFolder(node, recursive = false, QueueOperation.REPLACE)
+                            }
+                            LibraryKeyboardOperation.INSPECT -> controller.inspect(node)
+                        }
+                    }
+                    is DesktopShortcut.SelectQueue -> {
+                        focusTarget = DesktopFocusTarget.QUEUE
+                        queueSelection = moveSelection(queueSelection, shortcut.delta, state.queue.entries.size)
+                    }
+                    DesktopShortcut.PlayQueueSelection -> state.queue.entries.getOrNull(queueSelection)?.let {
+                        controller.playIndex(queueSelection)
+                    }
+                    DesktopShortcut.RemoveQueueSelection -> if (state.queue.entries.getOrNull(queueSelection) != null) {
+                        controller.removeQueue(queueSelection)
+                        queueSelection = moveSelection(queueSelection, 0, state.queue.entries.size - 1)
+                    }
+                    is DesktopShortcut.MoveQueueSelection -> if (state.queue.entries.getOrNull(queueSelection) != null) {
+                        val destination = (queueSelection + shortcut.delta).coerceIn(0, state.queue.entries.lastIndex)
+                        controller.moveQueue(queueSelection, shortcut.delta)
+                        queueSelection = destination
+                    }
+                    null -> return@onPreviewKeyEvent false
                 }
+                true
             },
             topBar = {
                 TopAppBar(
@@ -126,9 +166,23 @@ fun DesktopApp(controller: DesktopController) {
                 Row(Modifier.weight(1f).fillMaxWidth()) {
                     NavigationPane(state, controller, Modifier.width(250.dp).fillMaxHeight())
                     Divider(Modifier.fillMaxHeight().width(1.dp))
-                    LibraryPane(state, controller, Modifier.weight(1f).fillMaxHeight())
+                    LibraryPane(
+                        state = state,
+                        controller = controller,
+                        selectedIndex = librarySelection,
+                        keyboardFocused = focusTarget == DesktopFocusTarget.LIBRARY,
+                        onSelected = { librarySelection = it; focusTarget = DesktopFocusTarget.LIBRARY },
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
                     Divider(Modifier.fillMaxHeight().width(1.dp))
-                    QueuePane(state, controller, Modifier.widthIn(min = 320.dp, max = 440.dp).fillMaxHeight())
+                    QueuePane(
+                        state = state,
+                        controller = controller,
+                        selectedIndex = queueSelection,
+                        keyboardFocused = focusTarget == DesktopFocusTarget.QUEUE,
+                        onSelected = { queueSelection = it; focusTarget = DesktopFocusTarget.QUEUE },
+                        modifier = Modifier.widthIn(min = 320.dp, max = 440.dp).fillMaxHeight(),
+                    )
                 }
                 Surface(tonalElevation = 2.dp) {
                     Text(state.status, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp), style = MaterialTheme.typography.bodySmall)
@@ -136,7 +190,32 @@ fun DesktopApp(controller: DesktopController) {
             }
         }
         if (accountDialog) AccountDialog(state, controller, onDismiss = { accountDialog = false })
+        if (keyboardHelp) KeyboardHelpDialog(onDismiss = { keyboardHelp = false })
     }
+}
+
+@Composable
+private fun KeyboardHelpDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Keyboard controls") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("Ctrl+L · focus library")
+                Text("Ctrl+Q · focus queue")
+                Text("↑/↓ · select an item")
+                Text("Enter · open/play selected item")
+                Text("Shift+Enter · append selected library item")
+                Text("Ctrl+Enter · replace queue and play")
+                Text("Alt+Enter · inspect selected library item")
+                Text("Alt+↑/↓ · move selected queue item")
+                Text("Delete · remove selected queue item")
+                Text("Space · play/pause · Ctrl+←/→ · previous/next")
+                Text("All queue operations have non-drag alternatives.", fontWeight = FontWeight.SemiBold)
+            }
+        },
+        confirmButton = { Button(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 @Composable
@@ -176,12 +255,20 @@ private fun NavigationPane(state: DesktopUiState, controller: DesktopController,
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun LibraryPane(state: DesktopUiState, controller: DesktopController, modifier: Modifier) {
+private fun LibraryPane(
+    state: DesktopUiState,
+    controller: DesktopController,
+    selectedIndex: Int,
+    keyboardFocused: Boolean,
+    onSelected: (Int) -> Unit,
+    modifier: Modifier,
+) {
     Column(modifier.padding(14.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(state.currentFolder?.name ?: "Library", style = MaterialTheme.typography.headlineSmall)
                 Text("Double-click to open or play; right-click for queue actions", style = MaterialTheme.typography.bodySmall)
+                if (keyboardFocused) Text("Keyboard focus · ↑/↓ select · Enter open/play · F1 help", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
             state.currentFolder?.let { folder ->
                 FilledTonalButton(onClick = { controller.enqueueFolder(folder, recursive = false, QueueOperation.REPLACE) }) {
@@ -191,16 +278,21 @@ private fun LibraryPane(state: DesktopUiState, controller: DesktopController, mo
         }
         Spacer(Modifier.height(12.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            itemsIndexed(state.nodes, key = { _, node -> node.sourceId.value + node.id.value }) { _, node ->
+            itemsIndexed(state.nodes, key = { _, node -> node.sourceId.value + node.id.value }) { index, node ->
                 var menu by remember(node.id) { mutableStateOf(false) }
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth().combinedClickable(
-                        onClick = { controller.inspect(node) },
-                        onDoubleClick = { controller.open(node) },
-                        onLongClick = { menu = true },
+                        onClick = { onSelected(index); controller.inspect(node) },
+                        onDoubleClick = { onSelected(index); controller.open(node) },
+                        onLongClick = { onSelected(index); menu = true },
                     ),
                 ) {
-                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(if (keyboardFocused && index == selectedIndex) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Icon(if (node is AudioFolder) Icons.Default.Folder else Icons.Default.LibraryMusic, null)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
@@ -233,21 +325,34 @@ private fun LibraryPane(state: DesktopUiState, controller: DesktopController, mo
 }
 
 @Composable
-private fun QueuePane(state: DesktopUiState, controller: DesktopController, modifier: Modifier) {
+private fun QueuePane(
+    state: DesktopUiState,
+    controller: DesktopController,
+    selectedIndex: Int,
+    keyboardFocused: Boolean,
+    onSelected: (Int) -> Unit,
+    modifier: Modifier,
+) {
     Column(modifier.padding(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             AssistChip(onClick = controller::revealContainingFolder, label = { Text("Show folder") })
         }
+        if (keyboardFocused) Text("Keyboard focus · ↑/↓ select · Enter play · Alt+↑/↓ move · Delete remove", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             itemsIndexed(state.queue.entries, key = { _, entry -> entry.track.sourceId.value + entry.track.id.value }) { index, entry ->
                 Surface(
                     tonalElevation = if (index == state.queue.currentIndex) 3.dp else 0.dp,
                     shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.fillMaxWidth().clickable { controller.playIndex(index) },
+                    modifier = Modifier.fillMaxWidth().clickable { onSelected(index); controller.playIndex(index) },
                 ) {
-                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(if (keyboardFocused && index == selectedIndex) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         if (index == state.queue.currentIndex) Icon(Icons.Default.PlayArrow, null)
                         Text(entry.track.name, Modifier.weight(1f).padding(horizontal = 6.dp), maxLines = 2, style = MaterialTheme.typography.bodySmall)
                         IconButton(onClick = { controller.moveQueue(index, -1) }, enabled = index > 0) { Icon(Icons.Default.ArrowUpward, "Move up") }

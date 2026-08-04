@@ -26,8 +26,8 @@ DesktopController
 - stable-ID folder navigation and breadcrumbs;
 - deterministic direct and recursive folder queues;
 - play-now, play-next, append, select, remove, and reorder operations;
-- fresh pCloud stream resolution before every playback load;
-- mpv play, pause, seek, next, previous, duration, and position state;
+- fresh pCloud stream resolution before every playback load and one bounded capability refresh after an unexpected stream failure;
+- mpv play, pause, seek, next, previous, duration, position, EOF, stream-failure, and process-exit state;
 - smart resume from durable SQLite progress;
 - queue and source restoration after restart;
 - pCloud direct sign-in with explicit EU/US region selection;
@@ -35,7 +35,8 @@ DesktopController
 - MPRIS play, pause, next, previous, seek, status, and metadata;
 - XDG config, data, cache, and runtime locations;
 - deterministic headless smoke test with a real mpv process;
-- Compose Desktop application-image, AppImage, and Flatpak packaging.
+- complete keyboard alternatives for library and queue selection, play, append, inspect, reorder, and removal;
+- Compose Desktop application-image, AppImage, Flatpak, and immutable-source Arch packaging gates.
 
 ## Shared versus platform-specific code
 
@@ -80,9 +81,12 @@ Safety and correctness invariants:
 - every IPC command carries a request ID and ignores unrelated event/response lines;
 - response data is accepted only for an explicit successful matching command;
 - queue and progress remain authoritative in SQLite;
+- an unexpected active-to-idle transition that is neither EOF nor explicit stop is a fixed redacted stream failure;
+- one fresh capability may be resolved per stable media identity and cooldown window, resuming at durable progress;
+- an unexpected process exit never causes an automatic process restart and requires an explicit restart action;
 - closing the application terminates mpv and removes the socket.
 
-The smoke entry point adds `--ao=null`, allowing real IPC verification without an audio device.
+The smoke entry points add `--ao=null`, allowing real IPC, process-recovery, and bounded resilience-soak verification without an audio device.
 
 ## Persistence
 
@@ -122,7 +126,7 @@ Browser OAuth remains the preferred long-term route. Implementing it requires a 
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-The current UI provides menu equivalents for queue operations. Drag-and-drop, richer keyboard focus navigation, desktop notifications, saved roots, and a detachable mini-player remain post-parity refinements rather than prerequisites for the implemented playback path.
+The current UI provides pointer and keyboard equivalents for every queue operation. `Ctrl+L` and `Ctrl+Q` select visible library or queue focus; arrow keys select, Enter opens or plays, Shift/Ctrl/Alt+Enter expose append/replace/inspect, and Alt+Up/Down plus Delete reorder or remove queue items. F1 documents the full map, selected rows remain visible, and account dialogs suppress global playback shortcuts. Drag-and-drop, desktop notifications, saved roots, and a detachable mini-player remain post-parity refinements rather than prerequisites for the implemented playback path.
 
 ## Verification
 
@@ -130,7 +134,7 @@ The current UI provides menu equivalents for queue operations. Drag-and-drop, ri
 make linux-ci
 ```
 
-The aggregate target runs desktop unit/package checks, the normal real-mpv/SQLite smoke, a forced crash/recovery smoke, the packaged clean-profile smoke, and MPRIS verification. The crash path detects unexpected process exit, performs no automatic restart, preserves the selected stable queue identity, and resumes only after an explicit action that re-resolves the stream. The unit suite covers XDG mapping, SQLite round trips, deterministic demo traversal and media generation, request-correlated mpv commands, Secret Service boundaries, and fixed exit states. Host-side tests also enforce the Flatpak mpv argument allowlist, clean-profile environment, release graph, and Arch recipe renderer. The MPRIS smoke verifies the packaged jlink runtime and externally queries root/player properties over an isolated session bus. `.github/workflows/linux.yml` installs the explicit host dependencies and runs the same gate on pull requests and `main`.
+The aggregate target runs desktop unit/package checks, the normal real-mpv/SQLite smoke, a forced crash/recovery smoke, the packaged clean-profile smoke, and MPRIS verification. The crash path detects unexpected process exit, performs no automatic process restart, preserves the selected stable queue identity, and resumes only after an explicit action. Stream failure is classified separately and permits one bounded capability re-resolution with durable resume. The unit suite covers XDG mapping, SQLite round trips, deterministic demo traversal and media generation, request-correlated mpv commands, EOF/stop/failure classification, Secret Service boundaries, keyboard shortcuts, and fixed exit states. Host-side tests also enforce the Flatpak mpv argument allowlist, clean-profile environment, release graph, Arch gate, current-session audit, readiness matrix, and soak contract. `make desktop-session-audit` probes disposable Secret Service storage and packaged MPRIS on the real user session; `make desktop-resilience-soak` exercises pause/seek/checkpoint and controlled recovery; `make arch-package-gate` clean-builds and installs the immutable source archive in Arch. `.github/workflows/linux.yml` retains the credential-free baseline on pull requests and `main`.
 
 ## Release train to 0.2.0
 
@@ -138,24 +142,26 @@ The aggregate target runs desktop unit/package checks, the normal real-mpv/SQLit
   repaired snapshot rewrite, forced final checkpoints, correlated/redacted mpv IPC,
   local-first remote revocation, bounded Secret Service processes, and an allowlisted
   Flatpak host-player bridge.
-- **0.1.9 compatibility hardening:** explicit crash/restart evidence with zero automatic
-  retries, clean-profile package execution, exact release-graph validation,
-  immutable-source Arch recipe preparation, GNOME/KDE/i3 keyring and MPRIS matrix,
-  long-playback soak, and keyboard/text-scale/high-contrast review.
-- **0.2.0 parity promotion:** protected EU/US provider evidence and an explicit browser
-  OAuth decision, with no additional feature tranche hidden in the release.
+- **0.1.9 compatibility hardening:** published immutable AppImage/Flatpak evidence,
+  explicit process recovery with zero automatic process restarts, exact release graph,
+  shared bounded capability refresh, tested keyboard alternatives, and executable Arch,
+  session, soak, and readiness gates.
+- **0.2.0 parity promotion:** execute the remaining current-host gates, complete alternate
+  desktop and visual observations, retain protected EU/US provider expiry evidence, and
+  explicitly accept the direct-sign-in fallback while desktop OAuth registration remains
+  unconfirmed. No additional feature tranche is hidden in the release.
 
 ## Remaining release gates
 
 Before declaring the Linux `0.2.0` release complete, the `0.1.8` and `0.1.9`
 evidence manifests must be complete and the following protected gates must pass:
 
-1. run interactive pCloud tests against protected EU and US test accounts;
-2. verify Secret Service behavior under GNOME, KDE Plasma, and an i3 keyring session;
-3. exercise MPRIS through common media-key daemons;
-4. validate long playback, expired direct-link recovery, suspend/resume, and repeated manual player recovery;
-5. validate AppImage and Flatpak on a broader distribution and desktop matrix;
-6. perform keyboard-only, high-contrast, font-scaling, and accessibility review;
-7. add browser OAuth after provider redirect registration is confirmed.
+1. execute and retain the immutable Arch clean-build/install smoke and current i3 session audit;
+2. execute the bounded credential-free soak and a retained four-hour protected-provider soak;
+3. run interactive pCloud browse/playback/expiry/disconnect/restart checks against protected EU and US accounts;
+4. verify real locked-keyring, media-key daemon, and suspend/resume behavior plus GNOME/KDE sessions;
+5. perform 200% text, high-contrast, and screen-reader semantic review;
+6. run `python3 scripts/validate-020-readiness.py --pre-tag` before the tag, then rerun with `--strict` after exact-tag package evidence; explicitly document any narrow accepted exception;
+7. add browser OAuth only after provider redirect registration is confirmed.
 
-The implementation is therefore functional and tested locally, while distribution and protected live-provider evidence remain release gates.
+The implementation gap is now narrow and measurable. The canonical state is `docs/reviews/0.2.0-promotion-matrix.yml`; protected live-provider and alternate-session evidence remain release gates rather than implementation guesses.

@@ -13,7 +13,20 @@ python3 scripts/render-arch-pkgbuild.py \
 
 The renderer calculates the exact archive SHA-256 and refuses `SKIP`, non-HTTPS
 sources, unstable version strings, symlinked archives, or unresolved placeholders.
-The rendered recipe must then pass `makepkg --verifysource`, `makepkg --cleanbuild`,
-package-content review, and a clean-container installation smoke. Until those steps
-are retained in `docs/releases/0.1.9.yml`, Arch packaging remains an explicit external
-gate rather than a release claim.
+
+The executable gate performs the complete immutable-source path in an isolated Arch
+container:
+
+```sh
+make arch-package-gate
+```
+
+It downloads the current `v$(cat VERSION)` archive over verified HTTPS, renders the
+recipe, runs `makepkg --verifysource` and `makepkg --cleanbuild`, installs the resulting
+package, verifies the license inventory, and runs the installed `properpcloud --smoke`.
+The package digest and results are retained under `build/evidence/` and generated package
+bytes remain ignored under `build/arch-gate/`.
+
+The gate uses a reusable Gradle dependency cache but never reuses source, package, or
+installation roots. A public AUR submission remains a separate publication action and is
+not implied by a successful local clean build.

@@ -16,7 +16,7 @@ PCLOUD_CLIENT_ID ?= $(DOTENV_PCLOUD_CLIENT_ID)
 export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
 export PCLOUD_CLIENT_ID
 
-.PHONY: help oauth-config-check oauth-config-test toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts dependencies test desktop-test desktop-smoke desktop-crash-recovery-smoke desktop-clean-profile-smoke desktop-mpris-smoke desktop-run desktop-package desktop-appimage desktop-appimage-smoke desktop-flatpak desktop-flatpak-smoke linux-packages linux-package-smoke linux-ci docs-install docs-build lint build check ci shell compose install clean
+.PHONY: help oauth-config-check oauth-config-test toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts release-020-readiness release-020-pretag release-020-readiness-strict dependencies test desktop-test desktop-smoke desktop-crash-recovery-smoke desktop-resilience-soak desktop-clean-profile-smoke desktop-mpris-smoke desktop-session-audit desktop-run desktop-package desktop-appimage desktop-appimage-smoke desktop-flatpak desktop-flatpak-smoke arch-package-gate linux-packages linux-package-smoke linux-ci docs-install docs-build lint build check ci shell compose install clean
 .NOTPARALLEL: linux-ci linux-packages linux-package-smoke
 
 help: ## Show available targets.
@@ -94,6 +94,15 @@ release-client-id-check: oauth-config-check ## Validate the public pCloud OAuth 
 release-artifacts: oauth-config-check ## Prepare versioned APK, checksums, evidence, and release notes.
 	@python3 scripts/prepare-release.py
 
+release-020-readiness: oauth-config-test ## Validate and summarize explicit 0.2.0 promotion evidence without relaxing pending gates.
+	@python3 scripts/validate-020-readiness.py
+
+release-020-pretag: oauth-config-test ## Fail on every 0.2.0 blocker except an explicitly post-tag-only publication check.
+	@python3 scripts/validate-020-readiness.py --pre-tag
+
+release-020-readiness-strict: oauth-config-test ## Fail unless every 0.2.0 promotion and post-tag publication gate has passed.
+	@python3 scripts/validate-020-readiness.py --strict
+
 dependencies: ## Resolve dependencies without compiling production code.
 	@bash ./scripts/docker-run.sh dependencies
 
@@ -116,6 +125,17 @@ desktop-crash-recovery-smoke: desktop-package ## Force mpv exit and verify expli
 	@mkdir -p .cache/gradle
 	@JAVA_HOME="$(DESKTOP_JAVA_HOME)" GRADLE_USER_HOME="$$PWD/.cache/gradle" \
 	  ./gradlew --no-daemon :desktop-app:run --args='--crash-recovery-smoke'
+
+desktop-resilience-soak: desktop-package ## Exercise pause/seek/checkpoint and controlled mpv recovery for a bounded retained run.
+	@command -v mpv >/dev/null || { echo "mpv is required" >&2; exit 1; }
+	@mkdir -p build/evidence
+	@PROPERPCLOUD_SOAK_SECONDS="$${PROPERPCLOUD_SOAK_SECONDS:-120}" \
+	  bash -o pipefail -c 'bash scripts/run-clean-profile.sh \
+	    desktop-app/build/compose/binaries/main/app/properpcloud/bin/properpcloud --resilience-soak \
+	    | tee build/evidence/0.2.0-resilience-soak.log'
+	@python3 scripts/write-soak-evidence.py \
+	  --log build/evidence/0.2.0-resilience-soak.log \
+	  --output build/evidence/0.2.0-resilience-soak.json
 
 desktop-clean-profile-smoke: desktop-package ## Run the packaged application smoke with isolated HOME and XDG state.
 	@command -v mpv >/dev/null || { echo "mpv is required" >&2; exit 1; }
@@ -169,6 +189,13 @@ desktop-mpris-smoke: desktop-package ## Verify packaged MPRIS properties over an
 	@command -v dbus-run-session >/dev/null || { echo "dbus-run-session is required" >&2; exit 1; }
 	@command -v gdbus >/dev/null || { echo "gdbus is required" >&2; exit 1; }
 	@dbus-run-session -- bash scripts/desktop-mpris-smoke.sh
+
+desktop-session-audit: desktop-package ## Record redacted Secret Service and MPRIS evidence from the current desktop session.
+	@python3 scripts/desktop-session-audit.py \
+	  --app desktop-app/build/compose/binaries/main/app/properpcloud/bin/properpcloud
+
+arch-package-gate: ## Clean-build, install, and smoke the immutable current-version Arch package in a container.
+	@bash scripts/arch-package-gate.sh
 
 linux-ci: desktop-test desktop-package desktop-smoke desktop-crash-recovery-smoke desktop-clean-profile-smoke desktop-mpris-smoke ## Run native Linux unit, package, recovery, clean-profile, mpv, SQLite, and MPRIS gates.
 

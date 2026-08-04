@@ -1,9 +1,9 @@
 linux_client:
   objective: Deliver the same folder, queue, progress, inspection, and cache semantics with desktop-native interaction at minimum duplicated implementation cost.
   status:
-    implementation: compatibility_hardening_0.1.9
-    release: staged_through_0.1.9_before_0.2.0_parity
-    implemented_on: 2026-08-03
+    implementation: promotion_closeout_0.2.0
+    release: explicit_promotion_matrix_before_0.2.0_tag
+    implemented_on: 2026-08-04
   release_train:
     0.1.8:
       purpose: shared restoration and desktop runtime hardening
@@ -24,17 +24,28 @@ linux_client:
         - packaged application runs with isolated HOME and XDG persistent state
         - finalized release checksum and evidence graph matches immutable commit
         - Arch recipe renderer requires HTTPS source and calculated SHA-256
-      external_gates:
+      completed_after_publication:
         - immutable-tag clean-profile AppImage and Flatpak smoke
-        - reproducible Arch package and license inventory
-        - GNOME, KDE Plasma, and i3 Secret Service/MPRIS matrix
-        - keyboard, focus, 200 percent text, high contrast, and non-drag review
-        - long-playback, suspend/resume, link-refresh, and failure soak
+        - shared bounded signed-link retry policy used by Android and Linux
+        - tested keyboard focus and complete non-drag queue operations
+        - executable Arch clean-build, current-session, soak, and strict readiness gates
+      remaining_external_gates:
+        - final immutable Arch execution and retained digest evidence
+        - GNOME and KDE Plasma sessions plus locked-keyring, media-key, and suspend observations
+        - 200 percent text, high contrast, and screen-reader semantic review
+        - four-hour protected-provider capability-expiry soak
     0.2.0:
       purpose: promote the hardened line without adding another feature tranche
+      promotion_matrix: docs/reviews/0.2.0-promotion-matrix.yml
+      pre_tag_gate: python3 scripts/validate-020-readiness.py --pre-tag
+      publication_gate: python3 scripts/validate-020-readiness.py --strict
       additional_gates:
+        - current-session Secret Service and MPRIS evidence
+        - immutable Arch clean-build, installation, license, and installed smoke evidence
+        - bounded credential-free soak plus retained four-hour protected-provider soak
         - protected EU and US pCloud playback, expiry, logout, and restart evidence
-        - explicit browser OAuth decision based on provider-confirmed desktop redirect support
+        - alternate desktop and visual accessibility observations
+        - explicit acceptance of the direct-sign-in fallback while desktop OAuth redirect support remains unconfirmed
   current_implementation:
     module: desktop-app
     shared_jvm_modules:
@@ -50,8 +61,10 @@ linux_client:
     media_integration: MPRIS root and player interfaces over session D-Bus
     paths: XDG config, data, cache, and runtime roots
     verification:
-      - desktop unit tests for XDG, SQLite, deterministic media, correlated IPC responses, and Secret Service boundaries
+      - desktop unit tests for XDG, SQLite, deterministic media, correlated IPC responses, Secret Service boundaries, shortcut resolution, and stream-failure classification
       - host smoke for generated WAV, recursive queue, SQLite, and real mpv IPC
+      - forced process recovery and bounded stream-capability re-resolution preserve stable identity and durable progress
+      - packaged current-session audit probes disposable Secret Service storage and MPRIS without recording credentials or D-Bus addresses
       - portable provider and metadata modules compile as JVM 17 bytecode
     packaging:
       - Compose application image
@@ -237,9 +250,12 @@ linux_client:
         - Redact process diagnostics and support bundles.
         - Refresh by loading a new capability at last confirmed position.
       process_failure:
-        - Detect exit and preserve shared queue.
+        - Detect process exit and preserve shared queue.
         - Offer restart player and resume.
-        - Perform zero automatic restart attempts.
+        - Perform zero automatic process restart attempts.
+        - Distinguish unexpected stream idle from normal EOF and explicit stop.
+        - Re-resolve one fresh capability per stable media identity and cooldown window, resuming from durable progress.
+        - Expose only fixed diagnostics; URLs and provider response data never enter UI state or evidence.
       checkpoint_boundaries:
         - periodic writes are coalesced during playback
         - queue mutation, disconnect, playback failure, and orderly shutdown force the latest sample
@@ -311,5 +327,7 @@ linux_client:
       - No Android runtime is needed.
       - No account password is stored outside Secret Service.
       - mpv crash does not lose queue or progress.
-      - Desktop can be operated entirely by keyboard.
+      - Desktop can be operated entirely by keyboard with visible library/queue focus and no drag-only action.
+      - Modal account input suppresses global playback shortcuts.
       - Package follows XDG paths and leaves no credential in command history or logs.
+      - Strict promotion validation fails until every pending or protected gate is passed or explicitly accepted.

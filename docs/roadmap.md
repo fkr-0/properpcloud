@@ -309,9 +309,9 @@ artifact, or signing guarantees.
 
 ## `0.1.9` — Linux distribution and compatibility hardening
 
-Status: **verified automated candidate; external desktop, accessibility, soak,
-immutable-tag, final Arch clean-build, and protected-provider evidence remains
-outstanding**.
+Status: **published and verified on immutable tags; the remaining work is narrowed to
+executable Arch/current-session/soak evidence, visual accessibility review, alternate
+desktop sessions, and protected-provider validation**.
 
 `0.1.9` closes package and desktop-environment uncertainty before the parity release:
 
@@ -319,24 +319,30 @@ outstanding**.
    and a bounded resume position with exactly zero automatic restart attempts;
 2. [x] package filenames, AppStream metadata, checksums, evidence records, release notes,
    secret exclusions, and immutable commit provenance are validated as one release graph;
-3. [ ] Secret Service and MPRIS evidence is recorded on GNOME, KDE Plasma, and i3,
-   including locked/unavailable keyring behavior;
-4. [ ] keyboard-only operation, focus order, 200% text, high contrast, and non-drag
-   queue alternatives pass a documented accessibility checklist;
-5. [ ] clean-profile execution is enforced for the packaged image and wired into tagged
-   AppImage/Flatpak jobs; the immutable-tag package runs and final Arch clean build remain;
-6. [ ] a long-playback soak covers pause, seek, link refresh, suspend/resume, and
-   controlled mpv failure with redacted diagnostics;
-7. [ ] browser OAuth is enabled only if pCloud confirms a desktop redirect; otherwise
-   the signed-off fallback boundary is documented rather than simulated.
+3. [x] tagged AppImage and Flatpak builds run clean-profile package smokes and publish a
+   commit-bound checksum/evidence graph;
+4. [x] a shared bounded signed-link policy now drives Android and Linux capability
+   refresh, and mpv distinguishes stream failure from EOF, explicit stop, and process exit;
+5. [x] keyboard focus, selection, play, append, inspect, move, and remove operations have
+   tested non-drag shortcuts with visible focus state and modal shortcut suppression;
+6. [x] current-session, Arch clean-build, bounded soak, and strict promotion gates are
+   executable commands that retain redacted evidence instead of prose-only checklists;
+7. [x] retained current i3 Secret Service/MPRIS evidence, the immutable v0.1.9 Arch
+   clean-build/install smoke, and a 120-second credential-free resilience soak;
+8. [ ] complete GNOME/KDE sessions, locked-keyring/media-key/suspend observations, 200%
+   text/high-contrast/screen-reader review, and protected provider validation;
+9. [x] browser OAuth remains unclaimed until pCloud confirms a desktop redirect; the
+   documented regional direct-sign-in fallback is the explicit current boundary.
 
 The planned evidence schema lives in `docs/releases/0.1.9.yml`. Failed matrix cells
 remain explicit and block `0.2.0`; they are never converted into optimistic prose.
 
 ## `0.2.0` — native Linux desktop parity
 
-Status: **parity release blocked on the completed `0.1.8` runtime gate and `0.1.9`
-distribution/compatibility gate, plus protected provider evidence**.
+Status: **implementation parity is substantially complete. Promotion is now governed by
+`docs/reviews/0.2.0-promotion-matrix.yml`; automated and current-host gates can be closed
+locally, while protected EU/US accounts and alternate desktop/visual observations remain
+explicit pre-tag blockers**.
 
 Completed implementation:
 
@@ -350,15 +356,27 @@ Completed implementation:
 8. [x] MPRIS root/player service and media-state publication.
 9. [x] deterministic generated-WAV demo source and real-host mpv/SQLite smoke entry point.
 10. [x] Compose Desktop application-image plus `.deb`/`.rpm` packaging configuration.
+11. [x] one bounded stream-capability refresh per stable media identity with cooldown,
+    redacted failure state, durable resume position, and zero automatic process restarts.
+12. [x] keyboard-first library and queue focus with visible selection, complete non-drag
+    alternatives, tested shortcut resolution, and shortcut suppression in modal dialogs.
+13. [x] executable current-session audit, immutable Arch clean-build/install smoke,
+    bounded resilience soak, and fail-closed strict promotion validator.
 
 Final release sequence after `0.1.8` and `0.1.9`:
 
-1. [ ] protected EU and US pCloud account playback, expiry, disconnect, and restart evidence;
-2. [ ] browser OAuth after the desktop redirect registration is confirmed with pCloud;
-3. [ ] GNOME, KDE Plasma, and i3 Secret Service/MPRIS validation;
-4. [ ] keyboard-only, high-contrast, font-scaling, and accessibility review;
-5. [ ] review the accumulated evidence and exceptions without adding another feature
-   tranche or silently relaxing a failed gate.
+1. [ ] repeat the Arch gate against the exact immutable `v0.2.0` archive after the tag
+   exists; the v0.1.9 clean-build/install/license/smoke baseline already passes;
+2. [ ] retain the automated i3 audit on the exact candidate and manually observe
+   locked-keyring, media-key, and suspend/resume behavior;
+3. [x] retain the 120-second credential-free soak; [ ] additionally retain a four-hour
+   protected-provider soak with genuine capability expiry and one suspend/resume cycle;
+4. [ ] complete protected EU and US pCloud browse, playback, expiry, disconnect, cleanup,
+   and restart evidence without retaining media, tokens, URLs, or response bodies;
+5. [ ] complete GNOME/KDE Plasma and 200% text/high-contrast/screen-reader observations;
+6. [ ] run `python3 scripts/validate-020-readiness.py --pre-tag`, create the signed tag only
+   after it passes, then run `--strict` after exact-tag package verification and before
+   publication; review every explicit exception without silently relaxing a failed gate.
 
 `0.2.0` is not an Android feature bucket. It delivers a native Linux desktop
 client over the shared source-neutral contract. It is a promotion of the hardened

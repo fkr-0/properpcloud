@@ -1,0 +1,97 @@
+promotion:
+  version: 0.2.0
+  generated_from: hardened_0.1.8_and_0.1.9_line
+  policy: every required gate is explicit; pending and unavailable are not success
+  gates:
+    shared_semantics:
+      status: passed_automated
+      evidence:
+        - shared queue restoration and progress fixtures
+        - shared bounded signed-link retry gate
+        - Android and Linux resolve fresh stream capabilities before playback
+    desktop_runtime:
+      status: passed_automated
+      evidence:
+        - SQLite queue and progress persistence
+        - private request-correlated mpv JSON IPC
+        - forced process exit with explicit manual restart
+        - unexpected stream failure with one bounded automatic capability refresh
+        - zero automatic process restart attempts
+    keyboard_implementation:
+      status: passed_automated
+      evidence:
+        - library and queue keyboard focus modes
+        - select, play, append, inspect, move, and remove shortcuts
+        - modal suppression of global playback shortcuts
+        - visible selected-row treatment and keyboard help
+    accessibility_visual_review:
+      status: pending_manual
+      checks:
+        - screen-reader semantic bridge review
+        - 200 percent text at 1280 by 820
+        - high-contrast selected and current state review
+    packages:
+      appimage_v0.1.9:
+        status: passed_tagged_release
+      flatpak_v0.1.9:
+        status: passed_tagged_release
+      arch_recipe_renderer:
+        status: passed_automated
+      arch_v0.1.9_cleanbuild:
+        status: passed_current_host
+        evidence: build/evidence/0.1.9-arch-package.json
+        package_sha256: ab302413fe19a44e0065afe28acdb3f1f111be54b846e827b6906234e3bd63c9
+      arch_v0.2.0_exact_tag:
+        status: pending_post_tag
+        phase: post_tag_pre_publication
+    current_i3_session:
+      status: passed_current_session
+      evidence: build/evidence/0.2.0-current-session.json
+      checks:
+        - Secret Service bus owner and disposable store lookup clear round trip
+        - packaged MPRIS registration, identity, and playback status
+        - no credential material or D-Bus address retained
+    locked_keyring:
+      status: pending_manual
+    media_key_daemon:
+      status: pending_manual
+    suspend_resume:
+      status: pending_manual
+    alternate_desktops:
+      status: pending_external_session
+      targets:
+        - GNOME Shell
+        - KDE Plasma
+    bounded_demo_soak:
+      status: passed_current_host
+      evidence: build/evidence/0.2.0-resilience-soak.json
+      scope:
+        - repeated demo playback
+        - pause, resume, absolute and relative seek
+        - controlled mpv exit and explicit recovery
+        - queue identity, progress drift, and memory bound
+    release_duration_demo_soak:
+      status: passed_current_host
+      evidence: build/evidence/0.2.0-resilience-soak.json
+      duration_seconds: 120
+      cycles: 340
+      forced_process_exits: 1
+      maximum_resume_drift_millis: 725
+      memory_growth_bytes: 60604680
+    protected_provider_soak:
+      status: pending_protected
+      scope:
+        - genuine capability expiry and bounded link refresh
+        - real suspend and resume
+        - four-hour retained run
+    protected_provider_accounts:
+      status: blocked_maintainer_credentials
+      checks:
+        - Europe account browse, playback, expiry, disconnect, cleanup, restart
+        - United States account browse, playback, expiry, disconnect, cleanup, restart
+        - redacted diagnostics and Secret Service cleanup
+    oauth_decision:
+      status: fallback_boundary_selected
+      decision: browser OAuth is not claimed until pCloud confirms a desktop redirect URI
+      current_user_path: documented regional direct sign-in fallback with password never persisted
+  strict_promotion_rule: pre-tag validation permits only explicitly post-tag gates; strict publication validation requires every pending, blocked, manual, external-session, protected, and post-tag gate to be accepted or passed

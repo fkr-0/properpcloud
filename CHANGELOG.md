@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Shared Android/Linux signed-link retry policy and desktop stream-failure classification
+  that distinguish unexpected playback loss from normal EOF, explicit stop, and process exit.
+- Keyboard-first library and queue focus with visible selection, F1 help, complete play,
+  append, inspect, reorder, and remove alternatives, and modal shortcut suppression.
+- Executable current-session Secret Service/MPRIS evidence, immutable Arch clean-build,
+  bounded resilience-soak, and fail-closed `0.2.0` promotion validation commands.
+- A canonical `0.2.0` promotion matrix and release evidence schema separating automated,
+  current-session, visual, protected-provider, and explicitly accepted boundary states.
+
 ### Changed
 
 - The documentation header now exposes the latest published release from canonical
@@ -16,6 +27,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   page, and the Pages workflow rebuilds when `VERSION` or `CHANGELOG.md` changes.
 - Documentation synchronization removes duplicate copied page headings and validates the
   rendered release badge, binary links, changelog route, and release-token closure.
+- Linux playback now performs one bounded capability re-resolution per stable media
+  identity and cooldown window, resuming from durable progress without automatically
+  restarting the mpv process or exposing provider URLs in state or diagnostics.
+- The roadmap now treats published `0.1.9` AppImage/Flatpak evidence as complete and lists
+  only executable current-host, alternate-session, visual, soak, and protected-provider
+  blockers before `0.2.0`.
+
+### Security
+
+- Current-session evidence uses a disposable random Secret Service value, clears it
+  immediately, and records neither the value nor the session D-Bus address.
+- Stream refresh status is fixed and redacted; signed URLs and provider response content
+  remain outside persistence, UI state, logs, and evidence.
+
+### Testing
+
+- Added shared retry-policy, mpv EOF/stop/failure classification, shortcut resolution,
+  selection bounds, readiness-schema, session-audit, Arch-gate, and soak-contract tests.
 
 ### Planned
 

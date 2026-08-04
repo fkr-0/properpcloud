@@ -12,6 +12,7 @@ import com.google.common.util.concurrent.ListenableFuture
 import dev.properpcloud.app.ProperpcloudApplication
 import dev.properpcloud.core.model.MediaIdentity
 import dev.properpcloud.core.model.PlaybackProgress
+import dev.properpcloud.core.model.SignedLinkRetryGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

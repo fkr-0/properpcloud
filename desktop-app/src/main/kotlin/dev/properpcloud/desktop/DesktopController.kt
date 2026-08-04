@@ -18,6 +18,7 @@ import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.QueueReducer
 import dev.properpcloud.core.model.QueueRestoration
 import dev.properpcloud.core.model.ResumePolicy
+import dev.properpcloud.core.model.SignedLinkRetryGate
 import dev.properpcloud.desktop.data.DesktopDemoAudioSource
 import dev.properpcloud.desktop.data.SqliteStateRepository
 import dev.properpcloud.desktop.mpris.MprisActions
@@ -36,6 +37,7 @@ import dev.properpcloud.source.pcloud.PCloudSession
 import dev.properpcloud.source.pcloud.PCloudRevocationResult
 import dev.properpcloud.source.pcloud.PCloudSessionRevoker
 import dev.properpcloud.source.pcloud.PCloudSourceFactory
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -82,7 +84,10 @@ class DesktopController(
     private val closing = AtomicBoolean(false)
     private var mpris: MprisService? = null
     private val checkpointPolicy = PlaybackCheckpointPolicy(minimumPositionDeltaMillis = 5_000)
+    private val streamRetryGate = SignedLinkRetryGate()
     private var checkpointCursor = PlaybackCheckpointCursor()
+    private var streamRefreshJob: Job? = null
+    private var streamRefreshGeneration = 0L
     private var pCloudConnectJob: Job? = null
     private var pCloudConnectGeneration = 0L
     private var pCloudSession: PCloudSession? = null
@@ -97,6 +102,7 @@ class DesktopController(
                 mutableState.value = mutableState.value.copy(playback = playback)
                 updateMpris()
                 checkpoint(playback)
+                if (playback.streamFailure) refreshStreamAfterFailure(playback)
             }
         }
         scope.launch { loadFolder(source.root.id, resetBreadcrumbs = true); restoreQueue() }
@@ -178,6 +184,8 @@ class DesktopController(
 
     fun disconnectPCloud() {
         pCloudConnectGeneration += 1
+        streamRefreshGeneration += 1
+        streamRefreshJob?.cancel()
         pCloudConnectJob?.cancel()
         pCloudConnectJob = null
         val session = pCloudSession
@@ -322,15 +330,72 @@ class DesktopController(
         }.onFailure { mutableState.value = mutableState.value.copy(busy = false, status = "Folder load failed: ${it.message}") }
     }
 
-    private suspend fun playCurrent() {
+    private suspend fun playCurrent(resetRetryBudget: Boolean = true) {
         val track = mutableState.value.queue.current?.track ?: return
         val sourceForTrack = sourceFor(track)
+        val mediaId = MediaIdentity.encode(track.sourceId, track.id)
+        if (resetRetryBudget) {
+            streamRefreshGeneration += 1
+            streamRefreshJob?.cancel()
+            streamRetryGate.reset(mediaId)
+        }
         val progress = repository.loadProgress(track.sourceId, track.id)?.let { ResumePolicy().normalize(it, System.currentTimeMillis()) }
         mutableState.value = mutableState.value.copy(status = "Resolving ${track.name}…")
         runCatching { mpv.load(sourceForTrack.resolveStream(track.id), progress?.positionMillis ?: 0) }
             .onSuccess { mutableState.value = mutableState.value.copy(status = "Playing ${track.name}") }
             .onFailure(::playbackFailure)
         updateMpris()
+    }
+
+    private fun refreshStreamAfterFailure(playback: MpvState) {
+        val track = mutableState.value.queue.current?.track ?: return
+        if (track.sourceId == demoSource.id) {
+            mutableState.value = mutableState.value.copy(
+                status = "Playback failed. Restart the player after checking the local file and mpv.",
+            )
+            return
+        }
+        val mediaId = MediaIdentity.encode(track.sourceId, track.id)
+        if (!streamRetryGate.acquire(mediaId, System.currentTimeMillis())) {
+            mutableState.value = mutableState.value.copy(
+                status = "Playback failed again; automatic link refresh is cooling down.",
+            )
+            return
+        }
+        val generation = ++streamRefreshGeneration
+        streamRefreshJob?.cancel()
+        checkpoint(playback, force = true)
+        val resumeMillis = playback.positionMillis.coerceAtLeast(0)
+        mutableState.value = mutableState.value.copy(
+            status = "Refreshing the temporary stream link and resuming ${track.name}…",
+        )
+        streamRefreshJob = scope.launch {
+            runCatching { sourceFor(track).resolveStream(track.id) }
+                .onSuccess { refreshed ->
+                    val currentIdentity = mutableState.value.queue.current?.track?.let { current ->
+                        MediaIdentity.encode(current.sourceId, current.id)
+                    }
+                    if (generation != streamRefreshGeneration || currentIdentity != mediaId) return@onSuccess
+                    runCatching { mpv.load(refreshed, resumeMillis) }
+                        .onSuccess {
+                            if (generation == streamRefreshGeneration) {
+                                mutableState.value = mutableState.value.copy(
+                                    status = "Refreshed the temporary stream link for ${track.name}",
+                                )
+                            }
+                        }
+                        .onFailure { failure ->
+                            if (generation == streamRefreshGeneration && failure !is CancellationException) {
+                                playbackFailure(failure)
+                            }
+                        }
+                }
+                .onFailure { failure ->
+                    if (generation == streamRefreshGeneration && failure !is CancellationException) {
+                        playbackFailure(failure)
+                    }
+                }
+        }
     }
 
     private suspend fun restoreQueue() {
@@ -461,6 +526,8 @@ class DesktopController(
         runCatching { mpris?.close() }
         runCatching { mpv.close() }
         runCatching { repository.close() }
+        streamRefreshGeneration += 1
+        streamRefreshJob?.cancel()
         scope.cancel()
     }
 
