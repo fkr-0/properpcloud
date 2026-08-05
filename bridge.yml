@@ -17,11 +17,10 @@ agent:
     - Add artwork and optional local Chromaprint/AcoustID adapters after provider-term review.
     - Implement remote replacement only when pCloud exposes an atomic expected-revision primitive.
     - Run physical-device TalkBack, large-font, codec, and process-death validation.
-    - Complete and verify the public-CI 0.1.8 runtime-hardening gate without expanding live-provider claims.
-    - Execute the 0.1.9 forced mpv crash/restart and long-playback soak matrix.
-    - Validate 0.1.9 Secret Service, MPRIS, keyboard, text-scale, and contrast behavior across GNOME, KDE Plasma, and i3 sessions.
-    - Add a reproducible Arch recipe and clean-profile AppImage/Flatpak evidence for 0.1.9.
+    - Implement the folder-scoped Tag workbench from spec/tag-folder-workbench.yml after the 0.1.10 release.
+    - Keep autocorrect proposal-only until the user separately reviews and confirms an atomic verified local replacement.
     - Run protected Linux EU/US pCloud playback, expiry, disconnect, and restart validation before 0.2.0 promotion.
+    - Complete GNOME/KDE, physical media-key/suspend, and real screen-reader observations before 0.2.0.
   changelog:
     - Released and tagged the verified architecture bootstrap as 0.0.1.
     - Implemented the adaptive Compose Android 0.1.0 client with deterministic demo media.
@@ -42,6 +41,7 @@ agent:
     - Prepared 0.1.8 with shared queue repair, forced desktop checkpoints, correlated mpv IPC, local-first revocation, and hardened Secret Service/Flatpak boundaries.
     - Split 0.1.9 compatibility evidence from the final 0.2.0 parity promotion.
     - Prepared 0.1.9 automated gates for explicit mpv recovery, clean-profile packages, exact release graphs, and immutable-source Arch recipe rendering.
+    - Prepared 0.1.10 with current-host keyring, MPRIS, accessibility, and logind hardening plus a guarded folder Tag workbench specification.
 
 commands:
   image:

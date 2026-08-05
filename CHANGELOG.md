@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+
+- Implement the specified folder-scoped Tag workbench with live change reconciliation,
+  previewed correction rules, and guarded atomic local replacement before enabling any
+  source mutation.
+- `0.2.0` promotion only after the protected EU/US provider, alternate desktop,
+  physical media-key/suspend, and real screen-reader gates are complete.
+- Verified offline pinning, saved roots, long-form controls, and Android Auto after
+  cross-platform queue/progress semantics stabilize.
+
+## [0.1.10] - 2026-08-05
+
 ### Added
 
 - Shared Android/Linux signed-link retry policy and desktop stream-failure classification
@@ -19,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   current-session, visual, protected-provider, and explicitly accepted boundary states.
 - Isolated locked-keyring, 200% high-contrast capture, externally driven MPRIS control,
   and packaged logind sleep-monitor gates with redacted retained evidence.
+- A normative folder-scoped Tag workbench specification for reviewing one directory at a
+  time, reconciling live changes, proposing deterministic corrections, and applying only
+  explicitly approved local edits through an atomic, verified, rollback-capable pipeline.
 
 ### Changed
 
@@ -58,12 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added sleep-transition policy, blocked-vault timeout, external MPRIS method, Flatpak
   logind permission, accessibility semantics, and current-host evidence contract coverage.
 
-### Planned
+### Known limitations
 
-- `0.2.0` promotion only after the `0.1.8` runtime and `0.1.9` compatibility gates plus
-  protected EU/US provider evidence are complete.
-- Verified offline pinning, saved roots, long-form controls, and Android Auto after
-  cross-platform queue/progress semantics stabilize.
+- The Tag workbench is a reviewed specification in this release, not an implemented file
+  mutation surface. Existing Tag studio export behavior remains unchanged.
+- `0.2.0` still requires protected EU/US provider evidence, GNOME and KDE observations,
+  physical media-key and suspend/resume checks, and a real screen-reader review.
 
 ## [0.1.9] - 2026-08-03
 
@@ -561,7 +576,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.10...HEAD
+[0.1.10]: https://github.com/fkr-0/properpcloud/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/fkr-0/properpcloud/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/fkr-0/properpcloud/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/fkr-0/properpcloud/compare/v0.1.6...v0.1.7

@@ -1,0 +1,61 @@
+release:
+  version: 0.1.10
+  tag: v0.1.10
+  status: hardened_patch_candidate
+  predecessor: v0.1.9
+  promotes_to: v0.2.0
+  objective: >-
+    Publish the completed current-host Linux hardening as a pre-0.2 patch release while
+    keeping protected parity claims explicit and introducing only a specification for the
+    next folder-scoped metadata-maintenance surface.
+  shipped_runtime:
+    credential_restore:
+      - Secret Service lookup runs outside the UI thread and has a hard timeout.
+      - A stale restore cannot reconnect after Demo selection, disconnect, close, or a newer login.
+      - The deliberately locked-keyring gate uses a private ephemeral collection and cleans up its daemon.
+    desktop_media:
+      - Every supported MPRIS method is exercised through the external D-Bus control path.
+      - logind PrepareForSleep is accepted only from the verified unique owner and object path.
+      - Active playback is checkpointed and paused before sleep, then refreshed once after wake.
+      - A genuinely exited mpv process remains a manual restart boundary.
+    accessibility:
+      - Headings, selected/current rows, and player state have explicit semantics.
+      - Selected and current state remain visible without color.
+      - A deterministic high-contrast palette is captured at 200 percent scale and 1280x820.
+  specification_only:
+    folder_tag_workbench:
+      document: spec/tag-folder-workbench.yml
+      target: v0.1.11 or a later explicitly scheduled pre-0.2 patch
+      status: designed_not_implemented
+      boundaries:
+        - one direct folder at a time by default
+        - deterministic local proposals before optional online candidates
+        - no unattended write
+        - local apply requires expected content evidence, staged verification, atomic replacement, and rollback
+        - remote replacement remains disabled without an atomic expected-revision primitive
+  verification:
+    required_commands:
+      - make doctor
+      - make test
+      - make lint
+      - make build
+      - make linux-ci
+      - make docs-build
+      - make release-check
+      - make ci
+      - make release-artifacts
+    package_smokes:
+      - packaged Compose application image
+      - AppImage clean-profile smoke in tagged workflow
+      - Flatpak clean-profile smoke in tagged workflow
+    evidence_policy:
+      - exact version, tag, commit, filename, size, and SHA-256 graph
+      - no token, password, signed URL, private media, or client secret
+      - Android artifact remains a debug-signed evaluation build
+  known_external_gates:
+    - protected Europe and United States pCloud playback, expiry, disconnect, and restart
+    - four-hour protected-provider soak with genuine capability expiry
+    - GNOME and KDE Plasma observations
+    - physical media-key and real suspend/resume observations
+    - real AT-SPI screen-reader traversal and action review
+  release_decision: explicitly authorized by the maintainer for signed tag, atomic main/tag push, and GitHub release publication

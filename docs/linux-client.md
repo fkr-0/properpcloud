@@ -146,6 +146,11 @@ The aggregate target runs desktop unit/package checks, the normal real-mpv/SQLit
   explicit process recovery with zero automatic process restarts, exact release graph,
   shared bounded capability refresh, tested keyboard alternatives, and executable Arch,
   session, soak, and readiness gates.
+- **0.1.10 current-host hardening:** bounded asynchronous credential restore, stale-restore
+  cancellation, isolated locked-keyring evidence, all external MPRIS controls, explicit
+  accessibility semantics and 200% high-contrast capture, and unique-owner logind sleep
+  handling. The release also carries the specification-only folder Tag workbench without
+  claiming that source mutation is implemented.
 - **0.2.0 parity promotion:** complete alternate desktop, physical media-key,
   physical suspend, and screen-reader observations; retain protected EU/US provider expiry
   evidence; and keep the documented direct-sign-in fallback while desktop OAuth registration
@@ -153,8 +158,8 @@ The aggregate target runs desktop unit/package checks, the normal real-mpv/SQLit
 
 ## Remaining release gates
 
-Before declaring the Linux `0.2.0` release complete, the `0.1.8` and `0.1.9`
-evidence manifests must be complete and the following protected gates must pass:
+Before declaring the Linux `0.2.0` release complete, the hardened `0.1.8` through
+`0.1.10` evidence manifests must be complete and the following protected gates must pass:
 
 1. repeat the immutable Arch clean-build/install smoke against the exact `v0.2.0` archive after tagging;
 2. retain a four-hour protected-provider soak with genuine capability expiry and one real suspend/resume cycle;

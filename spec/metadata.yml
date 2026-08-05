@@ -46,6 +46,18 @@ metadata:
         - artwork mutation
         - Android Chromaprint generation or AcoustID configuration UI
         - unattended candidate acceptance
+    v0_1_11_folder_workbench:
+      design: spec/tag-folder-workbench.yml
+      target:
+        - dedicated direct-folder tag table and inspector
+        - gap-free initial scan and live folder reconciliation
+        - deterministic local correction rules with per-field approval
+        - atomic verified local replacement with rollback
+      explicitly_not_claimed_in_0_1_10:
+        - implemented folder watcher
+        - source-file replacement
+        - recursive library correction
+        - remote metadata overwrite
     v0_4_proposal_ui:
       target:
         - layered inspector with embedded raw frames and normalized values

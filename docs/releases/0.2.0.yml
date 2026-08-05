@@ -2,7 +2,7 @@ release:
   version: 0.2.0
   tag: v0.2.0
   status: implementation_hardened_promotion_gates_explicit
-  base_release: v0.1.9
+  base_release: v0.1.10
   objective: promote the native Linux client after automated, current-session, visual, soak, and protected-provider evidence is complete
   implementation:
     shared_semantics:

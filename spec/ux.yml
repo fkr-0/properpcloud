@@ -271,6 +271,38 @@ ux:
           - Candidates remain unselected proposals.
           - Low-confidence fields remain unselected.
           - Provider failure leaves manual editing and filename inference available.
+    tag_folder_workbench:
+      scope: one selected folder and its direct playable children by default
+      header:
+        show: [breadcrumb, source, file_count, warning_count, proposal_count, watch_state, scan_generation]
+        actions: [rescan, pause_or_resume_watch, configure_rules, review_selected]
+      table:
+        columns: [filename, title, artist, album, track_and_disc, warnings, proposal_state, changed_on_disk]
+        requirements:
+          - Filename and current tag values remain visible beside every proposal.
+          - Stable selection and focus survive reconciliation when the item still exists.
+          - Filters expose missing, inconsistent, proposed, approved, changed, conflicted, and failed rows.
+      inspector:
+        show:
+          - exact original and normalized value
+          - proposed or edited value
+          - provenance, confidence, rule explanation, assumptions, and warnings
+          - explicit Keep, Clear, or Set choice
+        defaults:
+          - safe deterministic proposals may be preselected
+          - ambiguous, lossy, and online-derived proposals remain unselected
+      live_changes:
+        - Keep useful rows visible while reconciling.
+        - Mark changed files and revoke their approvals immediately.
+        - Summarize event batches instead of announcing every filesystem event.
+        - Overflow or invalid observer state becomes an explicit full-rescan state.
+      apply_review:
+        show: [selected_files, selected_fields, before_and_after, replacement_count, rollback_policy, conflicts]
+        confirmation: Apply selected local tag corrections
+        unavailable_atomic_replace: Offer verified export only
+      language:
+        autocorrect: Generate and preselect reviewable corrections
+        forbidden: Automatically fix library
   interaction_patterns:
     folder_quick_actions:
       compact:

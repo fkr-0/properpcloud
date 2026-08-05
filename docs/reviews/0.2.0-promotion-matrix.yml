@@ -1,6 +1,6 @@
 promotion:
   version: 0.2.0
-  generated_from: hardened_0.1.8_and_0.1.9_line
+  generated_from: hardened_0.1.8_through_0.1.10_line
   policy: every required gate is explicit; pending and unavailable are not success
   gates:
     shared_semantics:

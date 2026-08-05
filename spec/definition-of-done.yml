@@ -95,6 +95,17 @@ definition_of_done:
       - XML parsing rejects document types and external entities.
       - External lookup is explicitly consented and never applies a write automatically.
       - Third-party tag-library license and notices are included in source and APK.
+    folder_tag_workbench:
+      - Entry is scoped to one stable direct-folder identity unless recursion is explicitly selected.
+      - Initial scan and observer registration have no missed-change window.
+      - Overflow, invalid observer, directory replacement, and cursor reset force explicit reconciliation.
+      - Autocorrect produces explainable proposals and never performs unattended media mutation.
+      - Filename, current values, proposed values, provenance, warnings, and changed-on-disk state remain visible and accessible.
+      - Approval is revoked when identity or content evidence changes.
+      - Local apply uses sibling staging, tag reread, decoder validation, immediate revalidation, atomic replacement, fsync, final readback, and watcher reconciliation.
+      - Verification failure restores exact original bytes or reports an indeterminate recovery state and stops the batch.
+      - Missing atomic replacement degrades to verified export without touching the source.
+      - Remote apply remains unavailable until an expected-revision atomic primitive is implemented and tested.
   mvp_release:
     scope:
       required_requirements:

@@ -134,6 +134,48 @@ contracts:
       invariants:
         - Stable media identities are unique within a batch.
         - Selection order is retained for deterministic sequencing.
+    FolderTagRow:
+      fields:
+        - stable source, node, and parent identity
+        - filename and direct-folder identity
+        - fast content evidence and optional authoritative SHA-256
+        - current TagSnapshot and parser warnings
+        - proposed field mutations and approval state
+        - changed-on-disk, conflict, apply, and verification state
+      invariants:
+        - Filename and stable identity remain present even when parsing fails.
+        - Approval is tied to one snapshot generation and exact content evidence.
+    FolderTagSnapshot:
+      fields:
+        - source ID and folder ID
+        - monotonically increasing generation
+        - observer mode and freshness
+        - ordered direct-child FolderTagRow list
+        - scan, warning, proposal, approval, and conflict counts
+      invariants:
+        - One generation represents one coherent reconciled folder view.
+        - A cancelled or overflowed scan is never labelled complete and live.
+    TagCorrectionProposal:
+      fields:
+        - proposal ID and rule version
+        - stable file identity and snapshot generation
+        - expected original content evidence and TagSnapshot
+        - field-level Keep, Clear, or Set patch
+        - explanation, provenance, confidence, assumptions, and warnings
+        - automatically preselected Boolean
+      invariants:
+        - Proposal generation performs no source mutation.
+        - Online, ambiguous, or lossy proposals are unselected by default.
+    FolderChangeBatch:
+      fields:
+        - observer lease ID
+        - source and folder identity
+        - sequence or cursor when available
+        - coalesced created, modified, deleted, moved, overflow, and invalidation changes
+        - reconciliation_required Boolean
+      invariants:
+        - Event order is a hint and never replaces authoritative reconciliation.
+        - Overflow or cursor reset requires a full folder snapshot.
     RepairPlan:
       fields:
         id: UUID
@@ -191,6 +233,23 @@ contracts:
           output: ordered changes plus next cursor and reset flag
       guarantees:
         - Cursor is persisted only after transactional application.
+    IF-FOLDER-CHANGE-OBSERVER:
+      optional: true
+      methods:
+        open:
+          input: source ID, folder ID, direct scope, generation barrier
+          output: observer lease plus initial cursor when supported
+        observe:
+          input: observer lease
+          output: Flow of FolderChangeBatch
+        close:
+          input: observer lease
+          output: completion
+      guarantees:
+        - Initial scan and event observation have no unobserved gap.
+        - Watcher callbacks perform no tag parsing, hashing, or presentation work.
+        - Invalid leases, overflow, and cursor reset are explicit reconciliation states.
+        - Symbolic links are not followed outside the authorized folder.
     IF-MUTABLE-SOURCE:
       optional: true
       methods:
@@ -339,6 +398,18 @@ contracts:
     InspectMetadata:
       input: stable media ID and depth basic | embedded | complete
       output: layered inspection with warnings and provenance
+    OpenFolderTagWorkbench:
+      input: source ID, folder ID, direct scope, observer preference
+      output: live or explicitly polling FolderTagSnapshot
+      commit_rule: Opening, scanning, watching, and reconciling perform no media mutation.
+    PlanFolderTagCorrections:
+      input: immutable FolderTagSnapshot generation, enabled deterministic rules, explicit user edits
+      output: ordered TagCorrectionProposal list and exact changed-item and changed-field counts
+      commit_rule: Autocorrect generates or preselects proposals but never writes media bytes.
+    ApplyLocalTagCorrections:
+      input: explicitly approved proposals, expected SHA-256 and identity, atomic replacement capability
+      output: per-file verified, skipped, conflicted, failed, or indeterminate results plus rollback evidence
+      commit_rule: No replacement without staged reread, decoder validation, immediate source revalidation, atomic move, and final readback.
     PlanBatchTagEdit:
       input: ordered stable media identities, source revisions or hashes, transform or accepted candidate fields
       output: immutable BatchTagEditPlan with changed-field summary
@@ -365,6 +436,9 @@ contracts:
       excludes: token and email unless explicitly allowed locally
     EVT-FOLDER-SNAPSHOT-UPDATED:
       payload: source ID, folder ID, generation, freshness, counts
+    EVT-FOLDER-TAG-SNAPSHOT-UPDATED:
+      payload: source ID, folder ID, generation, observer mode, changed row count, proposal count, conflict count
+      excludes: complete private path, raw tags, content hashes, and media bytes
     EVT-QUEUE-COMMITTED:
       payload: queue ID, generation, operation type, item count, omission count
     EVT-PLAYBACK-SELECTED:
@@ -402,6 +476,12 @@ contracts:
       key: singleton profile or queue_id
       columns: [generation, created_at, current_index, ordering_json, grouping_json, duplicate_policy]
       class: user_state
+    DB-TAG-WORKBENCH-DRAFT:
+      key: source_id, folder_id, snapshot_generation
+      columns: [rule_profile, proposal_patch_json, explicit_edits_json, approval_state, updated_at]
+      class: user_state
+      invalidation: file approval is removed when its content evidence changes
+      forbidden_columns: [complete_private_path, raw_audio, token, signed_url]
     DB-QUEUE-ITEM:
       key: queue_id, ordinal
       columns: [source_id, node_id, parent_id, filename, revision, metadata_projection]

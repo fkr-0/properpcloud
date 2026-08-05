@@ -65,6 +65,9 @@ architecture:
         - CreateSavedRoot
         - PinOfflineTree
         - InspectMetadata
+        - OpenFolderTagWorkbench
+        - PlanFolderTagCorrections
+        - ApplyLocalTagCorrections
         - PlanMetadataRepair
         - ApplyMetadataRepair
         - ApplySourceChanges
@@ -73,6 +76,7 @@ architecture:
           - AudioSource
           - SearchableSource
           - ChangeFeedSource
+          - FolderChangeObserver
           - MutableSource
           - ThumbnailSource
         persistence:
@@ -87,6 +91,7 @@ architecture:
           - OfflineCache
           - MetadataReader
           - MetadataWriter
+          - AtomicLocalFileReplace
           - Connectivity
           - Clock
           - DiagnosticSink
@@ -100,6 +105,8 @@ architecture:
         - Structured concurrency scoped per screen, service, or durable job.
         - Single-writer queue reducer.
         - Per-node mutex for download and mutation.
+        - One observer lease and single reconciler per open folder workbench.
+        - Filesystem events are coalesced with bounded latency before parsing or hashing.
         - Bounded source request parallelism.
         - Cancellation never commits an incomplete replacement queue.
     source_integration:
@@ -161,6 +168,19 @@ architecture:
             - No online result is an approved mutation.
             - API keys are supplied outside source control.
             - Audio bytes are never uploaded to lookup services.
+        folder_workbench:
+          specification: spec/tag-folder-workbench.yml
+          responsibilities:
+            - coordinate one direct-folder snapshot generation
+            - reconcile platform or provider change events without an initial-scan gap
+            - generate deterministic, explainable correction proposals
+            - keep proposal approval tied to exact content evidence
+            - stage, verify, atomically replace, reread, and roll back local files
+          boundaries:
+            - Autocorrect means proposal generation, not unattended mutation.
+            - Watcher threads perform no parsing, hashing, database, or UI work.
+            - Missing atomic replacement degrades to export-only.
+            - Remote apply remains disabled without expected-revision atomic replacement.
     persistence:
       purpose: Durable local state, indexes, snapshots, cache accounting, and migrations.
       android:
@@ -398,6 +418,15 @@ architecture:
       - Only approved mutations are applied.
       - Staged tags are reread and compared with the approved patch.
       - Original bytes remain unchanged; staged hash becomes apply evidence.
+    folder_tag_workbench:
+      - UI opens one stable direct-folder identity.
+      - Application establishes an observer lease and generation barrier.
+      - Source enumeration and bounded tag parsing produce an immutable FolderTagSnapshot.
+      - Events received during scanning are drained, coalesced, and reconciled before live state.
+      - Pure correction rules produce explainable field-level proposals without mutation.
+      - User freezes exact approved fields against content SHA-256 and confirms replacement.
+      - Local adapter stages beside the source, verifies tags and decodability, revalidates the original, and atomically replaces.
+      - Final readback and watcher reconciliation prove the result; rollback restores exact original bytes on verification failure.
   error_taxonomy:
     authentication:
       examples: [missing_token, rejected_token, wrong_region, callback_mismatch]

@@ -340,6 +340,34 @@ to physical/session observations, exact-tag packaging, and protected-provider va
 The planned evidence schema lives in `docs/releases/0.1.9.yml`. Failed matrix cells
 remain explicit and block `0.2.0`; they are never converted into optimistic prose.
 
+## `0.1.10` — current-host hardening and next-workflow specification
+
+Status: **release candidate for the completed credential-free current-host tranche**.
+
+`0.1.10` publishes the hardening that is useful before the protected `0.2.0` promotion:
+
+1. [x] restore Secret Service credentials asynchronously with a hard timeout and cancel
+   stale restoration after Demo selection, disconnect, close, or a newer login;
+2. [x] validate a deliberately locked private keyring without touching the real collection
+   and explicitly terminate the temporary daemon;
+3. [x] invoke every supported MPRIS method through the external D-Bus path;
+4. [x] expose heading, selected/current row, and player-state semantics plus non-color
+   labels and deterministic 200% high-contrast captures;
+5. [x] accept logind sleep signals only from the verified owner/path, checkpoint and pause
+   synchronously before sleep, and refresh once after wake without auto-restarting mpv;
+6. [x] define `spec/tag-folder-workbench.yml` as the guarded next pre-`0.2.0` workflow,
+   explicitly without claiming implementation or source mutation in this release.
+
+## `0.1.11` — folder-scoped Tag workbench (planned)
+
+- a dedicated direct-folder table and field inspector preserving filename/path identity;
+- gap-free initial scan plus robust watcher/change-feed reconciliation;
+- deterministic explainable correction proposals, where autocorrect never means auto-write;
+- per-field approval and conflict invalidation when source content changes;
+- local sibling staging, reread/decoder verification, atomic replacement, final readback,
+  rollback, and export-only fallback when safe replacement is unavailable;
+- remote review/export only until an atomic expected-revision provider primitive exists.
+
 ## `0.2.0` — native Linux desktop parity
 
 Status: **implementation parity is substantially complete. Promotion is now governed by
@@ -371,7 +399,7 @@ Completed implementation:
 15. [x] logind `PrepareForSleep` handling that force-checkpoints and pauses before sleep,
     refreshes the stream once after wake, and preserves manual recovery after process exit.
 
-Final release sequence after `0.1.8` and `0.1.9`:
+Final release sequence after the hardened `0.1.8` through `0.1.10` line:
 
 1. [ ] repeat the Arch gate against the exact immutable `v0.2.0` archive after the tag
    exists; the v0.1.9 clean-build/install/license/smoke baseline already passes;
@@ -389,7 +417,7 @@ Final release sequence after `0.1.8` and `0.1.9`:
 
 `0.2.0` is not an Android feature bucket. It delivers a native Linux desktop
 client over the shared source-neutral contract. It is a promotion of the hardened
-`0.1.8`/`0.1.9` line, not a new implementation dump.
+`0.1.8` through `0.1.10` line, not a new implementation dump.
 
 ### Reuse boundary
 

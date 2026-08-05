@@ -249,6 +249,34 @@ testing:
         TEST-METADATA-EXPORT:
           fixture: deterministic demo WAV files
           expect: source copies remain unchanged and verified audio or ZIP plus CSV manifest is produced
+    folder_tag_workbench:
+      cases:
+        TEST-TAG-FOLDER-BOOTSTRAP:
+          inject: create and modify events while initial scanning is in progress
+          expect: no missed file, one coherent reconciled generation, and live state only after event drain
+        TEST-TAG-FOLDER-EVENT-COALESCING:
+          inject: repeated create, modify, delete, and rename bursts for the same identities
+          expect: bounded-latency minimal reconciliation without event-thread parsing
+        TEST-TAG-FOLDER-OVERFLOW-RESCAN:
+          inject: watcher overflow, invalid lease, and provider cursor reset
+          expect: explicit stale state, full rescan, observer re-registration, and no retained approval for changed content
+        TEST-TAG-FOLDER-SELF-EVENT:
+          inject: expected apply events interleaved with an external modification
+          expect: own result reconciled while the external change remains visible and conflicting
+        TEST-TAG-FOLDER-CONFLICT:
+          inject: source SHA-256 changes after proposal approval
+          expect: replacement is refused and affected fields require rescan or rebase
+        TEST-TAG-FOLDER-ATOMIC-APPLY:
+          fixture: supported local audio file on an atomic-move filesystem
+          expect: sibling staging, tag reread, decoder probe, fsync, atomic replacement, final readback, and watcher verification
+        TEST-TAG-FOLDER-ROLLBACK:
+          inject: final readback mismatch after replacement
+          expect: exact original bytes restored atomically and verified; batch stops if rollback cannot be proven
+        TEST-TAG-FOLDER-NONATOMIC-EXPORT-ONLY:
+          inject: atomic replacement capability unavailable or cross-filesystem staging requested
+          expect: no source write and only a reread-verified export candidate
+        TEST-TAG-FOLDER-ACCESSIBILITY:
+          expect: filename, current/proposed values, selection, warnings, watch state, and changed-on-disk state are keyboard and screen-reader operable
     mutation:
       cases:
         TEST-MUTATION-DRY-RUN:
@@ -358,6 +386,14 @@ testing:
         - Credential-free resilience-soak evidence is retained.
         - GNOME, KDE Plasma, and i3 Secret Service/MPRIS cells are explicit.
         - Keyboard-only, non-drag, 200 percent scale, and high-contrast operations are automated; real screen-reader actions remain manual.
+    linux_0_1_10:
+      required:
+        - Every current-host hardening gate inherited from the pre-0.2 line passes on the exact release commit.
+        - Locked Secret Service restore remains bounded and stale restoration cannot override newer user intent.
+        - All MPRIS methods and the packaged logind subscription pass without expanding provider claims.
+        - The 200 percent high-contrast captures and bounded resilience soak are retained.
+        - The folder Tag workbench specification parses and remains explicitly designed-not-implemented.
+        - Release notes, AppStream, VERSION, tag, artifacts, and evidence agree on 0.1.10.
     linux_0_2_0:
       required:
         - Shared Android/Linux signed-link retry and desktop stream-failure tests pass.

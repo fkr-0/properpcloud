@@ -1,0 +1,277 @@
+folder_tag_workbench:
+  version: 0.1.0
+  status: designed_not_implemented
+  target_release: v0_1_11
+  purpose: >-
+    Provide a dedicated, calm workspace for understanding and repairing the embedded tags
+    of one media-library folder at a time while preserving filename, folder, and stable
+    source identity as the authoritative library model.
+  terminology:
+    autocorrect: >-
+      Generate and optionally preselect deterministic, reversible correction proposals.
+      Autocorrect never writes media bytes without a separate explicit review and apply action.
+    folder_session: one selected folder, one coherent snapshot generation, one observer lease, and its drafts
+    direct_scope: playable direct children of the selected folder; recursion is never implicit
+  invariants:
+    - Stable source ID, node ID, parent ID, filename, and folder remain visible and authoritative.
+    - Embedded tags enrich the folder view but never become file identity or navigation authority.
+    - Opening, scanning, watching, filtering, and proposing corrections perform zero media mutation.
+    - Unattended, scheduled, background, or watcher-triggered writing is forbidden.
+    - Every proposal records rule ID, exact inputs, expected original value, proposed value, confidence, warnings, and provenance.
+    - Ambiguous, lossy, or online-derived proposals are unselected by default.
+    - Applying local changes requires explicit file and field approval plus a second byte-replacement confirmation.
+    - A source change after proposal generation invalidates the affected approval before any replacement.
+    - Remote objects remain review-and-export only until a source offers atomic expected-revision replacement.
+    - An unavailable atomic local replacement primitive degrades to verified export; it never falls back to an unsafe overwrite.
+  scope:
+    initial:
+      - local regular audio files in one direct folder
+      - existing supported jaudiotagger containers
+      - manual edits and deterministic local proposal rules
+      - optional explicitly invoked MusicBrainz review through existing consent boundaries
+    later:
+      - explicitly selected recursive album trees
+      - artwork policy and mutation
+      - configured Chromaprint and AcoustID matching
+      - provider-side apply after a real expected-revision primitive exists
+    non_goals:
+      - background rewriting of an entire library
+      - automatic acceptance of online metadata
+      - filename or folder renaming
+      - following symbolic links outside the selected folder
+      - hiding malformed or unsupported files
+  entry_and_navigation:
+    entry_points:
+      - current folder toolbar action named Review tags
+      - folder row or context-menu action named Review this folder
+    route_identity: source ID plus stable folder ID, never display-path parsing
+    exit_behavior:
+      - preserve unapplied drafts locally when the user chooses Save draft
+      - discard only after explicit confirmation
+      - stop the observer lease when the folder session closes
+  view:
+    header:
+      content:
+        - complete folder breadcrumb and stable source label
+        - direct audio count, warning count, proposal count, and selected-change count
+        - watcher state: live, polling, stale, overflow-rescanning, paused, or unavailable
+        - scan generation and last reconciled time
+        - active filename parser and correction-rule profile
+      actions:
+        - rescan
+        - pause or resume watching
+        - configure deterministic rules
+        - review selected changes
+    table:
+      stable_row_key: source ID plus node ID or local file identity
+      default_sort: natural filename
+      columns:
+        - filename
+        - embedded title
+        - artist
+        - album and album artist
+        - track and disc numbers
+        - format and parser warnings
+        - proposal state
+        - changed-on-disk state
+      row_states:
+        - clean
+        - missing_fields
+        - inconsistent_with_folder
+        - malformed_or_unsupported
+        - proposed
+        - approved
+        - changed_on_disk
+        - applying
+        - verified
+        - conflicted
+        - failed
+      filters:
+        - all
+        - missing or malformed
+        - inconsistent values
+        - proposals available
+        - approved changes
+        - changed on disk
+        - conflicts and failures
+    inspector:
+      sections:
+        - source filename, file identity, size, modified time, content evidence, and format
+        - current raw and normalized fields with provenance
+        - proposed value, rule explanation, confidence, assumptions, and warnings
+        - editable final value and explicit Keep, Clear, or Set choice
+        - cross-folder consistency summary limited to the active folder session
+      rules:
+        - current and proposed values are simultaneously visible
+        - selection is per field and per file
+        - no state depends on color alone
+    review_drawer:
+      content:
+        - exact selected files and fields
+        - before and after values
+        - bytes that will be replaced
+        - backup and rollback policy
+        - conflicts requiring rescan
+      confirmation: Apply selected local tag corrections
+  scanning:
+    pipeline:
+      - establish observer lease and generation barrier
+      - enumerate direct folder children
+      - capture stable identity and content evidence
+      - parse supported embedded tags with bounded concurrency
+      - normalize values without mutation
+      - calculate folder consistency and deterministic proposals
+      - publish one coherent FolderTagSnapshot generation
+      - drain queued observer events and reconcile before declaring live
+    content_evidence:
+      fast: stable file key when available, size, and nanosecond-capable modified time
+      authoritative_before_apply: SHA-256 of the exact original bytes
+    resource_bounds:
+      parse_workers: bounded by CPU and storage policy; never one unbounded task per file
+      watcher_thread: performs no tag parsing, hashing, or UI work
+      artwork: descriptor only unless the user opens bounded preview
+      large_folder: incremental rows and explicit progress without blocking navigation
+    failures:
+      - malformed and unsupported files remain visible with a typed warning
+      - unreadable files remain in the snapshot and cannot be approved
+      - a cancelled scan publishes no falsely complete generation
+  watching:
+    adapters:
+      local: platform WatchService or native inotify-backed adapter
+      source_change_feed: provider ChangeFeedSource when an ordered cursor exists
+      fallback: bounded polling plus manual refresh, labelled as non-live
+    bootstrap_without_gap:
+      - register the observer before or under the same generation barrier as initial enumeration
+      - capture the initial snapshot
+      - drain and coalesce events received during the scan
+      - reconcile affected identities or perform one full rescan before reporting live
+    event_model:
+      kinds: [created, modified, deleted, moved_into, moved_out, directory_replaced, overflow, observer_invalid]
+      quiet_window_millis: 250
+      maximum_coalescing_latency_millis: 2000
+      rules:
+        - coalesce repeated events by stable identity or normalized directory entry
+        - resolve delete plus create as a move only when identity evidence supports it
+        - never trust event order as a complete source of truth
+        - an overflow, invalid provider cursor, or replaced directory forces a full snapshot reconciliation
+        - an invalid observer is re-registered before the view returns to live
+        - symbolic links are not followed by default and loops or folder escape are rejected
+        - temporary and backup files may be hidden from rows but their final rename target must be reconciled
+    own_writes:
+      - correlate an apply operation by operation ID, path identity, and resulting content evidence
+      - expected self-events still pass through reconciliation
+      - never suppress a coincident external change merely because an apply operation is active
+    presentation:
+      - keep useful rows visible during reconciliation
+      - mark stale or changed rows immediately
+      - invalidate approved fields for a changed file
+      - announce one summarized update rather than every filesystem event
+  proposal_engine:
+    execution: pure deterministic rules over one immutable folder snapshot generation
+    safe_preselected_rules:
+      - trim leading and trailing Unicode whitespace
+      - collapse repeated internal whitespace where field policy permits
+      - normalize text to Unicode NFC without changing visible characters
+      - normalize track and disc numbers and totals into canonical numeric text
+      - remove duplicate identical values emitted by tag variants
+      - copy an exactly unanimous album or album-artist value into a missing field
+    review_required_rules:
+      - parse configured track, artist, and title groups from filename
+      - infer album or disc from the selected folder name or its immediate parent
+      - normalize title or artist case when the transformation is not lossless
+      - sequence tracks from explicit current table order
+      - select fields from a reviewed MusicBrainz candidate
+    forbidden_rules:
+      - overwrite a non-empty conflicting field without explicit selection
+      - infer people, release, or genre solely from a weak filename guess
+      - clear unknown frames merely because the application does not model them
+      - accept online candidates based only on highest score
+    proposal_record:
+      required:
+        - proposal ID and rule version
+        - snapshot generation and stable file identity
+        - expected content evidence and original TagSnapshot
+        - field-level Keep, Clear, or Set mutations
+        - explanation, provenance, confidence, assumptions, and warnings
+        - whether the proposal was automatically preselected
+  local_apply:
+    eligibility:
+      - local regular file is writable and not a symbolic link
+      - selected folder and file remain inside the authorized root
+      - original content SHA-256 and identity match the approved plan
+      - same-filesystem sibling staging and atomic replacement are available
+      - sufficient space exists for both the staged candidate and an exact rollback copy
+    per_file_transaction:
+      - acquire a per-file mutation lease
+      - recapture identity, size, modified time, and SHA-256
+      - copy original bytes to a uniquely named sibling staging file without following links
+      - apply only approved tag mutations to staging
+      - reread and verify every selected field while preserving unselected frames
+      - run a bounded decoder or container validation probe
+      - preserve required mode, ownership, timestamps, and extended attributes when supported; abort before replacement when a security-relevant attribute cannot be preserved
+      - fsync staged bytes and metadata
+      - revalidate the original identity and SHA-256 immediately before replacement
+      - create a private same-filesystem rollback sibling containing the exact original bytes
+      - replace through the platform atomic-move primitive with no cross-filesystem fallback
+      - fsync the parent directory where the platform supports it
+      - reread final tags and SHA-256 and verify the selected patch
+      - mark verified only after watcher reconciliation observes the resulting content evidence
+    failure_and_rollback:
+      - before replacement, delete staging and leave the source untouched
+      - after replacement but before verification, restore the exact rollback bytes atomically and verify them
+      - when rollback cannot be proven, mark indeterminate, retain recovery evidence, and stop the batch
+      - never report partial verification as complete success
+    batch_policy:
+      - approval freezes one plan generation
+      - files apply sequentially or with a very small bounded concurrency
+      - a conflict skips that file and does not weaken checks for later files
+      - cancellation stops before the next file transaction, not during atomic replacement
+  remote_sources:
+    allowed:
+      - inspect exact prepared bytes
+      - generate and save proposals
+      - export reread-verified candidates
+    forbidden:
+      - remote overwrite without atomic expected-revision or expected-hash replacement
+      - check-then-overwrite emulation
+      - describing an exported candidate as an applied cloud correction
+  persistence:
+    draft_key: source ID, folder ID, snapshot generation, and content evidence
+    retained:
+      - selected rule profile
+      - field proposals and explicit user edits
+      - approval state before final confirmation
+      - redacted apply audit and rollback reference
+    invalidation:
+      - changed content invalidates that file's approval
+      - changed folder identity closes the session
+      - rule-version changes recalculate proposals without mutating files
+    retention: bounded by age and item count with a user-visible clear action
+  privacy_and_security:
+    - Complete private paths and raw tags are excluded from diagnostics by default.
+    - Online lookup remains separately consented and discloses every outgoing field.
+    - Audio bytes are never sent to metadata lookup providers.
+    - Temp, staging, rollback, and audit files use private permissions and unpredictable names.
+    - Filenames and tag strings are untrusted Unicode data, never shell or local-path instructions.
+    - No token, signed URL, provider body, private media bytes, or metadata-provider key enters release evidence.
+  accessibility:
+    - Table and inspector expose filename, current value, proposed value, selection, warning, and changed-on-disk state semantically.
+    - Every checkbox and batch action has keyboard and screen-reader alternatives.
+    - Focus remains on the same stable row after reconciliation when that row survives.
+    - Dynamic text reflows rather than removing filenames or apply controls.
+    - Scan and apply progress announces phases and aggregate counts, not every event.
+  verification:
+    required_tests:
+      - TEST-TAG-FOLDER-BOOTSTRAP
+      - TEST-TAG-FOLDER-EVENT-COALESCING
+      - TEST-TAG-FOLDER-OVERFLOW-RESCAN
+      - TEST-TAG-FOLDER-SELF-EVENT
+      - TEST-TAG-FOLDER-CONFLICT
+      - TEST-TAG-FOLDER-ATOMIC-APPLY
+      - TEST-TAG-FOLDER-ROLLBACK
+      - TEST-TAG-FOLDER-NONATOMIC-EXPORT-ONLY
+      - TEST-TAG-FOLDER-ACCESSIBILITY
+    release_boundary: >-
+      The specification may ship before implementation. A future release may claim the
+      workbench only after real filesystem watcher, conflict, power-loss, rollback, and
+      accessibility evidence passes on Linux and the applicable Android storage adapter.

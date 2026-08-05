@@ -91,6 +91,40 @@ use_cases:
         - Selection order controls sequence numbering.
         - Cloud objects remain unchanged.
       tests: [TEST-METADATA-BATCH-BLANK, TEST-TAG-SEQUENCE, TEST-METADATA-EXPORT, TEST-MUTATION-DRY-RUN]
+    UC-REVIEW-FOLDER-TAGS:
+      traces: [REQ-FOLDER-TAG-WORKBENCH, REQ-METADATA-FOUNDATION]
+      title: Review and safely correct the tags of one folder
+      trigger: User chooses Review tags for the current folder.
+      preconditions:
+        - The source exposes stable direct children and exact local bytes or a review-only prepared copy.
+        - No recursive scope is implied by entering the workbench.
+      flow:
+        - app: Establish an observer lease and generation barrier for the selected folder.
+        - app: Scan direct playable children and publish filename, identity, current tags, warnings, and content evidence.
+        - app: Drain changes received during the scan and reconcile before reporting the view as live.
+        - app: Generate deterministic correction proposals with rule explanations and provenance.
+        - user: Filter rows, edit proposals, and approve individual fields and files.
+        - app: Invalidate any approval whose file changed on disk.
+        - user: Review the exact byte-affecting plan and confirm local replacement.
+        - app: Stage, reread, decode-check, revalidate, atomically replace, reread, and reconcile each approved file.
+        - app: Retain a bounded rollback reference and report verified, skipped, conflicted, failed, or indeterminate outcomes.
+      alternatives:
+        observer_overflow: Mark the view stale and perform a complete folder rescan.
+        unsupported_format: Keep the file visible and disable apply for that row.
+        source_changed: Revoke approval and require rescan or rebase before apply.
+        non_atomic_filesystem: Offer verified export only and perform no source replacement.
+        remote_source: Permit review, proposal, and export but no remote overwrite.
+        online_match: Require separate disclosure and leave candidate fields unselected until reviewed.
+      tests:
+        - TEST-TAG-FOLDER-BOOTSTRAP
+        - TEST-TAG-FOLDER-EVENT-COALESCING
+        - TEST-TAG-FOLDER-OVERFLOW-RESCAN
+        - TEST-TAG-FOLDER-SELF-EVENT
+        - TEST-TAG-FOLDER-CONFLICT
+        - TEST-TAG-FOLDER-ATOMIC-APPLY
+        - TEST-TAG-FOLDER-ROLLBACK
+        - TEST-TAG-FOLDER-NONATOMIC-EXPORT-ONLY
+        - TEST-TAG-FOLDER-ACCESSIBILITY
     UC-AUTH-LOGIN:
       traces: [REQ-AUTH]
       title: Connect a pCloud account

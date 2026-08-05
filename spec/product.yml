@@ -104,6 +104,10 @@ product:
       name: interim-direct-login-and-account-ux
       requirements:
         - REQ-AUTH
+    v0_1_11:
+      name: folder-scoped-tag-workbench
+      requirements:
+        - REQ-FOLDER-TAG-WORKBENCH
     v0_2:
       name: native-linux-feature-parity
       requirements: [REQ-LINUX-PARITY]
@@ -150,6 +154,26 @@ product:
         - online candidate acceptance without field-level review
         - audio-byte upload to metadata lookup services
         - credentials or fingerprints in logs and release evidence
+    REQ-FOLDER-TAG-WORKBENCH:
+      priority: should
+      release: v0_1_11
+      title: Folder-scoped tag review, correction proposals, and guarded local apply
+      behaviors:
+        - Open a dedicated workbench for the playable direct children of exactly one selected folder.
+        - Keep filename, folder, stable identity, current tags, warnings, proposals, and changed-on-disk state visible together.
+        - Register a folder observer without an initial-scan gap and reconcile create, modify, delete, move, overflow, and invalidation events.
+        - Generate deterministic local correction proposals before any optional online matching.
+        - Treat autocorrect as proposal generation and safe preselection, never unattended writing.
+        - Invalidate approval when content evidence changes after a proposal was reviewed.
+        - Apply approved local edits through sibling staging, reread verification, decoder validation, atomic replacement, final readback, and rollback.
+        - Degrade to verified export when atomic local replacement is unavailable.
+        - Preserve drafts and redacted audit evidence without turning tags into media identity.
+      forbidden:
+        - implicit recursive library rewriting
+        - unattended or timer-triggered media mutation
+        - following symbolic links outside the selected folder
+        - unsafe non-atomic overwrite fallback
+        - remote replacement without an atomic expected-revision or expected-hash primitive
     REQ-AUTH:
       priority: must
       release: v0_1_4
