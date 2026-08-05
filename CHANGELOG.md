@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bounded resilience-soak, and fail-closed `0.2.0` promotion validation commands.
 - A canonical `0.2.0` promotion matrix and release evidence schema separating automated,
   current-session, visual, protected-provider, and explicitly accepted boundary states.
+- Isolated locked-keyring, 200% high-contrast capture, externally driven MPRIS control,
+  and packaged logind sleep-monitor gates with redacted retained evidence.
 
 ### Changed
 
@@ -33,11 +35,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The roadmap now treats published `0.1.9` AppImage/Flatpak evidence as complete and lists
   only executable current-host, alternate-session, visual, soak, and protected-provider
   blockers before `0.2.0`.
+- Desktop credential restoration performs bounded Secret Service lookup off the UI thread;
+  a locked collection leaves the client responsive and exposes a fixed recovery message.
+- The Linux client listens for logind `PrepareForSleep`, force-checkpoints and pauses active
+  playback before sleep, then resolves a fresh capability and resumes once after wake.
+- Compose Desktop now exposes explicit heading, selection, current-track, and player-state
+  semantics plus a deterministic black/white/yellow high-contrast palette and non-color labels.
 
 ### Security
 
 - Current-session evidence uses a disposable random Secret Service value, clears it
   immediately, and records neither the value nor the session D-Bus address.
+- The locked-keyring gate operates on a private ephemeral D-Bus/keyring, returns no
+  credential, enforces a five-second maximum, and never touches the real user collection.
 - Stream refresh status is fixed and redacted; signed URLs and provider response content
   remain outside persistence, UI state, logs, and evidence.
 
@@ -45,6 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added shared retry-policy, mpv EOF/stop/failure classification, shortcut resolution,
   selection bounds, readiness-schema, session-audit, Arch-gate, and soak-contract tests.
+- Added sleep-transition policy, blocked-vault timeout, external MPRIS method, Flatpak
+  logind permission, accessibility semantics, and current-host evidence contract coverage.
 
 ### Planned
 

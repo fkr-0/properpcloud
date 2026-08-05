@@ -9,6 +9,8 @@ WORKFLOW = (ROOT / ".github" / "workflows" / "linux.yml").read_text(encoding="ut
 class ShortSoakCiArtifactTest(unittest.TestCase):
     def test_ci_uploads_machine_readable_soak_evidence(self) -> None:
         self.assertIn("build/evidence/0.2.0-resilience-soak.*", WORKFLOW)
+        self.assertIn("build/evidence/0.2.0-locked-keyring.json", WORKFLOW)
+        self.assertIn("build/evidence/0.2.0-accessibility*", WORKFLOW)
         self.assertIn("if: always()", WORKFLOW)
 
 

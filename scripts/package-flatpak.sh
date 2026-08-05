@@ -76,6 +76,7 @@ flatpak build-finish \
   --filesystem=xdg-run/properpcloud:create \
   --talk-name=org.freedesktop.Flatpak \
   --talk-name=org.freedesktop.secrets \
+  --system-talk-name=org.freedesktop.login1 \
   --own-name=org.mpris.MediaPlayer2.properpcloud \
   --env=LC_NUMERIC=C \
   "$build_dir"

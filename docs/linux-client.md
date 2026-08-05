@@ -134,7 +134,7 @@ The current UI provides pointer and keyboard equivalents for every queue operati
 make linux-ci
 ```
 
-The aggregate target runs desktop unit/package checks, the normal real-mpv/SQLite smoke, a forced crash/recovery smoke, the packaged clean-profile smoke, and MPRIS verification. The crash path detects unexpected process exit, performs no automatic process restart, preserves the selected stable queue identity, and resumes only after an explicit action. Stream failure is classified separately and permits one bounded capability re-resolution with durable resume. The unit suite covers XDG mapping, SQLite round trips, deterministic demo traversal and media generation, request-correlated mpv commands, EOF/stop/failure classification, Secret Service boundaries, keyboard shortcuts, and fixed exit states. Host-side tests also enforce the Flatpak mpv argument allowlist, clean-profile environment, release graph, Arch gate, current-session audit, readiness matrix, and soak contract. `make desktop-session-audit` probes disposable Secret Service storage and packaged MPRIS on the real user session; `make desktop-resilience-soak` exercises pause/seek/checkpoint and controlled recovery; `make arch-package-gate` clean-builds and installs the immutable source archive in Arch. `.github/workflows/linux.yml` retains the credential-free baseline on pull requests and `main`.
+The aggregate target runs desktop unit/package checks, the normal real-mpv/SQLite smoke, a forced crash/recovery smoke, the packaged clean-profile smoke, externally driven MPRIS controls, an isolated locked-keyring gate, and 200% high-contrast capture. The crash path detects unexpected process exit, performs no automatic process restart, preserves the selected stable queue identity, and resumes only after an explicit action. Stream failure is classified separately and permits one bounded capability re-resolution with durable resume. The unit suite covers XDG mapping, SQLite round trips, deterministic demo traversal and media generation, request-correlated mpv commands, EOF/stop/failure classification, bounded Secret Service lookup, keyboard shortcuts, sleep-transition policy, and fixed exit states. `make desktop-session-audit` probes disposable Secret Service storage, all nine MPRIS methods, and the packaged logind subscription on the real user session; `make desktop-locked-keyring-smoke` uses an ephemeral locked keyring; `make desktop-accessibility-audit` retains 1280×820 base/help captures at 200%; `make desktop-resilience-soak` exercises pause/seek/checkpoint and controlled recovery; `make arch-package-gate` clean-builds and installs the immutable source archive in Arch. `.github/workflows/linux.yml` retains the credential-free baseline on pull requests and `main`.
 
 ## Release train to 0.2.0
 
@@ -146,21 +146,21 @@ The aggregate target runs desktop unit/package checks, the normal real-mpv/SQLit
   explicit process recovery with zero automatic process restarts, exact release graph,
   shared bounded capability refresh, tested keyboard alternatives, and executable Arch,
   session, soak, and readiness gates.
-- **0.2.0 parity promotion:** execute the remaining current-host gates, complete alternate
-  desktop and visual observations, retain protected EU/US provider expiry evidence, and
-  explicitly accept the direct-sign-in fallback while desktop OAuth registration remains
-  unconfirmed. No additional feature tranche is hidden in the release.
+- **0.2.0 parity promotion:** complete alternate desktop, physical media-key,
+  physical suspend, and screen-reader observations; retain protected EU/US provider expiry
+  evidence; and keep the documented direct-sign-in fallback while desktop OAuth registration
+  remains unconfirmed. No additional feature tranche is hidden in the release.
 
 ## Remaining release gates
 
 Before declaring the Linux `0.2.0` release complete, the `0.1.8` and `0.1.9`
 evidence manifests must be complete and the following protected gates must pass:
 
-1. execute and retain the immutable Arch clean-build/install smoke and current i3 session audit;
-2. execute the bounded credential-free soak and a retained four-hour protected-provider soak;
+1. repeat the immutable Arch clean-build/install smoke against the exact `v0.2.0` archive after tagging;
+2. retain a four-hour protected-provider soak with genuine capability expiry and one real suspend/resume cycle;
 3. run interactive pCloud browse/playback/expiry/disconnect/restart checks against protected EU and US accounts;
-4. verify real locked-keyring, media-key daemon, and suspend/resume behavior plus GNOME/KDE sessions;
-5. perform 200% text, high-contrast, and screen-reader semantic review;
+4. observe one physical media-key path and one real suspend/resume cycle, and complete GNOME/KDE sessions;
+5. perform a real AT-SPI screen-reader traversal/action review;
 6. run `python3 scripts/validate-020-readiness.py --pre-tag` before the tag, then rerun with `--strict` after exact-tag package evidence; explicitly document any narrow accepted exception;
 7. add browser OAuth only after provider redirect registration is confirmed.
 

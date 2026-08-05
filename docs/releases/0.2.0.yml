@@ -24,6 +24,8 @@ release:
       - make test
       - make desktop-test
       - make linux-ci
+      - make desktop-session-audit
+      - make desktop-sleep-monitor-smoke
       - PROPERPCLOUD_SOAK_SECONDS=120 make desktop-resilience-soak
       - make docs-build
     readiness_matrix: docs/reviews/0.2.0-promotion-matrix.yml
@@ -35,9 +37,8 @@ release:
     evidence: build/evidence/0.2.0-current-session.json
     privacy: disposable random Secret Service value only; value and D-Bus address are never recorded
     limitations:
-      - actual locked-keyring behavior requires deliberate manual observation
-      - hardware media-key behavior requires the active desktop daemon or keyboard
-      - suspend and resume requires an operator-controlled session transition
+      - physical media-key behavior requires the active desktop daemon or keyboard
+      - a real suspend and resume cycle requires an operator-controlled session transition
   current_host_evidence:
     arch_v0_1_9:
       result: passed
@@ -47,14 +48,33 @@ release:
       result: passed
       evidence: build/evidence/0.2.0-resilience-soak.json
       duration_seconds: 120
-      cycles: 340
-      maximum_resume_drift_millis: 725
+      cycles: 342
+      maximum_resume_drift_millis: 479
+    locked_keyring:
+      result: passed_isolated_ephemeral
+      evidence: build/evidence/0.2.0-locked-keyring.json
+      lookup_bound_millis: 5000
+      real_user_keyring_touched: false
+    accessibility_scale_contrast:
+      result: passed_automated_capture
+      evidence: build/evidence/0.2.0-accessibility.json
+      ui_scale_percent: 200
+      window: 1280x820
+    mpris_external_controls:
+      result: passed_current_session
+      evidence: build/evidence/0.2.0-current-session.json
+      control_method_count: 9
+    suspend_resume_implementation:
+      result: passed_current_host
+      evidence: build/evidence/0.2.0-current-session.json
+      physical_cycle: pending_manual
   remaining_blockers:
     - exact immutable v0.2.0 Arch archive rebuild after tag creation
     - protected Europe pCloud playback, expiry, disconnect, and restart
     - protected United States pCloud playback, expiry, disconnect, and restart
     - four-hour retained provider soak with one real capability expiry and suspend/resume
     - GNOME and KDE Plasma session observations beyond the current i3 session
-    - screen-reader semantics, 200 percent text, and high-contrast visual review
-    - explicit acceptance of the documented direct-sign-in fallback while desktop OAuth redirect registration remains unconfirmed
+    - real AT-SPI screen-reader traversal and action review
+    - physical media-key daemon observation
+    - one real suspend and resume cycle
   publication_rule: no version bump or tag until pre-tag readiness passes; no publication until strict post-tag readiness passes or every exception is explicitly accepted by the maintainer

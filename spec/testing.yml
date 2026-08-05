@@ -357,15 +357,18 @@ testing:
         - Arch package cleanbuild and license inventory are executable against immutable tags.
         - Credential-free resilience-soak evidence is retained.
         - GNOME, KDE Plasma, and i3 Secret Service/MPRIS cells are explicit.
-        - Keyboard-only and non-drag operations are automated; text-scale, contrast, and screen-reader checks remain manual.
+        - Keyboard-only, non-drag, 200 percent scale, and high-contrast operations are automated; real screen-reader actions remain manual.
     linux_0_2_0:
       required:
         - Shared Android/Linux signed-link retry and desktop stream-failure tests pass.
-        - Current i3 Secret Service and packaged MPRIS audit evidence is redacted and retained.
+        - Current i3 Secret Service, externally invoked MPRIS, and packaged logind subscription evidence is redacted and retained.
+        - An isolated locked-keyring lookup returns no credential within five seconds and does not touch the real collection.
+        - 200 percent high-contrast base/help captures are exact-size, distinct, nonblank, and use non-color state labels.
+        - Sleep-transition policy checkpoints and pauses before sleep and refreshes once after wake without automatic process restart.
         - Immutable current-tag Arch cleanbuild, installation, license inventory, and installed smoke pass.
         - Bounded demo soak and protected four-hour provider soak pass their stated scope.
         - EU and US protected account expiry, disconnect, cleanup, and restart evidence is retained without secrets or media.
-        - GNOME/KDE and visual accessibility observations are complete or explicitly accepted.
+        - GNOME/KDE, physical media-key/suspend, and real screen-reader observations are complete or explicitly accepted.
         - Pre-tag 0.2.0 readiness exits zero before tag creation, allowing only explicitly post-tag checks.
         - Strict publication readiness exits zero after exact-tag package verification.
   evidence:

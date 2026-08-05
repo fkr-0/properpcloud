@@ -74,6 +74,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -91,12 +97,16 @@ import java.awt.SystemColor
 fun DesktopApp(controller: DesktopController) {
     val state by controller.state.collectAsState()
     var accountDialog by remember { mutableStateOf(false) }
-    var keyboardHelp by remember { mutableStateOf(false) }
+    var keyboardHelp by remember {
+        mutableStateOf(System.getenv("PROPERPCLOUD_SHOW_KEYBOARD_HELP") == "1")
+    }
     var focusTarget by remember { mutableStateOf(DesktopFocusTarget.LIBRARY) }
     var librarySelection by remember { mutableStateOf(0) }
     var queueSelection by remember { mutableStateOf(0) }
     val dark = SystemColor.window.rgb and 0xff < 128
-    MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme()) {
+    val highContrast = System.getenv("PROPERPCLOUD_HIGH_CONTRAST") == "1" ||
+        System.getenv("GTK_THEME").orEmpty().contains("HighContrast", ignoreCase = true)
+    MaterialTheme(colorScheme = desktopColorScheme(dark, highContrast)) {
         Scaffold(
             modifier = Modifier.fillMaxSize().onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -148,7 +158,7 @@ fun DesktopApp(controller: DesktopController) {
             },
             topBar = {
                 TopAppBar(
-                    title = { Text("properpcloud · ${state.sourceName}") },
+                    title = { Text("properpcloud · ${state.sourceName}", Modifier.semantics { heading() }) },
                     actions = {
                         TextButton(onClick = controller::useDemo) { Text("Demo") }
                         TextButton(onClick = controller::usePCloud) { Text("pCloud") }
@@ -221,7 +231,7 @@ private fun KeyboardHelpDialog(onDismiss: () -> Unit) {
 @Composable
 private fun NavigationPane(state: DesktopUiState, controller: DesktopController, modifier: Modifier) {
     Column(modifier.padding(12.dp)) {
-        Text("Folders", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text("Folders", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             itemsIndexed(state.breadcrumbs) { index, folder ->
@@ -239,7 +249,7 @@ private fun NavigationPane(state: DesktopUiState, controller: DesktopController,
             }
         }
         Spacer(Modifier.height(16.dp))
-        Text("Inspector", style = MaterialTheme.typography.titleSmall)
+        Text("Inspector", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(6.dp))
         LazyColumn {
             state.inspection.forEach { (name, value) ->
@@ -266,7 +276,7 @@ private fun LibraryPane(
     Column(modifier.padding(14.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(state.currentFolder?.name ?: "Library", style = MaterialTheme.typography.headlineSmall)
+                Text(state.currentFolder?.name ?: "Library", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
                 Text("Double-click to open or play; right-click for queue actions", style = MaterialTheme.typography.bodySmall)
                 if (keyboardFocused) Text("Keyboard focus · ↑/↓ select · Enter open/play · F1 help", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
@@ -280,8 +290,19 @@ private fun LibraryPane(
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             itemsIndexed(state.nodes, key = { _, node -> node.sourceId.value + node.id.value }) { index, node ->
                 var menu by remember(node.id) { mutableStateOf(false) }
+                val keyboardSelected = keyboardFocused && index == selectedIndex
                 ElevatedCard(
-                    modifier = Modifier.fillMaxWidth().combinedClickable(
+                    modifier = Modifier.fillMaxWidth()
+                        .semantics {
+                            selected = keyboardSelected
+                            stateDescription = if (keyboardSelected) "Keyboard selected" else "Not selected"
+                            contentDescription = if (node is AudioFolder) {
+                                "Folder ${node.name}"
+                            } else {
+                                "Track ${node.name}"
+                            }
+                        }
+                        .combinedClickable(
                         onClick = { onSelected(index); controller.inspect(node) },
                         onDoubleClick = { onSelected(index); controller.open(node) },
                         onLongClick = { onSelected(index); menu = true },
@@ -299,6 +320,9 @@ private fun LibraryPane(
                             Text(node.name, fontWeight = FontWeight.Medium)
                             if (node is AudioTrack) {
                                 Text(listOfNotNull(node.taggedTitle, node.durationMillis?.let(::formatDuration)).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (keyboardSelected) {
+                                Text("Selected", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                             }
                         }
                         IconButton(onClick = { menu = true }) { Icon(Icons.Default.QueueMusic, "Actions") }
@@ -335,17 +359,30 @@ private fun QueuePane(
 ) {
     Column(modifier.padding(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text("Queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).semantics { heading() })
             AssistChip(onClick = controller::revealContainingFolder, label = { Text("Show folder") })
         }
         if (keyboardFocused) Text("Keyboard focus · ↑/↓ select · Enter play · Alt+↑/↓ move · Delete remove", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             itemsIndexed(state.queue.entries, key = { _, entry -> entry.track.sourceId.value + entry.track.id.value }) { index, entry ->
+                val keyboardSelected = keyboardFocused && index == selectedIndex
+                val currentTrack = index == state.queue.currentIndex
                 Surface(
-                    tonalElevation = if (index == state.queue.currentIndex) 3.dp else 0.dp,
+                    tonalElevation = if (currentTrack) 3.dp else 0.dp,
                     shape = MaterialTheme.shapes.small,
-                    modifier = Modifier.fillMaxWidth().clickable { onSelected(index); controller.playIndex(index) },
+                    modifier = Modifier.fillMaxWidth()
+                        .semantics {
+                            selected = keyboardSelected
+                            stateDescription = when {
+                                currentTrack && keyboardSelected -> "Current track and keyboard selected"
+                                currentTrack -> "Current track"
+                                keyboardSelected -> "Keyboard selected"
+                                else -> "Queued track"
+                            }
+                            contentDescription = "Queued track ${entry.track.name}"
+                        }
+                        .clickable { onSelected(index); controller.playIndex(index) },
                 ) {
                     Row(
                         Modifier.fillMaxWidth()
@@ -353,8 +390,20 @@ private fun QueuePane(
                             .padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        if (index == state.queue.currentIndex) Icon(Icons.Default.PlayArrow, null)
-                        Text(entry.track.name, Modifier.weight(1f).padding(horizontal = 6.dp), maxLines = 2, style = MaterialTheme.typography.bodySmall)
+                        if (currentTrack) Icon(Icons.Default.PlayArrow, null)
+                        Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
+                            Text(entry.track.name, maxLines = 2, style = MaterialTheme.typography.bodySmall)
+                            if (currentTrack || keyboardSelected) {
+                                Text(
+                                    listOfNotNull(
+                                        "Current".takeIf { currentTrack },
+                                        "Selected".takeIf { keyboardSelected },
+                                    ).joinToString(" · "),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
                         IconButton(onClick = { controller.moveQueue(index, -1) }, enabled = index > 0) { Icon(Icons.Default.ArrowUpward, "Move up") }
                         IconButton(onClick = { controller.moveQueue(index, 1) }, enabled = index < state.queue.entries.lastIndex) { Icon(Icons.Default.ArrowDownward, "Move down") }
                         IconButton(onClick = { controller.removeQueue(index) }) { Icon(Icons.Default.Delete, "Remove") }
@@ -369,7 +418,20 @@ private fun QueuePane(
 private fun PlayerBar(state: DesktopUiState, controller: DesktopController) {
     val current = state.queue.current?.track
     Surface(shadowElevation = 8.dp) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.fillMaxWidth()
+                .semantics {
+                    contentDescription = current?.let { "Player for ${it.name}" } ?: "Player with no selected track"
+                    stateDescription = when {
+                        current == null -> "Nothing playing"
+                        state.playback.restartAvailable -> "Playback failed; restart available"
+                        state.playback.paused -> "Paused"
+                        else -> "Playing"
+                    }
+                }
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Column(Modifier.width(260.dp)) {
                 Text(current?.taggedTitle ?: current?.filenameStem ?: "Nothing playing", fontWeight = FontWeight.SemiBold, maxLines = 1)
                 Text(current?.name ?: "Choose a track", style = MaterialTheme.typography.bodySmall, maxLines = 1)
@@ -485,6 +547,26 @@ private fun AccountDialog(state: DesktopUiState, controller: DesktopController, 
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+private fun desktopColorScheme(dark: Boolean, highContrast: Boolean) = when {
+    highContrast -> darkColorScheme(
+        primary = Color.White,
+        onPrimary = Color.Black,
+        secondary = Color.Yellow,
+        onSecondary = Color.Black,
+        background = Color.Black,
+        onBackground = Color.White,
+        surface = Color.Black,
+        onSurface = Color.White,
+        surfaceVariant = Color(0xff202020),
+        onSurfaceVariant = Color.White,
+        secondaryContainer = Color(0xff303030),
+        onSecondaryContainer = Color.White,
+        outline = Color.White,
+    )
+    dark -> darkColorScheme()
+    else -> lightColorScheme()
 }
 
 private fun formatDuration(milliseconds: Long): String {

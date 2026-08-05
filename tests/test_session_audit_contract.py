@@ -12,6 +12,10 @@ class SessionAuditContractTest(unittest.TestCase):
         self.assertIn('"secret_recorded": False', SCRIPT)
         self.assertIn('"dbus_address_recorded": False', SCRIPT)
         self.assertIn('secret-tool", "clear"', SCRIPT)
+        self.assertIn("--mpris-control-smoke", SCRIPT)
+        self.assertIn("SetPosition", SCRIPT)
+        self.assertIn("--sleep-monitor-smoke", SCRIPT)
+        self.assertIn('"physical_suspend_cycle": "pending_manual"', SCRIPT)
         self.assertNotIn("DBUS_SESSION_BUS_ADDRESS", SCRIPT)
 
 

@@ -13,6 +13,9 @@ class MakeTargets020Test(unittest.TestCase):
             "release-020-pretag:",
             "release-020-readiness-strict:",
             "desktop-resilience-soak:",
+            "desktop-locked-keyring-smoke:",
+            "desktop-accessibility-audit:",
+            "desktop-sleep-monitor-smoke:",
             "desktop-session-audit:",
             "arch-package-gate:",
         ):

@@ -4,7 +4,13 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
-class SecretServiceVault(private val executable: String = "secret-tool") {
+class SecretServiceVault(
+    private val executable: String = "secret-tool",
+    private val lookupTimeoutSeconds: Long = 10,
+) {
+    init {
+        require(lookupTimeoutSeconds in 1..60) { "Secret Service lookup timeout must be between 1 and 60 seconds" }
+    }
     fun available(): Boolean = runCatching {
         val process = ProcessBuilder(executable, "--help")
             .redirectOutput(ProcessBuilder.Redirect.DISCARD)
@@ -40,7 +46,7 @@ class SecretServiceVault(private val executable: String = "secret-tool") {
             process.inputStream.readNBytes(MAX_SECRET_BYTES + 1)
         }
         try {
-            val exitCode = waitFor(process, 10, "Secret Service lookup")
+            val exitCode = waitFor(process, lookupTimeoutSeconds, "Secret Service lookup")
             if (exitCode != 0) return null
             val bytes = output.get(2, TimeUnit.SECONDS)
             try {

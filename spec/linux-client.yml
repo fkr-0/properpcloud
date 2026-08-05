@@ -31,8 +31,8 @@ linux_client:
         - executable Arch clean-build, current-session, soak, and strict readiness gates
       remaining_external_gates:
         - final immutable Arch execution and retained digest evidence
-        - GNOME and KDE Plasma sessions plus locked-keyring, media-key, and suspend observations
-        - 200 percent text, high contrast, and screen-reader semantic review
+        - GNOME and KDE Plasma sessions plus physical media-key and suspend observations
+        - real AT-SPI screen-reader traversal and action review
         - four-hour protected-provider capability-expiry soak
     0.2.0:
       purpose: promote the hardened line without adding another feature tranche
@@ -40,7 +40,8 @@ linux_client:
       pre_tag_gate: python3 scripts/validate-020-readiness.py --pre-tag
       publication_gate: python3 scripts/validate-020-readiness.py --strict
       additional_gates:
-        - current-session Secret Service and MPRIS evidence
+        - current-session Secret Service, external MPRIS control, and logind subscription evidence
+        - isolated locked-keyring and 200 percent high-contrast capture evidence
         - immutable Arch clean-build, installation, license, and installed smoke evidence
         - bounded credential-free soak plus retained four-hour protected-provider soak
         - protected EU and US pCloud playback, expiry, logout, and restart evidence
@@ -57,14 +58,16 @@ linux_client:
     UI: Compose Desktop three-pane browser, inspector, queue, and bottom player
     playback: mpv child process with private Unix JSON IPC and no-config
     persistence: SQLite JDBC with WAL settings, queue, and progress tables
-    secrets: freedesktop Secret Service through secret-tool with no plaintext fallback
-    media_integration: MPRIS root and player interfaces over session D-Bus
+    secrets: bounded asynchronous freedesktop Secret Service lookup through secret-tool with no plaintext fallback
+    media_integration: MPRIS root/player interfaces over session D-Bus plus logind PrepareForSleep over the system bus
     paths: XDG config, data, cache, and runtime roots
     verification:
       - desktop unit tests for XDG, SQLite, deterministic media, correlated IPC responses, Secret Service boundaries, shortcut resolution, and stream-failure classification
       - host smoke for generated WAV, recursive queue, SQLite, and real mpv IPC
       - forced process recovery and bounded stream-capability re-resolution preserve stable identity and durable progress
-      - packaged current-session audit probes disposable Secret Service storage and MPRIS without recording credentials or D-Bus addresses
+      - packaged current-session audit probes disposable Secret Service storage, all external MPRIS controls, and logind subscription without recording credentials or D-Bus addresses
+      - isolated locked-keyring lookup is bounded and never touches the real user collection
+      - 200 percent high-contrast base/help captures prove nonblank 1280 by 820 rendering and non-color state labels
       - portable provider and metadata modules compile as JVM 17 bytecode
     packaging:
       - Compose application image
@@ -156,6 +159,13 @@ linux_client:
           - metadata and playback status
           - play, pause, next, previous, seek, and position
           - stable object and track IDs without signed URLs
+          - externally invokable control path for media-key daemons
+      logind-sleep:
+        responsibilities:
+          - subscribe to PrepareForSleep on the system bus
+          - force-checkpoint and pause active playback before sleep
+          - resolve a fresh stream and resume once after wake
+          - retain manual restart after a real player process exit
       xdg-platform:
         config: XDG_CONFIG_HOME/properpcloud
         data: XDG_DATA_HOME/properpcloud
@@ -291,7 +301,8 @@ linux_client:
       - native deb and rpm only after release automation matures
     Flatpak_boundaries:
       - browser OAuth through portal
-      - Secret Service through D-Bus permission
+      - Secret Service through session D-Bus permission
+      - logind PrepareForSleep through narrowly scoped system D-Bus permission
       - host mpv invocation accepts only properpcloud's deterministic no-config launch flags and private IPC path
       - XDG cache and user-approved file access
   implementation_path:
@@ -328,6 +339,9 @@ linux_client:
       - No account password is stored outside Secret Service.
       - mpv crash does not lose queue or progress.
       - Desktop can be operated entirely by keyboard with visible library/queue focus and no drag-only action.
+      - Headings, selected/current rows, and player state expose explicit accessibility semantics and non-color labels.
+      - A deterministic high-contrast palette renders at 200 percent scale without blank or degenerate output.
       - Modal account input suppresses global playback shortcuts.
+      - Active playback is checkpointed and paused before sleep and refreshed once after wake.
       - Package follows XDG paths and leaves no credential in command history or logs.
       - Strict promotion validation fails until every pending or protected gate is passed or explicitly accepted.

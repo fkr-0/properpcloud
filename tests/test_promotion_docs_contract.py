@@ -12,7 +12,8 @@ class PromotionDocsContractTest(unittest.TestCase):
         content = DOC.read_text(encoding="utf-8")
         self.assertIn("validate-020-readiness.py --strict", content)
         self.assertIn("EU and US pCloud", content)
-        self.assertIn("200% text", content)
+        self.assertIn("200% high-contrast", content)
+        self.assertIn("AT-SPI screen-reader", content)
         self.assertIn("must never contain passwords", content)
         self.assertTrue(RELEASE.is_file())
 

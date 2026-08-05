@@ -24,12 +24,19 @@ promotion:
         - select, play, append, inspect, move, and remove shortcuts
         - modal suppression of global playback shortcuts
         - visible selected-row treatment and keyboard help
-    accessibility_visual_review:
+    accessibility_scale_contrast:
+      status: passed_current_host
+      evidence: build/evidence/0.2.0-accessibility.json
+      checks:
+        - Compose semantics for headings, selected rows, current track, and player state
+        - 200 percent rendering at 1280 by 820
+        - explicit high-contrast palette
+        - visible non-color Selected and Current labels
+        - base and keyboard-help screenshots are distinct and nonblank
+    screen_reader_review:
       status: pending_manual
       checks:
-        - screen-reader semantic bridge review
-        - 200 percent text at 1280 by 820
-        - high-contrast selected and current state review
+        - real AT-SPI screen-reader traversal and action review
     packages:
       appimage_v0.1.9:
         status: passed_tagged_release
@@ -49,13 +56,30 @@ promotion:
       evidence: build/evidence/0.2.0-current-session.json
       checks:
         - Secret Service bus owner and disposable store lookup clear round trip
-        - packaged MPRIS registration, identity, and playback status
+        - packaged MPRIS registration, identity, properties, and nine externally invoked controls
+        - packaged logind PrepareForSleep system-bus subscription
         - no credential material or D-Bus address retained
     locked_keyring:
+      status: passed_current_host
+      evidence: build/evidence/0.2.0-locked-keyring.json
+      scope:
+        - isolated ephemeral GNOME keyring collection deliberately locked
+        - lookup returns no credential and terminates within five seconds
+        - real user keyring is never touched
+    mpris_control_path:
+      status: passed_current_session
+      evidence: build/evidence/0.2.0-current-session.json
+    physical_media_keys:
       status: pending_manual
-    media_key_daemon:
-      status: pending_manual
-    suspend_resume:
+    suspend_resume_implementation:
+      status: passed_current_host
+      evidence: build/evidence/0.2.0-current-session.json
+      checks:
+        - logind PrepareForSleep subscription opens on the system bus
+        - active playback checkpoints and pauses before sleep
+        - wake re-resolves the stream and resumes once
+        - unexpected player exit still requires manual restart
+    physical_suspend_resume:
       status: pending_manual
     alternate_desktops:
       status: pending_external_session
@@ -74,10 +98,10 @@ promotion:
       status: passed_current_host
       evidence: build/evidence/0.2.0-resilience-soak.json
       duration_seconds: 120
-      cycles: 340
+      cycles: 342
       forced_process_exits: 1
-      maximum_resume_drift_millis: 725
-      memory_growth_bytes: 60604680
+      maximum_resume_drift_millis: 479
+      memory_growth_bytes: 69116056
     protected_provider_soak:
       status: pending_protected
       scope:

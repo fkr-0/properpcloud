@@ -29,6 +29,18 @@ import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 
 fun main(args: Array<String>) {
+    if (args.contains("--locked-keyring-smoke")) {
+        runLockedKeyringSmoke()
+        return
+    }
+    if (args.contains("--sleep-monitor-smoke")) {
+        runSleepMonitorSmoke()
+        return
+    }
+    if (args.contains("--mpris-control-smoke")) {
+        runMprisControlSmoke()
+        return
+    }
     if (args.contains("--mpris-smoke")) {
         runMprisSmoke()
         return

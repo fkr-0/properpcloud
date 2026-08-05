@@ -16,7 +16,7 @@ PCLOUD_CLIENT_ID ?= $(DOTENV_PCLOUD_CLIENT_ID)
 export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
 export PCLOUD_CLIENT_ID
 
-.PHONY: help oauth-config-check oauth-config-test toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts release-020-readiness release-020-pretag release-020-readiness-strict dependencies test desktop-test desktop-smoke desktop-crash-recovery-smoke desktop-resilience-soak desktop-clean-profile-smoke desktop-mpris-smoke desktop-session-audit desktop-run desktop-package desktop-appimage desktop-appimage-smoke desktop-flatpak desktop-flatpak-smoke arch-package-gate linux-packages linux-package-smoke linux-ci docs-install docs-build lint build check ci shell compose install clean
+.PHONY: help oauth-config-check oauth-config-test toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts release-020-readiness release-020-pretag release-020-readiness-strict dependencies test desktop-test desktop-smoke desktop-crash-recovery-smoke desktop-resilience-soak desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit desktop-sleep-monitor-smoke desktop-session-audit desktop-run desktop-package desktop-appimage desktop-appimage-smoke desktop-flatpak desktop-flatpak-smoke arch-package-gate linux-packages linux-package-smoke linux-ci docs-install docs-build lint build check ci shell compose install clean
 .NOTPARALLEL: linux-ci linux-packages linux-package-smoke
 
 help: ## Show available targets.
@@ -190,14 +190,25 @@ desktop-mpris-smoke: desktop-package ## Verify packaged MPRIS properties over an
 	@command -v gdbus >/dev/null || { echo "gdbus is required" >&2; exit 1; }
 	@dbus-run-session -- bash scripts/desktop-mpris-smoke.sh
 
-desktop-session-audit: desktop-package ## Record redacted Secret Service and MPRIS evidence from the current desktop session.
+desktop-locked-keyring-smoke: desktop-package ## Verify bounded behavior against an isolated, deliberately locked Secret Service collection.
+	@bash scripts/desktop-locked-keyring-smoke.sh \
+	  desktop-app/build/compose/binaries/main/app/properpcloud/bin/properpcloud
+
+desktop-accessibility-audit: desktop-package ## Retain 200 percent high-contrast base and keyboard-help captures under Xvfb.
+	@bash scripts/desktop-accessibility-audit.sh \
+	  desktop-app/build/compose/binaries/main/app/properpcloud/bin/properpcloud
+
+desktop-sleep-monitor-smoke: desktop-package ## Verify the packaged logind PrepareForSleep system-bus subscription.
+	@desktop-app/build/compose/binaries/main/app/properpcloud/bin/properpcloud --sleep-monitor-smoke
+
+desktop-session-audit: desktop-package ## Record redacted Secret Service and externally driven MPRIS evidence from the current desktop session.
 	@python3 scripts/desktop-session-audit.py \
 	  --app desktop-app/build/compose/binaries/main/app/properpcloud/bin/properpcloud
 
 arch-package-gate: ## Clean-build, install, and smoke the immutable current-version Arch package in a container.
 	@bash scripts/arch-package-gate.sh
 
-linux-ci: desktop-test desktop-package desktop-smoke desktop-crash-recovery-smoke desktop-clean-profile-smoke desktop-mpris-smoke ## Run native Linux unit, package, recovery, clean-profile, mpv, SQLite, and MPRIS gates.
+linux-ci: desktop-test desktop-package desktop-smoke desktop-crash-recovery-smoke desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit ## Run native Linux unit, package, recovery, keyring, accessibility, mpv, SQLite, and MPRIS gates.
 
 docs-install: ## Install the pinned documentation renderer dependencies.
 	@cd website && $(NPM) ci

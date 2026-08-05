@@ -34,7 +34,9 @@ jobs:
       - name: Install Linux playback and D-Bus probes
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends mpv dbus-x11 libglib2.0-bin libsecret-tools
+          sudo apt-get install --yes --no-install-recommends \
+            mpv dbus-x11 libglib2.0-bin libsecret-tools gnome-keyring \
+            xvfb xdotool imagemagick
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
@@ -66,6 +68,8 @@ jobs:
       - name: Verify 0.2.0 promotion matrix and bounded resilience soak
         run: |
           make release-020-readiness
+          make desktop-locked-keyring-smoke DESKTOP_JAVA_HOME="$JAVA_HOME"
+          make desktop-accessibility-audit DESKTOP_JAVA_HOME="$JAVA_HOME"
           PROPERPCLOUD_SOAK_SECONDS=15 make desktop-resilience-soak DESKTOP_JAVA_HOME="$JAVA_HOME"
 
       - name: Archive executable desktop image
@@ -102,6 +106,8 @@ jobs:
             desktop-app/build/reports/tests/**
             desktop-app/build/test-results/**
             build/evidence/0.2.0-resilience-soak.*
+            build/evidence/0.2.0-locked-keyring.json
+            build/evidence/0.2.0-accessibility*
 
   appimage:
     needs: verify

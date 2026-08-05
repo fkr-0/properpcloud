@@ -309,9 +309,9 @@ artifact, or signing guarantees.
 
 ## `0.1.9` — Linux distribution and compatibility hardening
 
-Status: **published and verified on immutable tags; the remaining work is narrowed to
-executable Arch/current-session/soak evidence, visual accessibility review, alternate
-desktop sessions, and protected-provider validation**.
+Status: **published and verified on immutable tags; current-host keyring, MPRIS,
+200% high-contrast, logind, Arch, and soak evidence now passes. Remaining work is limited
+to physical/session observations, exact-tag packaging, and protected-provider validation**.
 
 `0.1.9` closes package and desktop-environment uncertainty before the parity release:
 
@@ -329,9 +329,12 @@ desktop sessions, and protected-provider validation**.
    executable commands that retain redacted evidence instead of prose-only checklists;
 7. [x] retained current i3 Secret Service/MPRIS evidence, the immutable v0.1.9 Arch
    clean-build/install smoke, and a 120-second credential-free resilience soak;
-8. [ ] complete GNOME/KDE sessions, locked-keyring/media-key/suspend observations, 200%
-   text/high-contrast/screen-reader review, and protected provider validation;
-9. [x] browser OAuth remains unclaimed until pCloud confirms a desktop redirect; the
+8. [x] isolated locked-keyring failure is bounded without touching the real collection;
+   all MPRIS methods are externally invoked; 200% high-contrast base/help captures pass;
+   and logind sleep handling checkpoints, pauses, and refreshes on wake;
+9. [ ] complete GNOME/KDE sessions, physical media-key and suspend observations, a real
+   AT-SPI screen-reader review, and protected provider validation;
+10. [x] browser OAuth remains unclaimed until pCloud confirms a desktop redirect; the
    documented regional direct-sign-in fallback is the explicit current boundary.
 
 The planned evidence schema lives in `docs/releases/0.1.9.yml`. Failed matrix cells
@@ -362,18 +365,24 @@ Completed implementation:
     alternatives, tested shortcut resolution, and shortcut suppression in modal dialogs.
 13. [x] executable current-session audit, immutable Arch clean-build/install smoke,
     bounded resilience soak, and fail-closed strict promotion validator.
+14. [x] nonblocking bounded locked-keyring restore, externally invoked MPRIS control path,
+    explicit Compose accessibility semantics and high-contrast palette, and retained 200%
+    visual evidence without color-only selected/current states.
+15. [x] logind `PrepareForSleep` handling that force-checkpoints and pauses before sleep,
+    refreshes the stream once after wake, and preserves manual recovery after process exit.
 
 Final release sequence after `0.1.8` and `0.1.9`:
 
 1. [ ] repeat the Arch gate against the exact immutable `v0.2.0` archive after the tag
    exists; the v0.1.9 clean-build/install/license/smoke baseline already passes;
-2. [ ] retain the automated i3 audit on the exact candidate and manually observe
-   locked-keyring, media-key, and suspend/resume behavior;
+2. [x] retain the automated i3 audit, isolated locked-keyring evidence, external MPRIS
+   controls, 200% high-contrast captures, and packaged logind subscription; [ ] physically
+   observe one media-key path and one real suspend/resume cycle;
 3. [x] retain the 120-second credential-free soak; [ ] additionally retain a four-hour
    protected-provider soak with genuine capability expiry and one suspend/resume cycle;
 4. [ ] complete protected EU and US pCloud browse, playback, expiry, disconnect, cleanup,
    and restart evidence without retaining media, tokens, URLs, or response bodies;
-5. [ ] complete GNOME/KDE Plasma and 200% text/high-contrast/screen-reader observations;
+5. [ ] complete GNOME/KDE Plasma sessions and a real AT-SPI screen-reader traversal/action review;
 6. [ ] run `python3 scripts/validate-020-readiness.py --pre-tag`, create the signed tag only
    after it passes, then run `--strict` after exact-tag package verification and before
    publication; review every explicit exception without silently relaxing a failed gate.

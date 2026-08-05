@@ -24,6 +24,8 @@ import dev.properpcloud.desktop.data.SqliteStateRepository
 import dev.properpcloud.desktop.mpris.MprisActions
 import dev.properpcloud.desktop.mpris.MprisService
 import dev.properpcloud.desktop.mpris.MprisSnapshot
+import dev.properpcloud.desktop.platform.LogindSleepMonitor
+import dev.properpcloud.desktop.platform.SleepTransitionPolicy
 import dev.properpcloud.desktop.platform.XdgPaths
 import dev.properpcloud.desktop.playback.MpvController
 import dev.properpcloud.desktop.playback.MpvState
@@ -48,6 +50,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.awt.Desktop
 import java.net.URI
@@ -83,6 +86,8 @@ class DesktopController(
     val state: StateFlow<DesktopUiState> = mutableState.asStateFlow()
     private val closing = AtomicBoolean(false)
     private var mpris: MprisService? = null
+    private var sleepMonitor: LogindSleepMonitor? = null
+    private val sleepTransitionPolicy = SleepTransitionPolicy()
     private val checkpointPolicy = PlaybackCheckpointPolicy(minimumPositionDeltaMillis = 5_000)
     private val streamRetryGate = SignedLinkRetryGate()
     private var checkpointCursor = PlaybackCheckpointCursor()
@@ -90,13 +95,15 @@ class DesktopController(
     private var streamRefreshGeneration = 0L
     private var pCloudConnectJob: Job? = null
     private var pCloudConnectGeneration = 0L
+    private var pCloudRestoreJob: Job? = null
+    private var pCloudRestoreGeneration = 0L
     private var pCloudSession: PCloudSession? = null
 
     init {
-        restorePCloudSession()
-        val selected = repository.setting("source")
-        if (selected == "pcloud") sources.values.firstOrNull { it.id.value == "pcloud" }?.let { source = it }
+        val selectedSource = repository.setting("source")
+        restorePCloudSession(selectedSource)
         mpris = runCatching { MprisService(mprisActions()) }.getOrNull()
+        sleepMonitor = runCatching { LogindSleepMonitor(::onPrepareForSleep) }.getOrNull()
         scope.launch {
             mpv.state.collect { playback ->
                 mutableState.value = mutableState.value.copy(playback = playback)
@@ -108,11 +115,14 @@ class DesktopController(
         scope.launch { loadFolder(source.root.id, resetBreadcrumbs = true); restoreQueue() }
     }
 
-    fun useDemo() = scope.launch {
-        source = demoSource
-        repository.setSetting("source", "demo")
-        loadFolder(source.root.id, resetBreadcrumbs = true)
-        mutableState.value = mutableState.value.copy(sourceName = source.root.name, status = "Using the deterministic offline demo")
+    fun useDemo() {
+        cancelPCloudRestore()
+        scope.launch {
+            source = demoSource
+            repository.setSetting("source", "demo")
+            loadFolder(source.root.id, resetBreadcrumbs = true)
+            mutableState.value = mutableState.value.copy(sourceName = source.root.name, status = "Using the deterministic offline demo")
+        }
     }
 
     fun usePCloud() = scope.launch {
@@ -127,6 +137,7 @@ class DesktopController(
     }
 
     fun connectPCloud(email: String, password: CharArray, region: PCloudAccountRegion) {
+        cancelPCloudRestore()
         pCloudConnectJob?.cancel()
         val generation = ++pCloudConnectGeneration
         mutableState.value = mutableState.value.copy(busy = true, status = "Connecting to pCloud ${region.displayName}…")
@@ -183,6 +194,7 @@ class DesktopController(
     }
 
     fun disconnectPCloud() {
+        cancelPCloudRestore()
         pCloudConnectGeneration += 1
         streamRefreshGeneration += 1
         streamRefreshJob?.cancel()
@@ -428,6 +440,37 @@ class DesktopController(
         updateMpris()
     }
 
+    private fun onPrepareForSleep(preparingForSleep: Boolean) {
+        val decision = sleepTransitionPolicy.transition(preparingForSleep, mutableState.value.playback)
+        if (preparingForSleep) {
+            if (decision.forceCheckpoint) checkpoint(mutableState.value.playback, force = true)
+            val pauseFailure = if (decision.pausePlayback) {
+                runCatching { runBlocking { mpv.pause(true) } }.exceptionOrNull()
+            } else {
+                null
+            }
+            if (pauseFailure != null) {
+                playbackFailure(pauseFailure)
+                return
+            }
+            mutableState.value = mutableState.value.copy(status = decision.status)
+            return
+        }
+
+        scope.launch {
+            mutableState.value = mutableState.value.copy(status = decision.status)
+            if (decision.refreshAndResume) {
+                if (mutableState.value.playback.restartAvailable || mutableState.value.playback.unexpectedExit) {
+                    mutableState.value = mutableState.value.copy(
+                        status = "The player stopped during sleep; restart it manually to resume",
+                    )
+                } else {
+                    playCurrent()
+                }
+            }
+        }
+    }
+
     private fun checkpoint(playback: MpvState, force: Boolean = false) {
         val track = mutableState.value.queue.current?.track ?: return
         val decision = checkpointPolicy.evaluate(
@@ -447,25 +490,63 @@ class DesktopController(
         decision.progress?.let(repository::saveProgress)
     }
 
-    private fun restorePCloudSession() {
+    private fun restorePCloudSession(selectedSource: String?) {
+        val generation = ++pCloudRestoreGeneration
         if (!PCloudSessionRestorePolicy.permitsRestore(repository.setting(PCloudSessionRestorePolicy.SETTING_KEY))) {
-            if (vault.available()) {
-                scope.launch(Dispatchers.IO) { runCatching { vault.clear(PCLOUD_SESSION_KEY) } }
+            pCloudRestoreJob = scope.launch(Dispatchers.IO) {
+                if (vault.available()) runCatching { vault.clear(PCLOUD_SESSION_KEY) }
             }
             return
         }
-        if (!vault.available()) return
-        val secret = runCatching { vault.lookup(PCLOUD_SESSION_KEY) }.getOrNull() ?: return
-        try {
-            val session = gson.fromJson(secret.concatToString(), PCloudSession::class.java)
-            attachPCloud(session)
-            mutableState.value = mutableState.value.copy(connectedToPCloud = true)
-        } catch (_: RuntimeException) {
-            repository.setSetting(PCloudSessionRestorePolicy.SETTING_KEY, PCloudSessionRestorePolicy.DISCONNECTED)
-            runCatching { vault.clear(PCLOUD_SESSION_KEY) }
-        } finally {
-            secret.fill('\u0000')
+        pCloudRestoreJob = scope.launch(Dispatchers.IO) {
+            if (!vault.available()) {
+                if (generation == pCloudRestoreGeneration && !closing.get()) {
+                    mutableState.value = mutableState.value.copy(
+                        status = "The stored pCloud session is unavailable because Secret Service is not running",
+                    )
+                }
+                return@launch
+            }
+            val lookup = runCatching { vault.lookup(PCLOUD_SESSION_KEY) }
+            if (generation != pCloudRestoreGeneration || closing.get()) return@launch
+            if (lookup.isFailure) {
+                mutableState.value = mutableState.value.copy(
+                    status = "The stored pCloud session is locked or unavailable; unlock the keyring or reconnect",
+                )
+                return@launch
+            }
+            val secret = lookup.getOrNull() ?: return@launch
+            try {
+                val session = gson.fromJson(secret.concatToString(), PCloudSession::class.java)
+                withContext(Dispatchers.Default) {
+                    if (generation != pCloudRestoreGeneration || closing.get()) return@withContext
+                    attachPCloud(session)
+                    mutableState.value = mutableState.value.copy(connectedToPCloud = true)
+                    if (selectedSource == "pcloud") {
+                        source = sources.getValue(dev.properpcloud.core.model.SourceId("pcloud"))
+                        loadFolder(source.root.id, resetBreadcrumbs = true)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: RuntimeException) {
+                if (generation == pCloudRestoreGeneration && !closing.get()) {
+                    repository.setSetting(PCloudSessionRestorePolicy.SETTING_KEY, PCloudSessionRestorePolicy.DISCONNECTED)
+                    runCatching { vault.clear(PCLOUD_SESSION_KEY) }
+                    mutableState.value = mutableState.value.copy(
+                        status = "The stored pCloud session was invalid and has been cleared",
+                    )
+                }
+            } finally {
+                secret.fill('\u0000')
+            }
         }
+    }
+
+    private fun cancelPCloudRestore() {
+        pCloudRestoreGeneration += 1
+        pCloudRestoreJob?.cancel()
+        pCloudRestoreJob = null
     }
 
     private fun attachPCloud(session: PCloudSession) {
@@ -522,7 +603,9 @@ class DesktopController(
 
     override fun close() {
         if (!closing.compareAndSet(false, true)) return
+        cancelPCloudRestore()
         runCatching { checkpoint(mutableState.value.playback, force = true) }
+        runCatching { sleepMonitor?.close() }
         runCatching { mpris?.close() }
         runCatching { mpv.close() }
         runCatching { repository.close() }

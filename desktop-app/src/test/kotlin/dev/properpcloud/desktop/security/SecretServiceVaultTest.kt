@@ -6,6 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.file.Files
 import kotlin.io.path.writeText
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.measureTime
 
 class SecretServiceVaultTest {
     @Test
@@ -34,6 +36,33 @@ class SecretServiceVaultTest {
 
             assertArrayEquals(CharArray(secret.size), secret)
             assertTrue(captured.toFile().readText() == "temporary-token\n")
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `locked or blocked lookup is terminated at the configured bound`() {
+        val root = Files.createTempDirectory("properpcloud-secret-tool-timeout-")
+        try {
+            val executable = root.resolve("secret-tool")
+            executable.writeText(
+                """#!/bin/sh
+                |set -eu
+                |if [ "${'$'}{1:-}" = "lookup" ]; then sleep 10; fi
+                |exit 1
+                |""".trimMargin(),
+            )
+            executable.toFile().setExecutable(true)
+
+            val duration = measureTime {
+                val failure = runCatching {
+                    SecretServiceVault(executable.toString(), lookupTimeoutSeconds = 1).lookup("pcloud-session")
+                }
+                assertTrue(failure.exceptionOrNull()?.message == "Secret Service lookup timed out")
+            }
+
+            assertTrue(duration < 3.seconds)
         } finally {
             root.toFile().deleteRecursively()
         }
