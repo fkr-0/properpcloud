@@ -16,6 +16,7 @@ java {
 
 dependencies {
     implementation(projects.coreModel)
+    implementation(libs.coroutines.core)
     implementation(libs.jaudiotagger)
     testImplementation(libs.junit4)
 }

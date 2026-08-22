@@ -1,0 +1,32 @@
+release:
+  version: 0.2.0-rc.1
+  tag: v0.2.0-rc.1
+  status: release_candidate_for_hands_on_testing
+  base_release: v0.1.10
+  final_target: v0.2.0
+  objective: publish the currently verified 0.2.0 hardening implementation for operator testing without claiming final promotion
+  verified_before_tag:
+    - make ci
+    - make fast-test
+    - make desktop-test
+    - make desktop-package
+    - make release-020-readiness
+    - packaged MPRIS, locked-keyring, accessibility, and logind sleep-monitor smokes
+    - documentation production dependency audit with zero vulnerabilities
+  included_work:
+    - native selected-directory filesystem-first metadata workbench
+    - guarded tag apply, exact-hash rollback, and durable interrupted-replacement recovery authority
+    - deterministic direct and recursive playlist planning with stale-subtree evidence guards
+    - desktop local-folder browsing, playback, reconciliation, recovery UI, and keyboard-accessible controls
+    - shared Android/Linux model and metadata workflow hardening
+  final_0_2_0_blockers_not_claimed_by_this_candidate:
+    - real packaged process terminate, restart, explicit root reselection, and guarded rollback observation
+    - physical power-cut filesystem durability evidence
+    - real AT-SPI selected-folder screen-reader and focus traversal review
+    - physical media-key behavior and physical suspend/resume cycle
+    - GNOME and KDE Plasma session observations
+    - protected Europe and United States pCloud account validation
+    - retained protected-provider soak with real capability expiry
+    - exact immutable v0.2.0 Arch archive rebuild after final tag creation
+  publication_scope: debug-signed Android demonstration APK plus verified AppImage and Flatpak, checksums, evidence, and attestations
+  warning: this prerelease is for hands-on testing; final v0.2.0 promotion remains governed by docs/reviews/0.2.0-promotion-matrix.yml

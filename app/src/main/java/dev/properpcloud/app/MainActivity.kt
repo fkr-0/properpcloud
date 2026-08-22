@@ -99,6 +99,7 @@ class MainActivity : ComponentActivity() {
                     stageMetadata = viewModel::stageMetadata,
                     updateBatchField = viewModel::updateBatchField,
                     updateBatchSequence = viewModel::updateBatchSequence,
+                    updateBatchPlaylist = viewModel::updateBatchPlaylist,
                     searchBatchMetadata = viewModel::searchBatchMetadata,
                     selectBatchCandidate = viewModel::selectBatchCandidate,
                     toggleBatchCandidateField = viewModel::toggleBatchCandidateField,

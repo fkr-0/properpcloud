@@ -10,7 +10,11 @@ agent:
   notes: |
     Keep provider-specific code behind core-model interfaces. Never commit OAuth tokens,
     pCloud passwords, app secrets, signed stream URLs, local.properties, APKs, or private media.
-    VERSION is canonical; published tags are immutable. make ci is the merge/release gate.
+    VERSION is canonical; published tags are immutable. For routine work use make local-check.
+    If the pinned build image already exists, a narrow make fast-test/module test is acceptable,
+    but do not build or pull the Android toolchain merely to re-run CI locally. Do not repeatedly
+    assemble the APK, run Robolectric, lint, or make ci locally; GitHub Actions is the authoritative
+    merge gate. Full local verification is reserved for explicit release/debug requests.
   tasks:
     - Confirm the Android redirect/implicit-grant settings and run protected US/EU OAuth/logout validation with the configured PCLOUD_CLIENT_ID repository variable.
     - Complete the external 0.1.5 physical-device process-death and accessibility matrix.
@@ -63,7 +67,13 @@ commands:
     timeoutMs: 300000
     run: ["make", "release-check"]
   test:
-    description: Run JVM, provider, persistence, and Robolectric Compose tests in Docker
+    description: Run cheap host contract/config checks; CI owns Android and full JVM compilation
+    category: test
+    cwd: .
+    timeoutMs: 120000
+    run: ["make", "local-check"]
+  full-test:
+    description: Run the complete JVM and Robolectric suite; normally leave this to CI
     category: test
     cwd: .
     timeoutMs: 1200000

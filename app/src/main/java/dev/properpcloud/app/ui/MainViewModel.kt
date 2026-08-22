@@ -9,6 +9,7 @@ import dev.properpcloud.app.AppContainer
 import dev.properpcloud.app.data.SourceKind
 import dev.properpcloud.app.metadata.BatchFieldDraft
 import dev.properpcloud.app.metadata.LoadedMetadataItem
+import dev.properpcloud.app.metadata.MetadataBundleItem
 import dev.properpcloud.app.metadata.MetadataDraftPlanner
 import dev.properpcloud.app.metadata.MetadataExportArtifact
 import dev.properpcloud.app.playback.PlaybackController
@@ -31,6 +32,7 @@ import dev.properpcloud.core.model.ResumePolicy
 import dev.properpcloud.core.model.TagField
 import dev.properpcloud.core.model.TrackSortKey
 import dev.properpcloud.core.model.TrackSortPolicy
+import dev.properpcloud.metadata.tags.FolderPlaylistOrder
 import dev.properpcloud.source.pcloud.PCloudSession
 import dev.properpcloud.source.pcloud.PCloudAccountRegion
 import dev.properpcloud.source.pcloud.PCloudDirectLoginResult
@@ -260,6 +262,20 @@ class MainViewModel(
         metadataExportArtifact = null
     }
 
+    fun updateBatchPlaylist(include: Boolean, order: FolderPlaylistOrder) {
+        val editor = _state.value.metadataEditor as? MetadataEditorUiState.Batch ?: return
+        _state.value = _state.value.copy(
+            metadataEditor = editor.copy(
+                includePlaylist = include,
+                playlistOrder = order,
+                phase = MetadataPhase.READY,
+                artifact = null,
+                status = null,
+            ),
+        )
+        metadataExportArtifact = null
+    }
+
     fun resetMetadataField(field: TagField) {
         val editor = _state.value.metadataEditor as? MetadataEditorUiState.Single ?: return
         updateMetadataField(field, editor.original.fields[field]?.value.orEmpty())
@@ -303,9 +319,9 @@ class MainViewModel(
         _state.value = _state.value.copy(
             metadataEditor = editor.copy(
                 selectedCandidateId = candidate?.id,
-                acceptedCandidateFields = candidate?.fields?.keys
-                    ?.intersect(MetadataDraftPlanner.onlineCandidateFields)
-                    .orEmpty(),
+                // Online matches are evidence, not authority. Selecting a recording only
+                // opens its field review; the user must opt each field in explicitly.
+                acceptedCandidateFields = emptySet(),
             ),
         )
     }
@@ -448,9 +464,7 @@ class MainViewModel(
                 val candidate = item.candidates.firstOrNull { it.id == candidateId }
                 item.copy(
                     selectedCandidateId = candidate?.id,
-                    acceptedCandidateFields = candidate?.fields?.keys
-                        ?.intersect(MetadataDraftPlanner.onlineCandidateFields)
-                        .orEmpty(),
+                    acceptedCandidateFields = emptySet(),
                 )
             }
         }
@@ -488,7 +502,7 @@ class MainViewModel(
             ),
         )
         metadataJob = viewModelScope.launch {
-            val results = mutableListOf<dev.properpcloud.metadata.tags.StagedTagResult>()
+            val results = mutableListOf<MetadataBundleItem>()
             var artifact: MetadataExportArtifact? = null
             var committed = false
             try {
@@ -515,7 +529,13 @@ class MainViewModel(
                 } catch (error: Throwable) {
                     Result.failure(error)
                 }
-                outcome.getOrNull()?.let(results::add)
+                outcome.getOrNull()?.let { staged ->
+                    results += MetadataBundleItem(
+                        originalFilename = loaded?.prepared?.originalFilename ?: item.track.name,
+                        result = staged,
+                        modifiedAtEpochMillis = item.track.modifiedAtEpochMillis,
+                    )
+                }
                 items = items.map { current ->
                     if (current.track.metadataKey() != item.track.metadataKey()) current else current.copy(
                         status = outcome.exceptionOrNull()?.userMessage("Staging failed")
@@ -529,8 +549,16 @@ class MainViewModel(
             }
             artifact = when (results.size) {
                 0 -> null
-                1 -> container.metadata.artifact(results.single())
-                else -> container.metadata.bundle(results)
+                1 -> if (editor.includePlaylist) {
+                    container.metadata.bundle(results, includePlaylist = true, playlistOrder = editor.playlistOrder)
+                } else {
+                    container.metadata.artifact(results.single().result)
+                }
+                else -> container.metadata.bundle(
+                    results,
+                    includePlaylist = editor.includePlaylist,
+                    playlistOrder = editor.playlistOrder,
+                )
             }
             val current = _state.value.metadataEditor as? MetadataEditorUiState.Batch ?: return@launch
             metadataExportArtifact = artifact
@@ -542,15 +570,32 @@ class MainViewModel(
                     status = if (artifact == null) {
                         "No selected file produced a changed candidate."
                     } else {
-                        "Verified ${results.size} candidate file(s); originals and pCloud objects are unchanged."
+                        buildString {
+                            append("Verified ${results.size} candidate file(s); originals and pCloud objects are unchanged.")
+                            if (editor.includePlaylist) append(" The export includes a relative UTF-8 playlist.")
+                        }
                     },
                 ),
             )
             committed = true
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                val current = _state.value.metadataEditor as? MetadataEditorUiState.Batch
+                if (current != null) {
+                    metadataExportArtifact = null
+                    _state.value = _state.value.copy(
+                        metadataEditor = current.copy(
+                            phase = MetadataPhase.READY,
+                            artifact = null,
+                            status = error.userMessage("Batch metadata export failed"),
+                        ),
+                    )
+                }
             } finally {
                 if (!committed) {
                     artifact?.file?.delete()
-                    results.forEach { it.stagedFile.delete() }
+                    results.forEach { it.result.stagedFile.delete() }
                 }
             }
         }

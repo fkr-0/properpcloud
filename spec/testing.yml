@@ -264,14 +264,17 @@ testing:
           inject: expected apply events interleaved with an external modification
           expect: own result reconciled while the external change remains visible and conflicting
         TEST-TAG-FOLDER-CONFLICT:
-          inject: source SHA-256 changes after proposal approval
-          expect: replacement is refused and affected fields require rescan or rebase
+          inject: source SHA-256 changes after proposal approval, after staging, or after rollback-copy creation immediately before replacement
+          expect: replacement is refused at every guarded pre-mutation boundary, external bytes remain untouched, and affected fields require rescan or rebase
         TEST-TAG-FOLDER-ATOMIC-APPLY:
           fixture: supported local audio file on an atomic-move filesystem
           expect: sibling staging, tag reread, decoder probe, fsync, atomic replacement, final readback, and watcher verification
         TEST-TAG-FOLDER-ROLLBACK:
-          inject: final readback mismatch after replacement
-          expect: exact original bytes restored atomically and verified; batch stops if rollback cannot be proven
+          inject: final readback mismatch, user-requested rollback after a later external edit, and an atomic-replace wrapper that reports interruption after moving the exact staged candidate
+          expect: automatic or explicit rollback restores only when the current result hash is proven; later external edits are never overwritten; candidate-current interruption remains stale until guarded rollback; unknown current bytes stay indeterminate and stop mutation
+        TEST-TAG-FOLDER-POWER-LOSS-RECOVERY:
+          inject: atomically publish native recovery authority, replace the target, terminate before final apply verification/disarm, then restart and explicitly reselect the same root
+          expect: the record contains encoded basenames and original/expected-result hashes but no complete private path; restart discovery under only the reselected non-symlink root reconstructs rollback authority solely when current bytes equal the expected result and rollback bytes equal the original; current-original is safely retired and malformed/missing/external-mismatch evidence remains mutation-blocking without force overwrite
         TEST-TAG-FOLDER-NONATOMIC-EXPORT-ONLY:
           inject: atomic replacement capability unavailable or cross-filesystem staging requested
           expect: no source write and only a reread-verified export candidate

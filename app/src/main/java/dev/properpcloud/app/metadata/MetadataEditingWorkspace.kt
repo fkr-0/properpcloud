@@ -9,8 +9,10 @@ import dev.properpcloud.core.model.PreparedMetadataSource
 import dev.properpcloud.core.model.TagField
 import dev.properpcloud.core.model.TagPatch
 import dev.properpcloud.core.model.TagSnapshot
+import dev.properpcloud.core.model.NaturalTextComparator
 import dev.properpcloud.metadata.online.OnlineMetadataProvider
 import dev.properpcloud.metadata.tags.AudioTagToolkit
+import dev.properpcloud.metadata.tags.FolderPlaylistOrder
 import dev.properpcloud.metadata.tags.StagedTagResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,6 +27,121 @@ data class LoadedMetadataItem(
     val prepared: PreparedMetadataSource,
     val snapshot: TagSnapshot,
 )
+
+data class MetadataBundleItem(
+    val originalFilename: String,
+    val result: StagedTagResult,
+    val modifiedAtEpochMillis: Long? = null,
+) {
+    init {
+        require(originalFilename.isNotBlank()) { "metadata bundle filename must not be blank" }
+    }
+}
+
+private data class BundleEntry(
+    val filename: String,
+    val item: MetadataBundleItem,
+)
+
+private fun uniqueArchiveName(original: String, usedNames: MutableSet<String>): String {
+    val safe = original
+        .substringAfterLast('/')
+        .substringAfterLast('\\')
+        .replace(Regex("[\\u0000-\\u001f\\u007f]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim(' ', '.')
+        .ifBlank { "audio" }
+    if (usedNames.add(safe.lowercase())) return safe
+    val stem = safe.substringBeforeLast('.', safe)
+    val extension = safe.substringAfterLast('.', "").takeIf(String::isNotBlank)?.let { ".$it" }.orEmpty()
+    var suffix = 2
+    while (true) {
+        val candidate = "$stem ($suffix)$extension"
+        if (usedNames.add(candidate.lowercase())) return candidate
+        suffix++
+    }
+}
+
+private fun bundlePlaylistName(entries: List<BundleEntry>): String {
+    val album = unanimousBundleValue(entries) { entry ->
+        entry.item.result.snapshot.fields[TagField.ALBUM]?.value?.trim()?.takeIf(String::isNotBlank)
+    }
+    val artist = unanimousBundleValue(entries) { entry ->
+        val snapshot = entry.item.result.snapshot
+        snapshot.fields[TagField.ALBUM_ARTIST]?.value?.trim()?.takeIf(String::isNotBlank)
+            ?: snapshot.fields[TagField.ARTIST]?.value?.trim()?.takeIf(String::isNotBlank)
+    }
+    val stem = when {
+        artist != null && album != null -> "$artist - $album"
+        album != null -> album
+        else -> "properpcloud selection"
+    }
+        ?.replace(Regex("[\\u0000-\\u001f<>:\"/\\\\|?*\\u007f]"), " ")
+        ?.replace(Regex("\\s+"), " ")
+        ?.trim(' ', '.')
+        ?.takeIf(String::isNotBlank)
+        ?: "properpcloud selection"
+    return "$stem.m3u8"
+}
+
+private fun unanimousBundleValue(entries: List<BundleEntry>, value: (BundleEntry) -> String?): String? {
+    if (entries.isEmpty()) return null
+    val values = entries.map { value(it)?.trim()?.takeIf(String::isNotBlank) }
+    if (values.any { it == null }) return null
+    return values.filterNotNull().distinct().singleOrNull()
+}
+
+private fun bundlePlaylist(entries: List<BundleEntry>, order: FolderPlaylistOrder): String {
+    val sorted = entries.sortedWith(Comparator { left, right ->
+        when (order) {
+            FolderPlaylistOrder.NATURAL_FILENAME ->
+                NaturalTextComparator.compare(left.filename, right.filename)
+            FolderPlaylistOrder.TAGGED_TITLE -> {
+                val title = NaturalTextComparator.compare(bundleTitle(left), bundleTitle(right))
+                if (title != 0) title else NaturalTextComparator.compare(left.filename, right.filename)
+            }
+            FolderPlaylistOrder.TAG_TRACK_NUMBER -> {
+                val disc = compareValues(bundleNumber(left, TagField.DISC_NUMBER), bundleNumber(right, TagField.DISC_NUMBER))
+                if (disc != 0) return@Comparator disc
+                val track = compareValues(bundleNumber(left, TagField.TRACK_NUMBER), bundleNumber(right, TagField.TRACK_NUMBER))
+                if (track != 0) return@Comparator track
+                NaturalTextComparator.compare(left.filename, right.filename)
+            }
+            FolderPlaylistOrder.MODIFICATION_TIME -> {
+                val modified = compareValues(
+                    left.item.modifiedAtEpochMillis ?: Long.MAX_VALUE,
+                    right.item.modifiedAtEpochMillis ?: Long.MAX_VALUE,
+                )
+                if (modified != 0) modified else NaturalTextComparator.compare(left.filename, right.filename)
+            }
+        }
+    })
+    return buildString {
+        append("#EXTM3U\n")
+        sorted.forEach { entry ->
+            val artist = entry.item.result.snapshot.fields[TagField.ARTIST]?.value?.trim()?.takeIf(String::isNotBlank)
+            val title = bundleTitle(entry)
+            val durationSeconds = entry.item.result.snapshot.durationMillis
+                ?.takeIf { it > 0L }
+                ?.let { ((it + 500L) / 1_000L).coerceAtLeast(1L) }
+            append("#EXTINF:").append(durationSeconds ?: -1).append(',')
+            append((if (artist == null) title else "$artist - $title").replace('\r', ' ').replace('\n', ' '))
+            append('\n')
+            append("./").append(entry.filename).append('\n')
+        }
+    }
+}
+
+private fun bundleTitle(entry: BundleEntry): String =
+    entry.item.result.snapshot.fields[TagField.TITLE]?.value?.trim()?.takeIf(String::isNotBlank)
+        ?: entry.filename.substringBeforeLast('.', entry.filename)
+
+private fun bundleNumber(entry: BundleEntry, field: TagField): Int =
+    entry.item.result.snapshot.fields[field]?.value
+        ?.substringBefore('/')
+        ?.trim()
+        ?.toIntOrNull()
+        ?: Int.MAX_VALUE
 
 data class MetadataExportArtifact(
     val file: File,
@@ -95,27 +212,38 @@ class MetadataEditingWorkspace(
         )
     }
 
-    suspend fun bundle(results: List<StagedTagResult>): MetadataExportArtifact {
+    suspend fun bundle(
+        items: List<MetadataBundleItem>,
+        includePlaylist: Boolean = true,
+        playlistOrder: FolderPlaylistOrder = FolderPlaylistOrder.TAG_TRACK_NUMBER,
+    ): MetadataExportArtifact {
         var completedBundle: File? = null
         try {
             return withContext(Dispatchers.IO) {
-                require(results.isNotEmpty()) { "metadata bundle requires at least one staged file" }
+                require(items.isNotEmpty()) { "metadata bundle requires at least one staged file" }
                 val bundle = File(
                     exportDirectory,
                     "properpcloud-tagged-${System.currentTimeMillis()}-${UUID.randomUUID()}.zip",
                 )
                 try {
                     ZipOutputStream(bundle.outputStream().buffered()).use { zip ->
+                        val usedNames = mutableSetOf<String>()
+                        val bundleEntries = items.map { item ->
+                            BundleEntry(
+                                filename = uniqueArchiveName(item.originalFilename, usedNames),
+                                item = item,
+                            )
+                        }
                         val manifest = buildString {
                             appendLine("index,filename,sha256,changed_fields")
-                            results.forEachIndexed { index, result ->
-                                val name = "${(index + 1).toString().padStart(2, '0')}-${result.stagedFile.name.sanitize()}"
+                            bundleEntries.forEachIndexed { index, entry ->
+                                val result = entry.item.result
                                 append(index + 1).append(',')
-                                    .append(name.csv()).append(',')
+                                    .append(entry.filename.csv()).append(',')
                                     .append(result.stagedSha256).append(',')
                                     .append(result.changedFields.joinToString("|") { it.name }.csv())
                                     .appendLine()
-                                zip.putNextEntry(ZipEntry(name))
+                                zip.putNextEntry(ZipEntry(entry.filename))
                                 result.stagedFile.inputStream().use { it.copyTo(zip) }
                                 zip.closeEntry()
                             }
@@ -123,16 +251,22 @@ class MetadataEditingWorkspace(
                         zip.putNextEntry(ZipEntry("metadata-manifest.csv"))
                         zip.write(manifest.toByteArray())
                         zip.closeEntry()
+                        if (includePlaylist) {
+                            val playlistName = bundlePlaylistName(bundleEntries)
+                            zip.putNextEntry(ZipEntry(playlistName))
+                            zip.write(bundlePlaylist(bundleEntries, playlistOrder).toByteArray(Charsets.UTF_8))
+                            zip.closeEntry()
+                        }
                     }
                     val artifact = MetadataExportArtifact(
                         file = bundle,
                         displayName = bundle.name,
                         mimeType = "application/zip",
-                        itemCount = results.size,
+                        itemCount = items.size,
                         sha256 = bundle.sha256(),
                     )
                     completedBundle = bundle
-                    results.forEach { it.stagedFile.delete() }
+                    items.forEach { it.result.stagedFile.delete() }
                     artifact
                 } catch (error: Throwable) {
                     bundle.delete()

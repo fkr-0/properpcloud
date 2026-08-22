@@ -1,6 +1,8 @@
 package dev.properpcloud.app.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +24,7 @@ import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -38,6 +42,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -48,6 +56,7 @@ import dev.properpcloud.app.metadata.BatchFieldDraft
 import dev.properpcloud.app.metadata.MetadataDraftPlanner
 import dev.properpcloud.core.model.MetadataCandidate
 import dev.properpcloud.core.model.TagField
+import dev.properpcloud.metadata.tags.FolderPlaylistOrder
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +78,13 @@ fun MetadataEditorScreen(state: AppUiState, actions: AppActions) {
             is MetadataEditorUiState.Batch -> BatchMetadataEditor(editor, actions)
         }
     }
+}
+
+private fun playlistOrderLabel(order: FolderPlaylistOrder): String = when (order) {
+    FolderPlaylistOrder.NATURAL_FILENAME -> "Natural filename"
+    FolderPlaylistOrder.TAG_TRACK_NUMBER -> "Disc and track tags"
+    FolderPlaylistOrder.TAGGED_TITLE -> "Tagged title"
+    FolderPlaylistOrder.MODIFICATION_TIME -> "Modification time"
 }
 
 @Composable
@@ -112,6 +128,7 @@ private fun MetadataFailure(title: String, message: String, close: () -> Unit) {
 private fun SingleMetadataEditor(editor: MetadataEditorUiState.Single, actions: AppActions) {
     val patch = MetadataDraftPlanner.patch(editor.original, editor.draft)
     val changed = patch.changedFields(editor.original)
+    var reviewOpen by remember(editor) { mutableStateOf(false) }
     LazyColumn(
         Modifier.fillMaxSize().testTag("metadata-editor-list"),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -177,22 +194,37 @@ private fun SingleMetadataEditor(editor: MetadataEditorUiState.Single, actions: 
         }
         item {
             Button(
-                onClick = actions.stageMetadata,
+                onClick = { reviewOpen = true },
                 enabled = changed.isNotEmpty() && editor.phase != MetadataPhase.STAGING,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).testTag("stage-metadata"),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).testTag("review-metadata"),
             ) {
                 if (editor.phase == MetadataPhase.STAGING) CircularProgressIndicator(Modifier.width(20.dp))
-                else Icon(Icons.Default.FileDownloadDone, contentDescription = null)
+                else Icon(Icons.Default.EditNote, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("Stage and verify ${changed.size} change(s)")
+                Text("Review ${changed.size} change(s)")
             }
             Spacer(Modifier.height(32.dp))
         }
+    }
+    if (reviewOpen) {
+        SingleMetadataReviewDialog(
+            editor = editor,
+            changed = changed,
+            onDismiss = { reviewOpen = false },
+            onConfirm = {
+                reviewOpen = false
+                actions.stageMetadata()
+            },
+        )
     }
 }
 
 @Composable
 private fun BatchMetadataEditor(editor: MetadataEditorUiState.Batch, actions: AppActions) {
+    var reviewOpen by remember(editor) { mutableStateOf(false) }
+    val hasPlannedChanges = editor.sequenceTracks ||
+        editor.commonFields.values.any { it.enabled } ||
+        editor.items.any { it.acceptedCandidateFields.isNotEmpty() }
     LazyColumn(
         Modifier.fillMaxSize().testTag("metadata-editor-list"),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -244,6 +276,46 @@ private fun BatchMetadataEditor(editor: MetadataEditorUiState.Batch, actions: Ap
             }
         }
         item {
+            SectionTitle("Playlist export", "Derived file inside the verified ZIP")
+            Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp).testTag("batch-playlist-options")) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = editor.includePlaylist,
+                            enabled = editor.phase != MetadataPhase.STAGING,
+                            onCheckedChange = { actions.updateBatchPlaylist(it, editor.playlistOrder) },
+                            modifier = Modifier.testTag("include-batch-playlist"),
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text("Include relative UTF-8 playlist")
+                            Text(
+                                "The playlist is derived from the reviewed export names; it never stores provider URLs.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    if (editor.includePlaylist) {
+                        FolderPlaylistOrder.entries.forEach { order ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { actions.updateBatchPlaylist(true, order) }
+                                    .testTag("batch-playlist-order-${order.name}"),
+                            ) {
+                                RadioButton(
+                                    selected = editor.playlistOrder == order,
+                                    onClick = { actions.updateBatchPlaylist(true, order) },
+                                )
+                                Text(playlistOrderLabel(order))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        item {
             SectionTitle("Online proposals", "Optional, reviewed per file")
             OutlinedButton(
                 onClick = actions.searchBatchMetadata,
@@ -257,7 +329,10 @@ private fun BatchMetadataEditor(editor: MetadataEditorUiState.Batch, actions: Ap
             if (editor.phase == MetadataPhase.SEARCHING || editor.phase == MetadataPhase.STAGING) {
                 LinearProgressIndicator(
                     progress = { editor.progressCompleted.toFloat() / editor.progressTotal.coerceAtLeast(1) },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 8.dp)
+                        .testTag("batch-metadata-progress"),
                 )
             }
         }
@@ -268,17 +343,136 @@ private fun BatchMetadataEditor(editor: MetadataEditorUiState.Batch, actions: Ap
         editor.artifact?.let { item { ArtifactCard(it, actions.shareMetadataArtifact) } }
         item {
             Button(
-                onClick = actions.stageBatchMetadata,
-                enabled = editor.phase != MetadataPhase.STAGING && editor.phase != MetadataPhase.SEARCHING,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).testTag("stage-batch-metadata"),
+                onClick = { reviewOpen = true },
+                enabled = hasPlannedChanges && editor.phase != MetadataPhase.STAGING && editor.phase != MetadataPhase.SEARCHING,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).testTag("review-batch-metadata"),
             ) {
-                Icon(Icons.Default.FileDownloadDone, contentDescription = null)
+                Icon(Icons.Default.EditNote, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("Stage and verify batch")
+                Text("Review batch changes")
             }
             Spacer(Modifier.height(32.dp))
         }
     }
+    if (reviewOpen) {
+        BatchMetadataReviewDialog(
+            editor = editor,
+            onDismiss = { reviewOpen = false },
+            onConfirm = {
+                reviewOpen = false
+                actions.stageBatchMetadata()
+            },
+        )
+    }
+}
+
+@Composable
+private fun SingleMetadataReviewDialog(
+    editor: MetadataEditorUiState.Single,
+    changed: Set<TagField>,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        modifier = Modifier.testTag("metadata-review-dialog"),
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.EditNote, contentDescription = null) },
+        title = { Text("Review tag changes") },
+        text = {
+            Column(
+                Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("${changed.size} field(s) will change in a separate candidate copy.")
+                changed.sortedBy(::metadataFieldLabel).forEach { field ->
+                    Column(Modifier.testTag("metadata-review-${field.name}")) {
+                        Text(metadataFieldLabel(field), fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Before: ${editor.original.fields[field]?.value ?: "Empty"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            "After: ${editor.draft[field]?.takeIf(String::isNotBlank) ?: "Clear field"}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                Text(
+                    "The source file and cloud object stay unchanged. The candidate is reread and verified before it can be shared or saved.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, modifier = Modifier.testTag("confirm-stage-metadata")) {
+                Text("Stage verified copy")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, modifier = Modifier.testTag("dismiss-metadata-review")) {
+                Text("Keep editing")
+            }
+        },
+    )
+}
+
+@Composable
+private fun BatchMetadataReviewDialog(
+    editor: MetadataEditorUiState.Batch,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val common = editor.commonFields.filterValues { it.enabled }.keys.sortedBy(::metadataFieldLabel)
+    val onlineFieldCount = editor.items.sumOf { it.acceptedCandidateFields.size }
+    AlertDialog(
+        modifier = Modifier.testTag("batch-metadata-review-dialog"),
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.EditNote, contentDescription = null) },
+        title = { Text("Review batch tag changes") },
+        text = {
+            Column(
+                Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("${editor.items.size} prepared file(s)", fontWeight = FontWeight.SemiBold)
+                Text(
+                    if (common.isEmpty()) "Common fields: none" else
+                        "Common fields: ${common.joinToString { metadataFieldLabel(it) }}",
+                )
+                Text(
+                    if (editor.sequenceTracks) {
+                        "Track sequence: start ${editor.sequenceStart}; write total: ${if (editor.includeTrackTotal) "yes" else "no"}"
+                    } else {
+                        "Track sequence: unchanged"
+                    },
+                )
+                Text("Online candidate fields explicitly selected: $onlineFieldCount")
+                Text(
+                    if (editor.includePlaylist) {
+                        "Playlist export: included · ${playlistOrderLabel(editor.playlistOrder)}"
+                    } else {
+                        "Playlist export: not included"
+                    },
+                    modifier = Modifier.testTag("batch-playlist-review"),
+                )
+                Text(
+                    "Each changed item is staged and reread independently. No cloud object or source file is overwritten by this Tag studio export.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, modifier = Modifier.testTag("confirm-stage-batch-metadata")) {
+                Text("Stage verified copies")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, modifier = Modifier.testTag("dismiss-batch-metadata-review")) {
+                Text("Keep editing")
+            }
+        },
+    )
 }
 
 @Composable
@@ -422,6 +616,14 @@ private fun CandidateCard(
                 Text("${(candidate.score * 100).toInt()}%", style = MaterialTheme.typography.labelLarge)
             }
             if (selected) {
+                if (acceptedFields.isEmpty()) {
+                    Text(
+                        "Choose individual fields below. Selecting a match never selects metadata automatically.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("candidate-fields-unselected"),
+                    )
+                }
                 candidate.fields.filterKeys { it in MetadataDraftPlanner.onlineCandidateFields }.forEach { (field, value) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
@@ -431,8 +633,12 @@ private fun CandidateCard(
                         Text("${metadataFieldLabel(field)}: ${value.value}", Modifier.weight(1f))
                     }
                 }
-                Button(onClick = onApply, enabled = acceptedFields.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
-                    Text("Apply selected fields to draft")
+                Button(
+                    onClick = onApply,
+                    enabled = acceptedFields.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth().testTag("apply-candidate-fields"),
+                ) {
+                    Text("Copy selected fields to draft")
                 }
             }
         }
@@ -462,6 +668,13 @@ private fun BatchItemCard(item: MetadataEditorUiState.BatchItem, actions: AppAct
                     Text("${(candidate.score * 100).toInt()}%")
                 }
                 if (selected) {
+                    if (item.acceptedCandidateFields.isEmpty()) {
+                        Text(
+                            "No fields selected yet",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     candidate.fields.filterKeys { it in MetadataDraftPlanner.onlineCandidateFields }.forEach { (field, value) ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(

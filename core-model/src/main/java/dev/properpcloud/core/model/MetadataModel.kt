@@ -61,9 +61,12 @@ data class TagSnapshot(
     val fields: Map<TagField, MetadataValue> = emptyMap(),
     val artwork: List<ArtworkSummary> = emptyList(),
     val warnings: List<String> = emptyList(),
+    /** Trusted local/container duration evidence when the inspecting adapter can provide it. */
+    val durationMillis: Long? = null,
 ) {
     init {
         require(format.isNotBlank()) { "tag format must not be blank" }
+        require(durationMillis == null || durationMillis > 0) { "snapshot duration must be positive" }
     }
 }
 
@@ -191,8 +194,12 @@ object BatchTagPlanner {
     fun fromCandidate(
         input: TagEditPlanInput,
         candidate: MetadataCandidate,
-        acceptedFields: Set<TagField> = candidate.fields.keys,
+        acceptedFields: Set<TagField>,
     ): TagEditPlan {
+        require(acceptedFields.isNotEmpty()) { "select at least one candidate field" }
+        require(acceptedFields.all(candidate.fields::containsKey)) {
+            "accepted candidate fields must exist in the reviewed candidate"
+        }
         val patch = acceptedFields.associateWith { field ->
             candidate.fields[field]?.value?.let(TagMutation::Set) ?: TagMutation.Keep
         }

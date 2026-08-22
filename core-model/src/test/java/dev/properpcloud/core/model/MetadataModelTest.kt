@@ -31,6 +31,21 @@ class MetadataModelTest {
     }
 
     @Test
+    fun onlineCandidateCannotBecomeAPlanWithoutExplicitFieldSelection() {
+        val input = input("file:review")
+        val candidate = MetadataCandidate(
+            id = "recording-review",
+            provider = MetadataProvenance.MUSICBRAINZ,
+            score = 0.99,
+            fields = mapOf(TagField.TITLE to MetadataValue("Suggested", MetadataProvenance.MUSICBRAINZ)),
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            BatchTagPlanner.fromCandidate(input, candidate, emptySet())
+        }
+    }
+
+    @Test
     fun trackSequencingIsDeterministicAndIncludesTotal() {
         val batch = BatchTagPlanner.sequenceTracks(
             listOf(input("file:1"), input("file:2"), input("file:3")),

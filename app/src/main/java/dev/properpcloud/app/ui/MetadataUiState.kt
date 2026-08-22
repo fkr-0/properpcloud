@@ -5,6 +5,7 @@ import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.MetadataCandidate
 import dev.properpcloud.core.model.TagField
 import dev.properpcloud.core.model.TagSnapshot
+import dev.properpcloud.metadata.tags.FolderPlaylistOrder
 
 enum class MetadataPhase {
     READY,
@@ -62,6 +63,8 @@ sealed interface MetadataEditorUiState {
         val sequenceTracks: Boolean = false,
         val sequenceStart: String = "1",
         val includeTrackTotal: Boolean = true,
+        val includePlaylist: Boolean = true,
+        val playlistOrder: FolderPlaylistOrder = FolderPlaylistOrder.TAG_TRACK_NUMBER,
         val phase: MetadataPhase = MetadataPhase.READY,
         val progressCompleted: Int = 0,
         val progressTotal: Int = items.size,

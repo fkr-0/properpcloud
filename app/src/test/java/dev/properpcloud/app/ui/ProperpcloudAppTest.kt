@@ -1,6 +1,7 @@
 package dev.properpcloud.app.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.runtime.mutableStateOf
 import dev.properpcloud.app.data.SourceKind
+import dev.properpcloud.app.metadata.BatchFieldDraft
 import dev.properpcloud.app.playback.PlaybackUiState
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
@@ -21,9 +23,12 @@ import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.SourceId
 import dev.properpcloud.core.model.MetadataProvenance
+import dev.properpcloud.core.model.MetadataCandidate
 import dev.properpcloud.core.model.MetadataValue
 import dev.properpcloud.core.model.TagField
 import dev.properpcloud.core.model.TagSnapshot
+import dev.properpcloud.metadata.tags.FolderPlaylistOrder
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -44,6 +49,40 @@ class ProperpcloudAppTest {
         compose.onNodeWithText("Audiobooks").assertIsDisplayed()
         compose.onNodeWithText("A Door in the Rain").assertIsDisplayed()
         compose.onNodeWithTag("library-list").assertIsDisplayed()
+    }
+
+    @Test
+    fun batchPlaylistOptionsAreExplicitAndReachApplicationAction() {
+        val state = sampleState()
+        val track = state.nodes.filterIsInstance<AudioTrack>().single()
+        var included = true
+        var order = FolderPlaylistOrder.TAG_TRACK_NUMBER
+        compose.setContent {
+            ProperpcloudApp(
+                state.copy(
+                    destination = AppDestination.METADATA,
+                    metadataEditor = MetadataEditorUiState.Batch(
+                        items = listOf(MetadataEditorUiState.BatchItem(track, TagSnapshot("ID3"))),
+                        commonFields = mapOf(
+                            TagField.ALBUM to BatchFieldDraft(enabled = true, value = "Reviewed album"),
+                        ),
+                    ),
+                ),
+                noOpActions().copy(updateBatchPlaylist = { include, selectedOrder ->
+                    included = include
+                    order = selectedOrder
+                }),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithTag("metadata-editor-list").performScrollToNode(hasTestTag("batch-playlist-options"))
+        compose.onNodeWithTag("include-batch-playlist").performClick()
+        assertFalse(included)
+
+        compose.onNodeWithTag("batch-playlist-order-MODIFICATION_TIME").performClick()
+        assertTrue(included)
+        assertTrue(order == FolderPlaylistOrder.MODIFICATION_TIME)
     }
 
     @Test
@@ -95,8 +134,160 @@ class ProperpcloudAppTest {
         compose.onNodeWithTag("metadata-editor-list").performScrollToNode(hasTestTag("metadata-field-TITLE"))
         compose.onNodeWithTag("metadata-field-TITLE").assertIsDisplayed()
         compose.onNodeWithText("Original: Original title · EMBEDDED").assertIsDisplayed()
-        compose.onNodeWithTag("metadata-editor-list").performScrollToNode(hasTestTag("stage-metadata"))
-        compose.onNodeWithTag("stage-metadata").assertIsDisplayed()
+        compose.onNodeWithTag("metadata-editor-list").performScrollToNode(hasTestTag("review-metadata"))
+        compose.onNodeWithTag("review-metadata").assertIsDisplayed()
+    }
+
+    @Test
+    fun singleMetadataReviewMustBeConfirmedBeforeStaging() {
+        val state = sampleState()
+        val track = state.nodes.filterIsInstance<AudioTrack>().single()
+        val original = TagSnapshot(
+            "ID3v2.4",
+            mapOf(TagField.TITLE to MetadataValue("Before", MetadataProvenance.EMBEDDED)),
+        )
+        var staged = false
+        compose.setContent {
+            ProperpcloudApp(
+                state.copy(
+                    destination = AppDestination.METADATA,
+                    metadataEditor = MetadataEditorUiState.Single(
+                        track = track,
+                        original = original,
+                        draft = mapOf(TagField.TITLE to "After"),
+                        sourceRevision = "rev",
+                        sourceHash = "abcdef0123456789abcdef0123456789",
+                    ),
+                ),
+                noOpActions().copy(stageMetadata = { staged = true }),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithTag("metadata-editor-list").performScrollToNode(hasTestTag("review-metadata"))
+        compose.onNodeWithTag("review-metadata").performClick()
+        compose.onNodeWithTag("metadata-review-dialog").assertIsDisplayed()
+        compose.onNodeWithText("Before: Before").assertIsDisplayed()
+        compose.onNodeWithText("After: After").assertIsDisplayed()
+        assertFalse(staged)
+
+        compose.onNodeWithTag("dismiss-metadata-review").performClick()
+        compose.onNodeWithTag("metadata-review-dialog").assertDoesNotExist()
+        assertFalse(staged)
+
+        compose.onNodeWithTag("review-metadata").performClick()
+        compose.onNodeWithTag("confirm-stage-metadata").performClick()
+        assertTrue(staged)
+    }
+
+    @Test
+    fun onlineCandidateStartsWithNoFieldsSelected() {
+        val state = sampleState()
+        val track = state.nodes.filterIsInstance<AudioTrack>().single()
+        val candidate = MetadataCandidate(
+            id = "recording-1",
+            provider = MetadataProvenance.MUSICBRAINZ,
+            score = 0.95,
+            fields = mapOf(
+                TagField.TITLE to MetadataValue("Suggested", MetadataProvenance.MUSICBRAINZ, 0.95),
+                TagField.ARTIST to MetadataValue("Artist", MetadataProvenance.MUSICBRAINZ, 0.94),
+            ),
+        )
+        compose.setContent {
+            ProperpcloudApp(
+                state.copy(
+                    destination = AppDestination.METADATA,
+                    metadataEditor = MetadataEditorUiState.Single(
+                        track = track,
+                        original = TagSnapshot("ID3"),
+                        draft = emptyMap(),
+                        sourceRevision = "rev",
+                        sourceHash = "abcdef0123456789abcdef0123456789",
+                        candidates = listOf(candidate),
+                        selectedCandidateId = candidate.id,
+                        acceptedCandidateFields = emptySet(),
+                    ),
+                ),
+                noOpActions(),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithTag("metadata-editor-list").performScrollToNode(hasText("Suggested"))
+        compose.onNodeWithTag("candidate-fields-unselected", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("apply-candidate-fields").assertIsNotEnabled()
+    }
+
+    @Test
+    fun batchMetadataReviewSummarizesScopeBeforeStaging() {
+        val state = sampleState()
+        val track = state.nodes.filterIsInstance<AudioTrack>().single()
+        var staged = false
+        compose.setContent {
+            ProperpcloudApp(
+                state.copy(
+                    destination = AppDestination.METADATA,
+                    metadataEditor = MetadataEditorUiState.Batch(
+                        items = listOf(MetadataEditorUiState.BatchItem(track, TagSnapshot("ID3"))),
+                        commonFields = mapOf(
+                            TagField.ALBUM to BatchFieldDraft(enabled = true, value = "Reviewed album"),
+                        ),
+                        sequenceTracks = true,
+                        sequenceStart = "1",
+                        includeTrackTotal = true,
+                    ),
+                ),
+                noOpActions().copy(stageBatchMetadata = { staged = true }),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithTag("metadata-editor-list").performScrollToNode(hasTestTag("review-batch-metadata"))
+        compose.onNodeWithTag("review-batch-metadata").performClick()
+        compose.onNodeWithTag("batch-metadata-review-dialog").assertIsDisplayed()
+        compose.onNodeWithText("Common fields: Album").assertIsDisplayed()
+        compose.onNodeWithText("Track sequence: start 1; write total: yes").assertIsDisplayed()
+        compose.onNodeWithText("Playlist export: included · Disc and track tags").assertIsDisplayed()
+        assertFalse(staged)
+        compose.onNodeWithTag("confirm-stage-batch-metadata").performClick()
+        assertTrue(staged)
+    }
+
+    @Test
+    fun batchMetadataProgressAndFailureStatusRemainVisible() {
+        val state = sampleState()
+        val track = state.nodes.filterIsInstance<AudioTrack>().single()
+        val editor = mutableStateOf(
+            MetadataEditorUiState.Batch(
+                items = listOf(MetadataEditorUiState.BatchItem(track, TagSnapshot("ID3"))),
+                commonFields = mapOf(
+                    TagField.ALBUM to BatchFieldDraft(enabled = true, value = "Reviewed album"),
+                ),
+                phase = MetadataPhase.STAGING,
+                progressCompleted = 1,
+                progressTotal = 2,
+            ),
+        )
+        compose.setContent {
+            ProperpcloudApp(
+                state.copy(destination = AppDestination.METADATA, metadataEditor = editor.value),
+                noOpActions(),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithTag("metadata-editor-list").performScrollToNode(hasTestTag("batch-metadata-progress"))
+        compose.onNodeWithTag("batch-metadata-progress").assertIsDisplayed()
+
+        compose.runOnIdle {
+            editor.value = editor.value.copy(
+                phase = MetadataPhase.READY,
+                status = "Batch metadata export failed: disk full",
+            )
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("metadata-editor-list").performScrollToNode(hasText("Batch metadata export failed: disk full"))
+        compose.onNodeWithText("Batch metadata export failed: disk full").assertIsDisplayed()
     }
 
     private fun samplePlayingState(): AppUiState {
@@ -241,6 +432,7 @@ class ProperpcloudAppTest {
         stageMetadata = {},
         updateBatchField = { _, _ -> },
         updateBatchSequence = { _, _, _ -> },
+        updateBatchPlaylist = { _, _ -> },
         searchBatchMetadata = {},
         selectBatchCandidate = { _, _ -> },
         toggleBatchCandidateField = { _, _ -> },

@@ -109,6 +109,10 @@ contracts:
         fields: canonical TagField to MetadataValue map
         artwork: bounded descriptors without mandatory image decoding
         warnings: parser and compatibility warnings
+        duration_millis: optional positive duration from trustworthy local/container header evidence
+      invariants:
+        - Duration is evidence for display, matching, and derived playlist EXTINF only; it is not media identity.
+        - Unknown or non-positive duration is represented as absent rather than guessed from size, bitrate, or tag text.
     TagPatch:
       mutations:
         Keep: preserve current field
@@ -176,6 +180,29 @@ contracts:
       invariants:
         - Event order is a hint and never replaces authoritative reconciliation.
         - Overflow or cursor reset requires a full folder snapshot.
+    LocalFolderRootCapability:
+      fields:
+        - caller-selected canonical root directory
+        - explicit SourceId owned by the local-source caller
+        - readable and writable filesystem evidence
+        - non-symlink root evidence
+        - same-directory atomic-move capability evidence
+      invariants:
+        - Construction probes only unpredictable hidden non-media siblings and removes them before returning.
+        - A provider cache, prepared metadata download, or signed stream capability is never promoted implicitly to a writable local root.
+        - Capability existence grants local filesystem authority only inside the selected root; it grants no provider mutation authority.
+    LocalFolderWorkbenchStatus:
+      fields:
+        - closed | starting | scanning | live | stale | overflow_rescanning | failed state
+        - session revision and scan generation
+        - folder and file counts
+        - pending event count and summarized event kinds
+        - pending derived-playlist regeneration count
+        - reconciliation-required Boolean and last reconciled timestamp
+        - user-safe status and optional error message
+      invariants:
+        - Complete private paths, provider URLs, raw tags, and media bytes are excluded from presentation state.
+        - Live means an authoritative scan completed without a newer watcher event racing that generation.
     RepairPlan:
       fields:
         id: UUID
@@ -250,6 +277,20 @@ contracts:
         - Watcher callbacks perform no tag parsing, hashing, or presentation work.
         - Invalid leases, overflow, and cursor reset are explicit reconciliation states.
         - Symbolic links are not followed outside the authorized folder.
+      current_local_jvm_adapter:
+        implementation: LocalFolderWorkbenchHost plus JDK WatchService behind LocalFolderRootCapability
+        registration: observer directories are registered synchronously before initial scan
+        events: audio create/modify/delete plus overflow and invalid-observer; rename is conservatively represented by create/delete and resolved by authoritative rescan rather than guessed
+        coalescing: 250 ms quiet window with 2000 ms maximum latency by default
+        self_events: never suppressed; mutation and rescan are serialized and every expected self-event is reconciled normally
+        derived_playlists: M3U writes are excluded from media watcher events and remain guarded by playlist plan preflight
+        client_binding: native desktop explicit local-directory selection only; Android prepared-copy and desktop pCloud/demo surfaces do not supply this capability
+        desktop_source_identity: opaque SourceId from canonical selected-root identity plus opaque root-relative node IDs; metadata values never determine source or node identity
+        desktop_stream: verified in-root regular audio file URI with no provider expiry semantics
+        desktop_lifetime: changing away from the selected local source or closing the desktop controller closes the observer host and removes queued entries that depend on that root
+        desktop_progress: reviewed tag dry-run/apply and recursive playlist writes expose completed/total progress only; complete private paths are not presentation data
+        desktop_persistence: current selected local root is session-scoped; complete private paths are not persisted and restart requires explicit reselection
+        flatpak_access: unavailable in the current package because there is no document-portal directory lease and broad host/home filesystem permission is intentionally absent
     IF-MUTABLE-SOURCE:
       optional: true
       methods:
@@ -402,6 +443,10 @@ contracts:
       input: source ID, folder ID, direct scope, observer preference
       output: live or explicitly polling FolderTagSnapshot
       commit_rule: Opening, scanning, watching, and reconciling perform no media mutation.
+    OpenLocalFolderWorkbenchHost:
+      input: explicit LocalFolderRootCapability, direct or explicitly recursive scope, rule profile, optional separately consented online lookup
+      output: LocalFolderWorkbenchStatus plus revision-bound FolderMetadataSuiteSession operations
+      commit_rule: The observer lease is established before scan; watcher callbacks can invalidate/reconcile only and have no tag-stage/apply command path.
     PlanFolderTagCorrections:
       input: immutable FolderTagSnapshot generation, enabled deterministic rules, explicit user edits
       output: ordered TagCorrectionProposal list and exact changed-item and changed-field counts
@@ -410,6 +455,34 @@ contracts:
       input: explicitly approved proposals, expected SHA-256 and identity, atomic replacement capability
       output: per-file verified, skipped, conflicted, failed, or indeterminate results plus rollback evidence
       commit_rule: No replacement without staged reread, decoder validation, immediate source revalidation, atomic move, and final readback.
+    PlanFolderPlaylist:
+      input: one already-inspected direct-folder snapshot plus an explicit deterministic order
+      output: immutable relative-path playlist plan with reviewed audio membership, fast evidence, authoritative SHA-256, and rendered UTF-8 M3U
+      commit_rule: Planning changes no filesystem bytes and resolves no provider capability URL.
+    MaterializeFolderPlaylist:
+      input: the exact revision-bound playlist review previously presented plus explicit write confirmation
+      output: written derived-playlist result with SHA-256 and entry/fallback counts
+      commit_rule: Added, removed, or renamed audio children and stale size, modified-time, SHA-256, or session revision reject materialization and require reconciliation plus a new preview.
+    PlanFolderPlaylistBatch:
+      input: tree preview plus a playlist-specific recursive opt-in, grouping policy, and order
+      output: immutable batch of playlist plans plus the reviewed recursive directory set and audio-child membership evidence for every reviewed directory, including empty directories
+      commit_rule: Playlist recursion never enables or implies recursive tag mutation.
+    MaterializeFolderPlaylistBatch:
+      input: exact revision-bound reviewed playlist batch plus explicit write confirmation
+      output: per-playlist results plus completed/total progress
+      commit_rule: Reviewed subtree membership, every target, every entry, and the application-session revision are preflighted before the first derived playlist is replaced.
+    InvalidateFolderMetadataSuiteSession:
+      input: a relevant filesystem/source reconciliation signal and user-safe reason
+      output: incremented session revision, revoked current preview/reviews, and cancelled queued derived-playlist regeneration
+      commit_rule: Invalidation performs no scan, tag staging, tag apply, or media-byte write; a fresh reconciled preview is required before new approvals or playlist writes.
+    ExecuteReviewedFolderTagBatch:
+      input: current revision-bound tag review, dry-run mode or explicit write confirmation, and local staging capability
+      output: dry-run preflight or sequential guarded apply results plus progress
+      commit_rule: Recursive tag consent is independent from playlist consent, and any confirmed tag execution invalidates the session so derived playlists require a fresh post-write scan.
+    SchedulePostSyncFolderPlaylists:
+      input: current revision-bound reviewed playlist batch after source/local reconciliation
+      output: bounded debounced derived-playlist work only
+      commit_rule: The automatic path has no tag-plan input and no tag staging/apply dependency; reconciliation invalidation revokes queued work.
     PlanBatchTagEdit:
       input: ordered stable media identities, source revisions or hashes, transform or accepted candidate fields
       output: immutable BatchTagEditPlan with changed-field summary

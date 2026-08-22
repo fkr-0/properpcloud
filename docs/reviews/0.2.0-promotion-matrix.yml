@@ -33,6 +33,50 @@ promotion:
         - explicit high-contrast palette
         - visible non-color Selected and Current labels
         - base and keyboard-help screenshots are distinct and nonblank
+    native_local_workbench_release_boundary:
+      source_contracts:
+        status: passed_current_host
+        evidence: docs/reviews/phase8-local-workbench-power-loss-recovery.yml
+        checks:
+          - final pre-replace SHA-256 conflict guard runs after rollback and durable native recovery authority are armed
+          - recovery-arm failure aborts before media replacement
+          - interrupted exact-candidate replacement preserves rollback plus expected-result hash authority
+          - restart discovery requires explicit root reselection and serializes no complete/root-relative private path
+          - malformed, missing, symlinked, or externally changed recovery evidence remains mutation-blocking without overwrite authority
+          - current-original recovery records are retired only after exact-hash proof
+          - normal verified apply disarms cross-process authority while same-session rollback remains available
+          - Flatpak local-folder selection remains fail-closed without host or home filesystem access
+      kotlin_recovery_regressions:
+        status: passed_current_host
+        evidence: docs/reviews/phase8-local-workbench-power-loss-recovery.yml
+        checks:
+          - make desktop-test passed 37 of 37 tests in the pinned properpcloud/android-build:2026.08 image
+          - fresh recovery authority and selected-root identity reconstruct exact-hash guarded rollback after simulated replacement interruption
+          - malformed and externally changed durable evidence remains mutation-blocking without overwrite authority
+      cross_process_power_loss_recovery:
+        status: passed_automated_simulation
+        evidence: docs/reviews/phase8-local-workbench-power-loss-recovery.yml
+        checks:
+          - simulated power loss immediately after replacement leaves durable recovery authority armed
+          - fresh authority and identity after explicit root reselection discover the interrupted replacement and permit only exact-hash guarded rollback
+        real_process_restart_reselection:
+          status: pending_runtime
+          reason: the unit regression reconstructs fresh process-owned objects but does not launch, terminate, and restart the packaged desktop executable
+        physical_power_cut_filesystem_durability:
+          status: pending_hardware
+          reason: no operator-controlled physical power-cut durability exercise has been recorded for recovery-record and replacement ordering
+      packaged_local_workbench_accessibility:
+        status: pending_manual
+        evidence:
+          - docs/reviews/phase7-local-workbench-release-boundary.yml
+          - build/evidence/0.2.0-accessibility.json
+        passed_current_host:
+          - packaged desktop executable created and smoke-tested
+          - 200 percent high-contrast accessibility capture passed
+        still_required:
+          - selected-folder keyboard and focus traversal in the native local workbench
+          - proposal and recovery semantics through real AT-SPI accessibility traversal
+          - large-text local-workbench control availability review
     screen_reader_review:
       status: pending_manual
       checks:

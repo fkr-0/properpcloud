@@ -7,15 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.1] - 2026-08-22
+
+### Added
+
+- Folder metadata-suite playlist generation now supports deterministic direct-folder and
+  explicit subtree `.m3u8` plans with relative paths, natural filename, disc/track tag,
+  tagged-title, or modification-time ordering, trusted-duration `EXTINF`, safe tag-derived
+  display naming, stale-evidence preflight, and bounded playlist-only post-sync regeneration.
+- A shared local-root metadata-suite session adds revision-bound preview/confirmation for tag
+  and playlist work, keeps recursive playlist consent independent from recursive tag mutation,
+  revokes stale reviews/queued regeneration on reconciliation signals, and requires a fresh
+  post-write scan before deriving playlists after confirmed tag changes.
+- A neutral local-filesystem workbench host now proves explicit writable-root and atomic-move
+  capability, registers a real JVM `WatchService` lease before scanning, invalidates reviews on
+  relevant events before debounce, reconciles overflow/invalid observers through full rescans,
+  and never turns watcher or post-sync activity into tag writes.
+- Native Compose Desktop can now bind an explicitly user-selected local directory to that host as
+  a separate filesystem-first `AudioSource`, with opaque stable source/node IDs, direct browsing
+  and playback, live/stale reconciliation state, preview/dry-run/confirmation tag controls, and
+  independently gated direct or recursive playlist materialization. The selected private root is
+  session-scoped rather than persisted, and source switching closes the observer and local queue
+  authority.
+- A cheap host-side `make local-check` workflow is now the default routine developer gate,
+  with optional portable-JVM `make fast-test` when the pinned image is already available,
+  while GitHub Actions retains Robolectric, Android lint, APK assembly, docs, and the complete
+  `make ci` merge verification.
+
 ### Planned
 
-- Implement the specified folder-scoped Tag workbench with live change reconciliation,
-  previewed correction rules, and guarded atomic local replacement before enabling any
-  source mutation.
+- Complete the remaining folder-scoped Tag workbench release boundary with a truthful Flatpak
+  document-portal directory lease/path mapping (without broad host/home access), Android SAF as a
+  separate platform adapter, and the remaining conflict/power-loss/rollback plus
+  accessibility/platform evidence before claiming the full workbench release-ready.
 - `0.2.0` promotion only after the protected EU/US provider, alternate desktop,
   physical media-key/suspend, and real screen-reader gates are complete.
 - Verified offline pinning, saved roots, long-form controls, and Android Auto after
   cross-platform queue/progress semantics stabilize.
+
+### Known limitations
+
+- This is a release candidate for hands-on testing, not the final `0.2.0` promotion.
+- Physical power-cut durability, real packaged restart/reselection recovery, selected-folder
+  screen-reader/focus review, physical media keys and suspend/resume, GNOME/KDE observations,
+  and protected EU/US provider soak/account evidence remain explicit final-release blockers.
 
 ## [0.1.10] - 2026-08-05
 
@@ -576,7 +611,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.10...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.1...HEAD
+[0.2.0-rc.1]: https://github.com/fkr-0/properpcloud/compare/v0.1.10...v0.2.0-rc.1
 [0.1.10]: https://github.com/fkr-0/properpcloud/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/fkr-0/properpcloud/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/fkr-0/properpcloud/compare/v0.1.7...v0.1.8

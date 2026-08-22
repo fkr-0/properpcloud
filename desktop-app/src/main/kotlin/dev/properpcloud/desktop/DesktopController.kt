@@ -1,9 +1,11 @@
 package dev.properpcloud.desktop
 
 import com.google.gson.Gson
+import dev.properpcloud.core.model.ApplyResultStatus
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioSource
 import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.FileApplyResult
 import dev.properpcloud.core.model.FolderQueueAssembler
 import dev.properpcloud.core.model.FolderQueueBuilder
 import dev.properpcloud.core.model.MediaNode
@@ -19,12 +21,18 @@ import dev.properpcloud.core.model.QueueReducer
 import dev.properpcloud.core.model.QueueRestoration
 import dev.properpcloud.core.model.ResumePolicy
 import dev.properpcloud.core.model.SignedLinkRetryGate
+import dev.properpcloud.core.model.TagField
 import dev.properpcloud.desktop.data.DesktopDemoAudioSource
+import dev.properpcloud.desktop.data.DesktopLocalFolderAudioSource
 import dev.properpcloud.desktop.data.SqliteStateRepository
+import dev.properpcloud.desktop.metadata.DesktopLocalFolderBinding
 import dev.properpcloud.desktop.mpris.MprisActions
 import dev.properpcloud.desktop.mpris.MprisService
 import dev.properpcloud.desktop.mpris.MprisSnapshot
+import dev.properpcloud.desktop.platform.LocalFolderSelection
+import dev.properpcloud.desktop.platform.LocalFolderSelector
 import dev.properpcloud.desktop.platform.LogindSleepMonitor
+import dev.properpcloud.desktop.platform.NativeLocalFolderSelector
 import dev.properpcloud.desktop.platform.SleepTransitionPolicy
 import dev.properpcloud.desktop.platform.XdgPaths
 import dev.properpcloud.desktop.playback.MpvController
@@ -39,6 +47,14 @@ import dev.properpcloud.source.pcloud.PCloudSession
 import dev.properpcloud.source.pcloud.PCloudRevocationResult
 import dev.properpcloud.source.pcloud.PCloudSessionRevoker
 import dev.properpcloud.source.pcloud.PCloudSourceFactory
+import dev.properpcloud.metadata.tags.ApproveLocalProposalsCommand
+import dev.properpcloud.metadata.tags.FolderPlaylistOrder
+import dev.properpcloud.metadata.tags.FolderTreeTagPreview
+import dev.properpcloud.metadata.tags.LocalFolderWorkbenchStatus
+import dev.properpcloud.metadata.tags.LocalFolderWorkbenchWatchState
+import dev.properpcloud.metadata.tags.ReviewedFolderPlaylist
+import dev.properpcloud.metadata.tags.ReviewedFolderPlaylistBatch
+import dev.properpcloud.metadata.tags.ReviewedFolderTagBatch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,8 +69,48 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.awt.Desktop
+import java.io.File
 import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
+
+data class DesktopLocalTagProposal(
+    val nodeId: NodeId,
+    val filename: String,
+    val field: TagField,
+    val ruleId: String,
+    val currentValue: String?,
+    val proposedValue: String?,
+    val confidence: Double,
+    val autoPreselected: Boolean,
+    val warnings: List<String> = emptyList(),
+)
+
+data class DesktopLocalTagOutcome(
+    val filename: String,
+    val status: ApplyResultStatus,
+    val message: String,
+    val rollbackAvailable: Boolean,
+)
+
+data class DesktopLocalWorkbenchUiState(
+    val active: Boolean = false,
+    val recursiveScope: Boolean = false,
+    val hostState: LocalFolderWorkbenchWatchState = LocalFolderWorkbenchWatchState.CLOSED,
+    val sessionRevision: Long = 0,
+    val folderCount: Int = 0,
+    val fileCount: Int = 0,
+    val proposals: List<DesktopLocalTagProposal> = emptyList(),
+    val reviewedTagCount: Int = 0,
+    val tagDryRunReady: Boolean = false,
+    val playlistReview: String? = null,
+    val operationLabel: String? = null,
+    val operationCompleted: Int = 0,
+    val operationTotal: Int = 0,
+    val tagOutcomes: List<DesktopLocalTagOutcome> = emptyList(),
+    val rollbackAvailableCount: Int = 0,
+    val recoveryRequired: Boolean = false,
+    val message: String = "Choose a local folder to open the workbench.",
+)
 
 data class DesktopUiState(
     val sourceName: String = "Demo library",
@@ -67,12 +123,17 @@ data class DesktopUiState(
     val status: String = "Starting…",
     val busy: Boolean = false,
     val inspection: Map<String, String> = emptyMap(),
+    val localWorkbench: DesktopLocalWorkbenchUiState = DesktopLocalWorkbenchUiState(),
     val requestAttention: Long = 0,
 )
 
 class DesktopController(
     private val paths: XdgPaths = XdgPaths.resolve().create(),
     private val sessionRevoker: PCloudSessionRevoker = PCloudSessionRevoker(),
+    private val localFolderSelector: LocalFolderSelector = NativeLocalFolderSelector(),
+    private val localBindingFactory: (File, Boolean) -> DesktopLocalFolderBinding = { file, recursive ->
+        DesktopLocalFolderBinding.createSelected(file, recursive)
+    },
 ) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val gson = Gson()
@@ -98,6 +159,13 @@ class DesktopController(
     private var pCloudRestoreJob: Job? = null
     private var pCloudRestoreGeneration = 0L
     private var pCloudSession: PCloudSession? = null
+    private var localBinding: DesktopLocalFolderBinding? = null
+    private var localStatusJob: Job? = null
+    private var reviewedLocalTags: ReviewedFolderTagBatch? = null
+    private var localTagDryRunReady = false
+    private val localTagRecoveryResults = mutableListOf<FileApplyResult>()
+    private var reviewedLocalPlaylist: ReviewedFolderPlaylist? = null
+    private var reviewedLocalPlaylistBatch: ReviewedFolderPlaylistBatch? = null
 
     init {
         val selectedSource = repository.setting("source")
@@ -117,6 +185,7 @@ class DesktopController(
 
     fun useDemo() {
         cancelPCloudRestore()
+        detachLocalBinding()
         scope.launch {
             source = demoSource
             repository.setSetting("source", "demo")
@@ -125,15 +194,326 @@ class DesktopController(
         }
     }
 
-    fun usePCloud() = scope.launch {
-        val pcloud = sources.values.firstOrNull { it.id.value == "pcloud" }
-        if (pcloud == null) {
-            mutableState.value = mutableState.value.copy(status = "Connect a pCloud account first")
-        } else {
-            source = pcloud
-            repository.setSetting("source", "pcloud")
-            loadFolder(source.root.id, resetBreadcrumbs = true)
+    fun usePCloud() {
+        scope.launch {
+            val pcloud = sources.values.firstOrNull { it.id.value == "pcloud" }
+            if (pcloud == null) {
+                mutableState.value = mutableState.value.copy(status = "Connect a pCloud account first")
+            } else {
+                detachLocalBinding()
+                source = pcloud
+                repository.setSetting("source", "pcloud")
+                loadFolder(source.root.id, resetBreadcrumbs = true)
+            }
         }
+    }
+
+    fun chooseLocalFolder(recursive: Boolean = false) {
+        cancelPCloudRestore()
+        mutableState.value = mutableState.value.copy(busy = true, status = "Choose a local audio folder…")
+        scope.launch {
+            when (val selection = withContext(Dispatchers.IO) { localFolderSelector.selectDirectory() }) {
+                LocalFolderSelection.Cancelled -> {
+                    mutableState.value = mutableState.value.copy(busy = false, status = "Local folder selection cancelled")
+                }
+                is LocalFolderSelection.Unavailable -> {
+                    mutableState.value = mutableState.value.copy(busy = false, status = selection.reason)
+                }
+                is LocalFolderSelection.Selected -> openSelectedLocalFolder(selection.directory, recursive)
+            }
+        }
+    }
+
+    private suspend fun openSelectedLocalFolder(directory: File, recursive: Boolean) {
+        mutableState.value = mutableState.value.copy(busy = true, status = "Validating the selected local root…")
+        val candidate = runCatching { localBindingFactory(directory, recursive) }.getOrElse {
+            mutableState.value = mutableState.value.copy(
+                busy = false,
+                status = "Local folder rejected: the selected directory did not satisfy the readable/writable non-symlink atomic-replacement capability.",
+            )
+            return
+        }
+        val opened = runCatching { candidate.open() }.getOrElse {
+            candidate.close()
+            mutableState.value = mutableState.value.copy(
+                busy = false,
+                status = "Local folder observer failed; reselect the directory after checking its filesystem access.",
+            )
+            return
+        }
+        if (!opened.succeeded) {
+            candidate.close()
+            mutableState.value = mutableState.value.copy(busy = false, status = localUserMessage(candidate, opened.message))
+            return
+        }
+
+        detachLocalBinding()
+        localBinding = candidate
+        sources[candidate.source.id] = candidate.source
+        source = candidate.source
+        // The native local root is intentionally session-scoped for now. No private path is
+        // persisted, and restart falls back to the existing demo/provider selection contract.
+        repository.setSetting("source", "demo")
+        clearLocalReviews()
+        projectLocalPreview(candidate, opened.value!!, candidate.status.value)
+        syncDurableLocalRecovery(candidate)
+        localStatusJob = scope.launch {
+            candidate.status.collect { hostStatus -> projectLocalStatus(candidate, hostStatus) }
+        }
+        loadFolder(candidate.source.root.id, resetBreadcrumbs = true)
+        mutableState.value = mutableState.value.copy(busy = false, status = localUserMessage(candidate, opened.message))
+    }
+
+    fun refreshLocalWorkbench() = scope.launch {
+        val binding = localBinding ?: return@launch
+        mutableState.value = mutableState.value.copy(busy = true, status = "Reconciling the local folder…")
+        val result = binding.reconcileNow()
+        result.value?.let { projectLocalPreview(binding, it, binding.status.value) }
+        mutableState.value = mutableState.value.copy(busy = false, status = localUserMessage(binding, result.message))
+        syncDurableLocalRecovery(binding)
+    }
+
+    fun reviewLocalTags(
+        selected: Set<DesktopLocalTagProposal>,
+        expectedRevision: Long,
+        recursiveTagOptIn: Boolean,
+    ) = scope.launch {
+        val binding = localBinding ?: return@launch
+        val hostStatus = binding.status.value
+        if (hostStatus.state != LocalFolderWorkbenchWatchState.LIVE || hostStatus.sessionRevision != expectedRevision) {
+            clearLocalReviews()
+            mutableState.value = mutableState.value.copy(status = "The local review changed; use the fresh watcher-stable preview.")
+            return@launch
+        }
+        if (selected.isEmpty()) {
+            mutableState.value = mutableState.value.copy(status = "Select at least one proposed field to review.")
+            return@launch
+        }
+        if (selected.groupBy { it.nodeId to it.field }.values.any { it.size > 1 }) {
+            mutableState.value = mutableState.value.copy(
+                status = "Choose only one proposal for each file and tag field before review.",
+            )
+            return@launch
+        }
+        val preview = binding.currentPreview()
+        if (preview == null) {
+            mutableState.value = mutableState.value.copy(status = "The local preview is stale; reconcile before reviewing tags.")
+            return@launch
+        }
+        val approvals = mutableListOf<dev.properpcloud.metadata.tags.ReviewedFolderApproval>()
+        for ((nodeId, rows) in selected.groupBy(DesktopLocalTagProposal::nodeId)) {
+            val snapshot = preview.snapshots.firstOrNull { it.findByNodeId(nodeId) != null }
+            if (snapshot == null) {
+                mutableState.value = mutableState.value.copy(status = "A selected tag row no longer exists; reconcile and review again.")
+                return@launch
+            }
+            val approval = binding.approveLocal(
+                ApproveLocalProposalsCommand(
+                    snapshot = snapshot,
+                    nodeId = nodeId,
+                    acceptedRuleByField = rows.associate { it.field to it.ruleId },
+                ),
+            )
+            if (!approval.succeeded) {
+                mutableState.value = mutableState.value.copy(status = localUserMessage(binding, approval.message))
+                return@launch
+            }
+            approvals += approval.value!!
+        }
+        val reviewed = binding.reviewTags(approvals, recursiveTagOptIn)
+        reviewedLocalTags = reviewed.value
+        localTagDryRunReady = false
+        val reviewedMessage = localUserMessage(binding, reviewed.message)
+        mutableState.value = mutableState.value.copy(
+            status = reviewedMessage,
+            localWorkbench = mutableState.value.localWorkbench.copy(
+                reviewedTagCount = reviewed.value?.plan?.items?.size ?: 0,
+                tagDryRunReady = false,
+                operationLabel = null,
+                operationCompleted = 0,
+                operationTotal = 0,
+                message = reviewedMessage,
+            ),
+        )
+    }
+
+    fun dryRunReviewedLocalTags() = scope.launch {
+        val binding = localBinding ?: return@launch
+        val review = reviewedLocalTags ?: run {
+            mutableState.value = mutableState.value.copy(status = "Review local tag proposals before running preflight.")
+            return@launch
+        }
+        projectLocalOperationProgress("Tag dry run", 0, review.plan.items.size)
+        mutableState.value = mutableState.value.copy(busy = true, status = "Dry-running reviewed local tag changes…")
+        val result = binding.executeTags(review, dryRun = true) { progress ->
+            projectLocalOperationProgress("Tag dry run", progress.completed, progress.total)
+        }
+        localTagDryRunReady = result.succeeded && !result.reconciliationRequired && result.value?.preflight?.all { it.ready } == true
+        val resultMessage = localUserMessage(binding, result.message)
+        mutableState.value = mutableState.value.copy(
+            busy = false,
+            status = resultMessage,
+            localWorkbench = mutableState.value.localWorkbench.copy(
+                tagDryRunReady = localTagDryRunReady,
+                message = resultMessage,
+            ),
+        )
+    }
+
+    fun applyReviewedLocalTags(confirmWrite: Boolean) = scope.launch {
+        val binding = localBinding ?: return@launch
+        val review = reviewedLocalTags ?: return@launch
+        if (!confirmWrite || !localTagDryRunReady) {
+            mutableState.value = mutableState.value.copy(status = "A successful dry run and explicit replacement confirmation are required.")
+            return@launch
+        }
+        val total = review.plan.items.size
+        projectLocalOperationProgress("Tag apply", 0, total)
+        mutableState.value = mutableState.value.copy(busy = true, status = "Applying reviewed local tags…")
+        val result = binding.executeTags(review, dryRun = false, confirmWrite = true) { progress ->
+            projectLocalOperationProgress("Tag apply", progress.completed, progress.total)
+        }
+        val results = result.value?.results.orEmpty()
+        val completed = results.size.takeIf { it > 0 } ?: mutableState.value.localWorkbench.operationCompleted
+        localTagRecoveryResults += results.filter { applyResult ->
+            applyResult.status == ApplyResultStatus.INDETERMINATE ||
+                (applyResult.status == ApplyResultStatus.VERIFIED && applyResult.rollbackFile?.isFile == true)
+        }
+        clearLocalReviews()
+        val message = localUserMessage(binding, result.message)
+        val outcomes = results.map { applyResult ->
+            DesktopLocalTagOutcome(
+                filename = applyResult.identity.filename,
+                status = applyResult.status,
+                message = localUserMessage(binding, applyResult.message),
+                rollbackAvailable = canRollbackLocalTagResult(applyResult),
+            )
+        }
+        mutableState.value = mutableState.value.copy(
+            busy = false,
+            status = message,
+            localWorkbench = mutableState.value.localWorkbench.copy(
+                operationLabel = "Tag apply",
+                operationCompleted = completed,
+                operationTotal = total,
+                tagOutcomes = outcomes,
+                message = message,
+            ),
+        )
+        syncDurableLocalRecovery(binding, outcomes)
+    }
+
+    fun rollbackLatestLocalTag(confirmRollback: Boolean) = scope.launch {
+        val binding = localBinding ?: return@launch
+        if (!confirmRollback) return@launch
+        val targetIndex = localTagRecoveryResults.indexOfLast(::canRollbackLocalTagResult)
+        if (targetIndex < 0) {
+            val message = if (localTagRecoveryResults.any { it.status == ApplyResultStatus.INDETERMINATE }) {
+                "No guarded rollback is available for the unresolved tag outcome; preserve recovery evidence and resolve it manually before more metadata writes."
+            } else {
+                "No verified local tag rollback is available."
+            }
+            mutableState.value = mutableState.value.copy(status = message)
+            return@launch
+        }
+        val target = localTagRecoveryResults[targetIndex]
+        projectLocalOperationProgress("Tag rollback", 0, 1)
+        mutableState.value = mutableState.value.copy(busy = true, status = "Verifying guarded local tag rollback…")
+        val rollback = binding.rollbackTag(target)
+        val outcome = rollback.value
+        if (outcome?.status == ApplyResultStatus.VERIFIED) {
+            localTagRecoveryResults.removeAt(targetIndex)
+        }
+        projectLocalOperationProgress("Tag rollback", 1, 1)
+        val message = localUserMessage(binding, rollback.message)
+        val presented = outcome?.let { applyResult ->
+            DesktopLocalTagOutcome(
+                filename = applyResult.identity.filename,
+                status = applyResult.status,
+                message = localUserMessage(binding, applyResult.message),
+                rollbackAvailable = canRollbackLocalTagResult(applyResult),
+            )
+        }?.let(::listOf).orEmpty()
+        mutableState.value = mutableState.value.copy(
+            busy = false,
+            status = message,
+            localWorkbench = mutableState.value.localWorkbench.copy(
+                operationLabel = "Tag rollback",
+                operationCompleted = 1,
+                operationTotal = 1,
+                tagOutcomes = presented.ifEmpty { mutableState.value.localWorkbench.tagOutcomes },
+                message = message,
+            ),
+        )
+        syncDurableLocalRecovery(binding, presented.takeIf { it.isNotEmpty() })
+    }
+
+    fun reviewLocalPlaylist(
+        recursivePlaylistOptIn: Boolean,
+        onePlaylistPerAlbum: Boolean,
+        order: FolderPlaylistOrder,
+    ) = scope.launch {
+        val binding = localBinding ?: return@launch
+        val resultMessage: String
+        if (binding.recursive) {
+            val review = binding.reviewPlaylistBatch(recursivePlaylistOptIn, onePlaylistPerAlbum, order)
+            reviewedLocalPlaylist = null
+            reviewedLocalPlaylistBatch = review.value
+            resultMessage = localUserMessage(binding, review.message)
+            mutableState.value = mutableState.value.copy(
+                localWorkbench = mutableState.value.localWorkbench.copy(
+                    playlistReview = review.value?.plan?.let { "${it.playlists.size} reviewed playlist(s); explicit write confirmation required" },
+                    operationLabel = null,
+                    operationCompleted = 0,
+                    operationTotal = 0,
+                    message = resultMessage,
+                ),
+            )
+        } else {
+            val review = binding.reviewDirectPlaylist(order)
+            reviewedLocalPlaylist = review.value
+            reviewedLocalPlaylistBatch = null
+            resultMessage = localUserMessage(binding, review.message)
+            mutableState.value = mutableState.value.copy(
+                localWorkbench = mutableState.value.localWorkbench.copy(
+                    playlistReview = review.value?.plan?.let { "${it.entries.size} reviewed entry/entries; explicit write confirmation required" },
+                    operationLabel = null,
+                    operationCompleted = 0,
+                    operationTotal = 0,
+                    message = resultMessage,
+                ),
+            )
+        }
+        mutableState.value = mutableState.value.copy(status = resultMessage)
+    }
+
+    fun materializeReviewedLocalPlaylist(confirmWrite: Boolean) = scope.launch {
+        val binding = localBinding ?: return@launch
+        if (!confirmWrite) return@launch
+        val expectedTotal = when {
+            reviewedLocalPlaylist != null -> 1
+            reviewedLocalPlaylistBatch != null -> reviewedLocalPlaylistBatch!!.plan.playlists.size
+            else -> 0
+        }
+        projectLocalOperationProgress("Playlist write", 0, expectedTotal)
+        val result = when {
+            reviewedLocalPlaylist != null -> binding.materializePlaylist(reviewedLocalPlaylist!!, true)
+            reviewedLocalPlaylistBatch != null -> binding.materializePlaylistBatch(reviewedLocalPlaylistBatch!!, true) { progress ->
+                projectLocalOperationProgress("Playlist write", progress.completed, progress.total)
+            }
+            else -> null
+        }
+        if (reviewedLocalPlaylist != null && result?.succeeded == true) {
+            projectLocalOperationProgress("Playlist write", 1, 1)
+        }
+        reviewedLocalPlaylist = null
+        reviewedLocalPlaylistBatch = null
+        val message = result?.message?.let { localUserMessage(binding, it) }
+            ?: "Review a local playlist before materializing it."
+        mutableState.value = mutableState.value.copy(
+            status = message,
+            localWorkbench = mutableState.value.localWorkbench.copy(playlistReview = null, message = message),
+        )
     }
 
     fun connectPCloud(email: String, password: CharArray, region: PCloudAccountRegion) {
@@ -158,6 +538,7 @@ class DesktopController(
                         return@launch
                     }
                     attachPCloud(result.session)
+                    detachLocalBinding()
                     source = sources.getValue(result.session.let { dev.properpcloud.core.model.SourceId("pcloud") })
                     repository.setSetting("source", "pcloud")
                     loadFolder(source.root.id, resetBreadcrumbs = true)
@@ -195,6 +576,7 @@ class DesktopController(
 
     fun disconnectPCloud() {
         cancelPCloudRestore()
+        detachLocalBinding()
         pCloudConnectGeneration += 1
         streamRefreshGeneration += 1
         streamRefreshJob?.cancel()
@@ -252,7 +634,11 @@ class DesktopController(
     fun inspect(node: MediaNode) = scope.launch {
         runCatching { sourceFor(node).inspect(node.id).fields }
             .onSuccess { mutableState.value = mutableState.value.copy(inspection = it, status = "Inspection: ${node.name}") }
-            .onFailure { mutableState.value = mutableState.value.copy(status = "Inspection failed: ${it.message}") }
+            .onFailure {
+                mutableState.value = mutableState.value.copy(
+                    status = "Inspection failed: ${localSourceMessage(it.message ?: "unavailable")}",
+                )
+            }
     }
 
     fun enqueue(track: AudioTrack, operation: QueueOperation = QueueOperation.APPEND) = scope.launch {
@@ -339,7 +725,12 @@ class DesktopController(
                 busy = false,
                 status = "${nodes.size} items in ${folder.name}",
             )
-        }.onFailure { mutableState.value = mutableState.value.copy(busy = false, status = "Folder load failed: ${it.message}") }
+        }.onFailure {
+            mutableState.value = mutableState.value.copy(
+                busy = false,
+                status = "Folder load failed: ${localSourceMessage(it.message ?: "unavailable")}",
+            )
+        }
     }
 
     private suspend fun playCurrent(resetRetryBudget: Boolean = true) {
@@ -361,9 +752,14 @@ class DesktopController(
 
     private fun refreshStreamAfterFailure(playback: MpvState) {
         val track = mutableState.value.queue.current?.track ?: return
-        if (track.sourceId == demoSource.id) {
+        val failedSource = runCatching { sourceFor(track) }.getOrNull()
+        if (failedSource == demoSource || failedSource is DesktopLocalFolderAudioSource) {
             mutableState.value = mutableState.value.copy(
-                status = "Playback failed. Restart the player after checking the local file and mpv.",
+                status = if (failedSource is DesktopLocalFolderAudioSource) {
+                    "Playback failed. Check the selected local file and mpv; local file handles are not temporary provider links."
+                } else {
+                    "Playback failed. Restart the player after checking the local file and mpv."
+                },
             )
             return
         }
@@ -490,6 +886,195 @@ class DesktopController(
         decision.progress?.let(repository::saveProgress)
     }
 
+    private fun canRollbackLocalTagResult(result: FileApplyResult): Boolean =
+        (result.status == ApplyResultStatus.VERIFIED || result.status == ApplyResultStatus.INDETERMINATE) &&
+            result.resultSha256 != null && result.rollbackFile?.isFile == true
+
+    /**
+     * Re-associate only recovery records discovered under the root the user just selected.
+     * Verified same-session rollback options may coexist, but indeterminate in-memory state is
+     * replaced by the durable hash-validated discovery result after every rescan/recovery action.
+     */
+    private fun syncDurableLocalRecovery(
+        binding: DesktopLocalFolderBinding,
+        preferredOutcomes: List<DesktopLocalTagOutcome>? = null,
+    ) {
+        if (localBinding !== binding) return
+        val durable = binding.recoveryState
+        val retainedVerified = localTagRecoveryResults.filter { result ->
+            result.status == ApplyResultStatus.VERIFIED && canRollbackLocalTagResult(result)
+        }
+        localTagRecoveryResults.clear()
+        localTagRecoveryResults += retainedVerified
+        durable.recoverableResults.forEach { recovered ->
+            if (localTagRecoveryResults.none { existing ->
+                    existing.identity.nodeId == recovered.identity.nodeId && existing.resultSha256 == recovered.resultSha256
+                }
+            ) {
+                localTagRecoveryResults += recovered
+            }
+        }
+
+        val durableOutcomes = durable.recoverableResults.map { recovered ->
+            DesktopLocalTagOutcome(
+                filename = recovered.identity.filename,
+                status = recovered.status,
+                message = localUserMessage(binding, recovered.message),
+                rollbackAvailable = canRollbackLocalTagResult(recovered),
+            )
+        } + durable.issues.map { issue ->
+            DesktopLocalTagOutcome(
+                filename = issue.filename ?: "Recovery record",
+                status = ApplyResultStatus.INDETERMINATE,
+                message = issue.message,
+                rollbackAvailable = false,
+            )
+        }
+
+        val current = mutableState.value
+        val outcomes = when {
+            preferredOutcomes != null -> preferredOutcomes
+            durable.recoveryRequired -> durableOutcomes
+            current.localWorkbench.recoveryRequired -> emptyList()
+            else -> current.localWorkbench.tagOutcomes
+        }
+        val recoveryMessage = if (durable.recoveryRequired) {
+            "Interrupted local tag recovery was rediscovered under the explicitly selected root; resolve it before additional metadata writes."
+        } else {
+            current.localWorkbench.message
+        }
+        mutableState.value = current.copy(
+            localWorkbench = current.localWorkbench.copy(
+                tagOutcomes = outcomes,
+                rollbackAvailableCount = localTagRecoveryResults.count(::canRollbackLocalTagResult),
+                recoveryRequired = durable.recoveryRequired,
+                message = recoveryMessage,
+            ),
+        )
+    }
+
+    private fun clearLocalReviews() {
+        reviewedLocalTags = null
+        localTagDryRunReady = false
+        reviewedLocalPlaylist = null
+        reviewedLocalPlaylistBatch = null
+        mutableState.value = mutableState.value.copy(
+            localWorkbench = mutableState.value.localWorkbench.copy(
+                reviewedTagCount = 0,
+                tagDryRunReady = false,
+                playlistReview = null,
+                operationLabel = null,
+                operationCompleted = 0,
+                operationTotal = 0,
+            ),
+        )
+    }
+
+    private fun projectLocalOperationProgress(label: String, completed: Int, total: Int) {
+        val current = mutableState.value
+        mutableState.value = current.copy(
+            localWorkbench = current.localWorkbench.copy(
+                operationLabel = label,
+                operationCompleted = completed,
+                operationTotal = total,
+            ),
+        )
+    }
+
+    private fun detachLocalBinding() {
+        val binding = localBinding ?: return
+        localStatusJob?.cancel()
+        localStatusJob = null
+        localBinding = null
+        clearLocalReviews()
+        localTagRecoveryResults.clear()
+        sources.remove(binding.source.id)
+        if (source.id == binding.source.id) source = demoSource
+        if (mutableState.value.queue.entries.any { it.track.sourceId == binding.source.id }) {
+            updateQueue(PlaybackQueue(generation = mutableState.value.queue.generation + 1))
+            scope.launch { runCatching { mpv.stop() } }
+        }
+        runCatching { binding.close() }
+        mutableState.value = mutableState.value.copy(localWorkbench = DesktopLocalWorkbenchUiState())
+    }
+
+    private fun projectLocalPreview(
+        binding: DesktopLocalFolderBinding,
+        preview: FolderTreeTagPreview,
+        hostStatus: LocalFolderWorkbenchStatus,
+    ) {
+        if (localBinding !== binding) return
+        val proposals = preview.snapshots.flatMap { snapshot ->
+            snapshot.files.flatMap { row ->
+                row.fieldProposals.map { proposal ->
+                    DesktopLocalTagProposal(
+                        nodeId = row.identity.nodeId,
+                        filename = row.identity.filename,
+                        field = proposal.field,
+                        ruleId = proposal.ruleId,
+                        currentValue = proposal.currentValue,
+                        proposedValue = proposal.proposedValue,
+                        confidence = proposal.confidence,
+                        autoPreselected = proposal.autoPreselected,
+                        warnings = proposal.warnings,
+                    )
+                }
+            }
+        }
+        mutableState.value = mutableState.value.copy(
+            localWorkbench = mutableState.value.localWorkbench.copy(
+                active = true,
+                recursiveScope = binding.recursive,
+                hostState = hostStatus.state,
+                sessionRevision = hostStatus.sessionRevision,
+                folderCount = hostStatus.folderCount,
+                fileCount = hostStatus.fileCount,
+                proposals = proposals,
+                message = localUserMessage(binding, hostStatus.error ?: hostStatus.message),
+            ),
+        )
+    }
+
+    private suspend fun projectLocalStatus(
+        binding: DesktopLocalFolderBinding,
+        hostStatus: LocalFolderWorkbenchStatus,
+    ) {
+        if (localBinding !== binding) return
+        val previous = mutableState.value.localWorkbench
+        if (previous.active && previous.sessionRevision != hostStatus.sessionRevision) {
+            clearLocalReviews()
+        }
+        val preview = if (hostStatus.state == LocalFolderWorkbenchWatchState.LIVE) binding.currentPreview() else null
+        if (preview != null) {
+            projectLocalPreview(binding, preview, hostStatus)
+        } else {
+            mutableState.value = mutableState.value.copy(
+                localWorkbench = mutableState.value.localWorkbench.copy(
+                    active = true,
+                    recursiveScope = binding.recursive,
+                    hostState = hostStatus.state,
+                    sessionRevision = hostStatus.sessionRevision,
+                    folderCount = hostStatus.folderCount,
+                    fileCount = hostStatus.fileCount,
+                    message = localUserMessage(binding, hostStatus.error ?: hostStatus.message),
+                ),
+            )
+        }
+    }
+
+    private fun localSourceMessage(message: String): String {
+        val binding = localBinding ?: return message
+        return if (source.id == binding.source.id) localUserMessage(binding, message) else message
+    }
+
+    private fun localUserMessage(binding: DesktopLocalFolderBinding, message: String): String {
+        val canonicalRoot = binding.source.identity.canonicalRoot.path
+        val absoluteRoot = binding.source.identity.canonicalRoot.absolutePath
+        return message
+            .replace(canonicalRoot, "<selected-root>")
+            .replace(absoluteRoot, "<selected-root>")
+    }
+
     private fun restorePCloudSession(selectedSource: String?) {
         val generation = ++pCloudRestoreGeneration
         if (!PCloudSessionRestorePolicy.permitsRestore(repository.setting(PCloudSessionRestorePolicy.SETTING_KEY))) {
@@ -605,6 +1190,7 @@ class DesktopController(
         if (!closing.compareAndSet(false, true)) return
         cancelPCloudRestore()
         runCatching { checkpoint(mutableState.value.playback, force = true) }
+        runCatching { detachLocalBinding() }
         runCatching { sleepMonitor?.close() }
         runCatching { mpris?.close() }
         runCatching { mpv.close() }

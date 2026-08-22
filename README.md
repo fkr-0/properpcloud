@@ -36,6 +36,7 @@ Both clients share the same Kotlin/JVM source, folder, sorting, queue, progress,
 - browser OAuth support when a registered public application ID is available;
 - raw provider and metadata inspection with secrets redacted;
 - staged, hash-guarded metadata export and repair planning;
+- shared preview-first relative `.m3u8` generation with four deterministic order modes, stale-evidence guards, and playlist-only post-sync regeneration; Android exposes verified ZIP export today, while direct local-root client binding remains pending;
 - deterministic generated-WAV demo media requiring no account or network;
 - Linux MPRIS media keys, Secret Service tokens, SQLite state, and XDG paths;
 - a pre-rendered Markdown documentation site deployed through GitHub Pages.
@@ -60,13 +61,25 @@ sudo pacman -S --needed mpv libsecret
 
 ### Android
 
+For routine source edits:
+
+```bash
+make local-check
+```
+
+Only when an installable APK is actually needed:
+
 ```bash
 make doctor
-make test
-make lint
 make build
 make install
 ```
+
+Routine development intentionally avoids rebuilding the Android application on every edit.
+`make local-check` runs host-side contract and configuration checks without requiring the
+Android toolchain image. Push and pull-request GitHub Actions run the full portable JVM,
+Robolectric, lint, APK assembly, documentation, and repository `make ci` gate. `make fast-test`
+is available for targeted portable JVM verification when the pinned image is already local.
 
 Start with **Demo library** on either platform. Connect pCloud only after demo browsing, queuing, playback, seeking, and restart restoration work locally.
 
@@ -114,6 +127,8 @@ The pinned container supplies Eclipse Temurin 21, Gradle 9.6.1, Android compile 
 make image                # build the pinned toolchain image
 make doctor               # validate wrapper, image, and prerequisites
 make release-check        # validate specifications and release metadata
+make local-check          # routine host contract/config gate; no Android image required
+make fast-test            # optional portable JVM tests when the build image is already local
 make test                 # Android and portable JVM tests
 make desktop-test         # Linux adapter tests
 make desktop-smoke        # real host mpv + SQLite smoke

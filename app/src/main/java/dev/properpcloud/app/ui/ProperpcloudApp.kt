@@ -979,6 +979,7 @@ data class AppActions(
     val stageMetadata: () -> Unit,
     val updateBatchField: (dev.properpcloud.core.model.TagField, dev.properpcloud.app.metadata.BatchFieldDraft) -> Unit,
     val updateBatchSequence: (Boolean, String, Boolean) -> Unit,
+    val updateBatchPlaylist: (Boolean, dev.properpcloud.metadata.tags.FolderPlaylistOrder) -> Unit,
     val searchBatchMetadata: () -> Unit,
     val selectBatchCandidate: (AudioTrack, String?) -> Unit,
     val toggleBatchCandidateField: (AudioTrack, dev.properpcloud.core.model.TagField) -> Unit,

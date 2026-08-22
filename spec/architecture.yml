@@ -152,10 +152,14 @@ architecture:
             - copy source bytes to unique app-private staging
             - apply approved Set and Clear operations only
             - reread and verify staged tag changes
+            - prove explicit writable local-root capability without converting provider caches into source identity
+            - host neutral JVM WatchService reconciliation with observer-before-scan registration and revision-bound review invalidation
           boundaries:
             - No jaudiotagger type crosses into core-model or presentation.
             - The original source file is never edited in place.
             - Unsupported or malformed files fail without a mutation candidate.
+            - LocalFolderRootCapability must be supplied by a real local-source/client boundary; the native desktop selected-directory source now satisfies this boundary, while pCloud/demo/prepared copies do not.
+            - Watcher callbacks invalidate and schedule reconciliation only; they never stage or apply tags.
         metadata_online:
           path: metadata-online
           responsibilities:
@@ -310,7 +314,7 @@ architecture:
       core-metadata:
         depends_on: [core-domain]
       metadata-tags:
-        depends_on: [core-model, jaudiotagger]
+        depends_on: [core-model, coroutines, jaudiotagger]
       metadata-online:
         depends_on: [core-model, coroutines, JDK-HTTP-and-XML]
       source-pcloud-jvm:
@@ -419,14 +423,19 @@ architecture:
       - Staged tags are reread and compared with the approved patch.
       - Original bytes remain unchanged; staged hash becomes apply evidence.
     folder_tag_workbench:
-      - UI opens one stable direct-folder identity.
-      - Application establishes an observer lease and generation barrier.
+      - The native desktop local-directory source explicitly supplies LocalFolderRootCapability only after a user selects and validates one writable root; pCloud/demo/prepared-copy surfaces do not satisfy this step.
+      - Desktop local source/node identity is filesystem-first and opaque: one selected-root source ID plus root-relative node IDs, independent of tags and provider metadata.
+      - The selected root is session-scoped in the current desktop client; source switch/application close closes the observer and clears queue authority, and no complete private path is restored from persistence.
+      - Explicit tag dry-run/apply and playlist-batch operations project only completed/total progress; private paths remain outside presentation and evidence.
+      - The Flatpak package remains fail-closed for local-root selection until a real document-portal directory lease exists; broad host/home filesystem access is not added as a substitute.
+      - LocalFolderWorkbenchHost registers the WatchService observer lease before starting its first scan.
       - Source enumeration and bounded tag parsing produce an immutable FolderTagSnapshot.
-      - Events received during scanning are drained, coalesced, and reconciled before live state.
+      - Events received during scanning revoke current reviews, are bounded/coalesced, and force authoritative reconciliation before live state.
       - Pure correction rules produce explainable field-level proposals without mutation.
-      - User freezes exact approved fields against content SHA-256 and confirms replacement.
+      - User freezes exact approved fields against content SHA-256 and separately confirms replacement.
       - Local adapter stages beside the source, verifies tags and decodability, revalidates the original, and atomically replaces.
-      - Final readback and watcher reconciliation prove the result; rollback restores exact original bytes on verification failure.
+      - Mutation and rescan are serialized; expected self-events are never suppressed and a fresh watcher-stable readback proves the resulting view.
+      - Rollback restores exact original bytes on verification failure; watcher/post-sync automation has no tag-apply command path.
   error_taxonomy:
     authentication:
       examples: [missing_token, rejected_token, wrong_region, callback_mismatch]

@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
@@ -89,6 +90,8 @@ import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.QueueOperation
+import dev.properpcloud.metadata.tags.FolderPlaylistOrder
+import dev.properpcloud.metadata.tags.LocalFolderWorkbenchWatchState
 import dev.properpcloud.source.pcloud.PCloudAccountRegion
 import java.awt.SystemColor
 
@@ -162,6 +165,8 @@ fun DesktopApp(controller: DesktopController) {
                     actions = {
                         TextButton(onClick = controller::useDemo) { Text("Demo") }
                         TextButton(onClick = controller::usePCloud) { Text("pCloud") }
+                        TextButton(onClick = { controller.chooseLocalFolder(recursive = false) }) { Text("Local") }
+                        TextButton(onClick = { controller.chooseLocalFolder(recursive = true) }) { Text("Local tree") }
                         IconButton(onClick = { accountDialog = true }) {
                             Icon(if (state.connectedToPCloud) Icons.Default.Logout else Icons.Default.Login, "Account")
                         }
@@ -194,6 +199,10 @@ fun DesktopApp(controller: DesktopController) {
                         modifier = Modifier.widthIn(min = 320.dp, max = 440.dp).fillMaxHeight(),
                     )
                 }
+                if (state.localWorkbench.active) {
+                    Divider()
+                    LocalWorkbenchPane(state.localWorkbench, controller)
+                }
                 Surface(tonalElevation = 2.dp) {
                     Text(state.status, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp), style = MaterialTheme.typography.bodySmall)
                 }
@@ -201,6 +210,263 @@ fun DesktopApp(controller: DesktopController) {
         }
         if (accountDialog) AccountDialog(state, controller, onDismiss = { accountDialog = false })
         if (keyboardHelp) KeyboardHelpDialog(onDismiss = { keyboardHelp = false })
+    }
+}
+
+@Composable
+private fun LocalWorkbenchPane(
+    state: DesktopLocalWorkbenchUiState,
+    controller: DesktopController,
+) {
+    var selected by remember(state.sessionRevision, state.proposals) {
+        mutableStateOf(
+            state.proposals.filter(DesktopLocalTagProposal::autoPreselected).fold(emptySet<DesktopLocalTagProposal>()) { accepted, proposal ->
+                accepted.filterNot { it.nodeId == proposal.nodeId && it.field == proposal.field }.toSet() + proposal
+            },
+        )
+    }
+    var recursiveTagOptIn by remember(state.sessionRevision) { mutableStateOf(false) }
+    var recursivePlaylistOptIn by remember(state.sessionRevision) { mutableStateOf(false) }
+    var onePlaylistPerAlbum by remember(state.sessionRevision) { mutableStateOf(false) }
+    var playlistOrder by remember(state.sessionRevision) { mutableStateOf(FolderPlaylistOrder.TAG_TRACK_NUMBER) }
+    var orderMenu by remember { mutableStateOf(false) }
+    var confirmTagWrite by remember { mutableStateOf(false) }
+    var confirmPlaylistWrite by remember { mutableStateOf(false) }
+    var confirmTagRollback by remember { mutableStateOf(false) }
+    val live = state.hostState == LocalFolderWorkbenchWatchState.LIVE && !state.recoveryRequired
+
+    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                Modifier.weight(1f).semantics {
+                    stateDescription = if (state.recoveryRequired) {
+                        "Recovery required before additional metadata writes"
+                    } else {
+                        "${state.hostState.name.lowercase().replace('_', ' ')} at revision ${state.sessionRevision}"
+                    }
+                },
+            ) {
+                Text(
+                    "Local metadata workbench",
+                    modifier = Modifier.semantics { heading() },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "${state.hostState.name.lowercase().replace('_', '-')} · revision ${state.sessionRevision} · ${state.fileCount} audio file(s)",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (state.recoveryRequired) {
+                    Text(
+                        "Recovery required: further tag and playlist writes are disabled until the interrupted outcome is resolved or explicitly abandoned by closing this selected-root session.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Text(state.message, style = MaterialTheme.typography.labelSmall)
+                state.operationLabel?.let { label ->
+                    Text(
+                        "$label · ${state.operationCompleted}/${state.operationTotal}",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(onClick = controller::refreshLocalWorkbench) { Text("Reconcile") }
+                if (state.rollbackAvailableCount > 0) {
+                    OutlinedButton(onClick = { confirmTagRollback = true }) {
+                        Text("Rollback latest (${state.rollbackAvailableCount})")
+                    }
+                }
+            }
+        }
+
+        if (state.tagOutcomes.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text("Tag apply and recovery results", Modifier.semantics { heading() }, style = MaterialTheme.typography.labelLarge)
+            LazyColumn(Modifier.fillMaxWidth().height(92.dp)) {
+                itemsIndexed(
+                    state.tagOutcomes,
+                    key = { index, outcome -> "${outcome.filename}:${outcome.status}:$index" },
+                ) { _, outcome ->
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 3.dp).semantics(mergeDescendants = true) {
+                            contentDescription = buildString {
+                                append("Tag result ${outcome.filename}. ${outcome.status.name.lowercase().replace('_', ' ')}. ")
+                                append(outcome.message)
+                                if (outcome.rollbackAvailable) append(" Guarded rollback available.")
+                            }
+                            stateDescription = outcome.status.name.lowercase().replace('_', ' ')
+                        },
+                    ) {
+                        Text("${outcome.filename} · ${outcome.status.name.lowercase().replace('_', '-')}", style = MaterialTheme.typography.bodySmall)
+                        Text(outcome.message, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+
+        if (state.proposals.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text("Review local proposals", Modifier.semantics { heading() }, style = MaterialTheme.typography.labelLarge)
+            LazyColumn(Modifier.fillMaxWidth().height(120.dp)) {
+                itemsIndexed(
+                    state.proposals,
+                    key = { _, proposal -> "${proposal.nodeId.value}:${proposal.field}:${proposal.ruleId}" },
+                ) { _, proposal ->
+                    val checked = proposal in selected
+                    Row(
+                        Modifier.fillMaxWidth().semantics(mergeDescendants = true) {
+                            contentDescription = buildString {
+                                append("${proposal.filename}, ${proposal.field}. Current ${proposal.currentValue ?: "empty"}. Proposed ${proposal.proposedValue ?: "empty"}. Rule ${proposal.ruleId}.")
+                                if (proposal.warnings.isNotEmpty()) append(" Warning: ${proposal.warnings.joinToString("; ")}")
+                            }
+                            stateDescription = if (checked) "Selected for review" else "Not selected for review"
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = checked,
+                            onCheckedChange = { enabled ->
+                                selected = if (enabled) {
+                                    selected.filterNot { it.nodeId == proposal.nodeId && it.field == proposal.field }.toSet() + proposal
+                                } else {
+                                    selected - proposal
+                                }
+                            },
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text("${proposal.filename} · ${proposal.field}", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "${proposal.currentValue ?: "—"} → ${proposal.proposedValue ?: "—"} · ${proposal.ruleId}",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            proposal.warnings.forEach { warning ->
+                                Text("Warning: $warning", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (state.recursiveScope) {
+                    Row(
+                        Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Allow recursive tag plan"
+                            stateDescription = if (recursiveTagOptIn) "Selected" else "Not selected"
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = recursiveTagOptIn, onCheckedChange = { recursiveTagOptIn = it })
+                        Text("Allow recursive tag plan", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(
+                        onClick = { controller.reviewLocalTags(selected, state.sessionRevision, recursiveTagOptIn) },
+                        enabled = live && selected.isNotEmpty(),
+                    ) { Text("Review selected") }
+                    OutlinedButton(
+                        onClick = controller::dryRunReviewedLocalTags,
+                        enabled = live && state.reviewedTagCount > 0,
+                    ) { Text("Dry run") }
+                    Button(
+                        onClick = { confirmTagWrite = true },
+                        enabled = live && state.tagDryRunReady,
+                    ) { Text("Apply reviewed tags") }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box {
+                    OutlinedButton(onClick = { orderMenu = true }, enabled = live) { Text("Playlist: ${playlistOrder.name.lowercase().replace('_', ' ')}") }
+                    DropdownMenu(expanded = orderMenu, onDismissRequest = { orderMenu = false }) {
+                        FolderPlaylistOrder.values().forEach { order ->
+                            DropdownMenuItem(
+                                text = { Text(order.name.lowercase().replace('_', ' ')) },
+                                onClick = { playlistOrder = order; orderMenu = false },
+                            )
+                        }
+                    }
+                }
+                if (state.recursiveScope) {
+                    Row(
+                        Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Recursive playlists"
+                            stateDescription = if (recursivePlaylistOptIn) "Selected" else "Not selected"
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = recursivePlaylistOptIn, onCheckedChange = { recursivePlaylistOptIn = it }, enabled = live)
+                        Text("Recursive playlists", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Row(
+                        Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "One playlist per album"
+                            stateDescription = if (onePlaylistPerAlbum) "Selected" else "Not selected"
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = onePlaylistPerAlbum, onCheckedChange = { onePlaylistPerAlbum = it }, enabled = live)
+                        Text("One per album", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = {
+                        controller.reviewLocalPlaylist(
+                            recursivePlaylistOptIn = recursivePlaylistOptIn,
+                            onePlaylistPerAlbum = onePlaylistPerAlbum,
+                            order = playlistOrder,
+                        )
+                    },
+                    enabled = live,
+                ) { Text("Review playlist") }
+                Button(
+                    onClick = { confirmPlaylistWrite = true },
+                    enabled = live && state.playlistReview != null,
+                ) { Text("Write reviewed playlist") }
+            }
+        }
+        state.playlistReview?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+    }
+
+    if (confirmTagWrite) {
+        AlertDialog(
+            onDismissRequest = { confirmTagWrite = false },
+            title = { Text("Replace reviewed tag bytes?") },
+            text = { Text("The dry run passed. Only the exact reviewed fields and hashes will be applied; watcher reconciliation runs afterwards.") },
+            confirmButton = {
+                Button(onClick = { confirmTagWrite = false; controller.applyReviewedLocalTags(confirmWrite = true) }) { Text("Apply") }
+            },
+            dismissButton = { TextButton(onClick = { confirmTagWrite = false }) { Text("Cancel") } },
+        )
+    }
+    if (confirmTagRollback) {
+        AlertDialog(
+            onDismissRequest = { confirmTagRollback = false },
+            title = { Text("Restore the latest verified original bytes?") },
+            text = { Text("Rollback is allowed only while the current file still matches the exact previously verified apply result. A later external edit causes a conflict instead of being overwritten.") },
+            confirmButton = {
+                Button(onClick = { confirmTagRollback = false; controller.rollbackLatestLocalTag(confirmRollback = true) }) { Text("Rollback") }
+            },
+            dismissButton = { TextButton(onClick = { confirmTagRollback = false }) { Text("Cancel") } },
+        )
+    }
+    if (confirmPlaylistWrite) {
+        AlertDialog(
+            onDismissRequest = { confirmPlaylistWrite = false },
+            title = { Text("Write reviewed playlist?") },
+            text = { Text("Only the exact revision-bound playlist review will be materialized inside the selected local root.") },
+            confirmButton = {
+                Button(onClick = { confirmPlaylistWrite = false; controller.materializeReviewedLocalPlaylist(confirmWrite = true) }) { Text("Write playlist") }
+            },
+            dismissButton = { TextButton(onClick = { confirmPlaylistWrite = false }) { Text("Cancel") } },
+        )
     }
 }
 

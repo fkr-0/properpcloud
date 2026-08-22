@@ -1,6 +1,6 @@
 folder_tag_workbench:
-  version: 0.1.0
-  status: designed_not_implemented
+  version: 0.4.0
+  status: core_vertical_slice_implemented
   target_release: v0_1_11
   purpose: >-
     Provide a dedicated, calm workspace for understanding and repairing the embedded tags
@@ -11,7 +11,9 @@ folder_tag_workbench:
       Generate and optionally preselect deterministic, reversible correction proposals.
       Autocorrect never writes media bytes without a separate explicit review and apply action.
     folder_session: one selected folder, one coherent snapshot generation, one observer lease, and its drafts
-    direct_scope: playable direct children of the selected folder; recursion is never implicit
+    direct_scope: >-
+      Playable direct children of the selected folder remain the workbench default; recursion is never implicit
+      and requires an explicitly selected tree preview plus recursive batch opt-in.
   invariants:
     - Stable source ID, node ID, parent ID, filename, and folder remain visible and authoritative.
     - Embedded tags enrich the folder view but never become file identity or navigation authority.
@@ -20,17 +22,20 @@ folder_tag_workbench:
     - Every proposal records rule ID, exact inputs, expected original value, proposed value, confidence, warnings, and provenance.
     - Ambiguous, lossy, or online-derived proposals are unselected by default.
     - Applying local changes requires explicit file and field approval plus a second byte-replacement confirmation.
+    - Folder-derived values remain review-only and a non-empty conflicting embedded value is shown beside the derived value, never silently replaced.
     - A source change after proposal generation invalidates the affected approval before any replacement.
     - Remote objects remain review-and-export only until a source offers atomic expected-revision replacement.
     - An unavailable atomic local replacement primitive degrades to verified export; it never falls back to an unsafe overwrite.
+    - Generated playlist files contain only location-relative media paths inside the selected filesystem root; provider URLs and absolute media paths are forbidden.
   scope:
     initial:
       - local regular audio files in one direct folder
+      - explicitly selected recursive folder-tree preview and batch plan while keeping direct-folder workbench behavior as the default
       - existing supported jaudiotagger containers
       - manual edits and deterministic local proposal rules
       - optional explicitly invoked MusicBrainz review through existing consent boundaries
+      - browsable in-memory music catalog populated only from one direct-folder snapshot per add action
     later:
-      - explicitly selected recursive album trees
       - artwork policy and mutation
       - configured Chromaprint and AcoustID matching
       - provider-side apply after a real expected-revision primitive exists
@@ -40,6 +45,28 @@ folder_tag_workbench:
       - filename or folder renaming
       - following symbolic links outside the selected folder
       - hiding malformed or unsupported files
+      - adding loose files, recursive trees, or an entire source to the music catalog in one action
+  implemented_vertical_slice:
+    shared_core:
+      - direct-directory scan and deterministic local proposals
+      - configurable Artist/Album/Track.ext hierarchy inference with ancestor-depth controls, natural filename track sequencing, and common disc-folder recognition
+      - explicit recursive tree preview, frozen approval plan, dry-run execution boundary, sequential guarded apply, and progress callbacks
+      - opt-in provider query port that excludes file paths and audio bytes
+      - ranked per-file online candidates with explicit per-field approval
+      - hash-guarded staged apply boundary and per-file results
+      - folder, artist, and album catalog projections with addDirectory as the sole add command
+      - portable UTF-8 playlist generation from inspected snapshots with natural-filename, embedded disc/track, tagged-title, or modification-time ordering
+      - trusted audio-header duration evidence for EXTINF with explicit unknown-duration fallback
+      - explicitly opted-in subtree playlist batches, optional one-playlist-per-album disc-folder grouping, progress, and bounded playlist-only post-sync regeneration
+      - explicit LocalFolderRootCapability that proves a caller-selected root is readable, writable, non-symlink, and supports same-directory atomic move before local workbench hosting
+      - neutral JVM LocalFolderWorkbenchHost with a real WatchService lease registered before scan, immediate review invalidation, bounded event coalescing, overflow/invalid-observer full reconciliation, and watcher-safe post-write rescan
+    clients:
+      - Android and Linux depend on the same core-model, metadata-online, and metadata-tags modules
+      - client forms may iterate FolderTagSnapshot rows and candidates without provider-specific business rules
+      - native desktop now exposes a separately identified user-selected local-directory AudioSource and binds only that selected root to LocalFolderRootCapability/LocalFolderWorkbenchHost
+      - desktop pCloud, signed links, deterministic demo files, metadata staging downloads, and Android prepared copies are never promoted to local-root identity
+      - the desktop local root is process-session scoped and is not restored from a persisted private path; switching source or closing the controller closes the observer and removes its queued local authority
+      - current Flatpak packaging keeps local-root selection unavailable because no document-portal directory lease exists and no host/home filesystem permission is widened
   entry_and_navigation:
     entry_points:
       - current folder toolbar action named Review tags
@@ -49,6 +76,66 @@ folder_tag_workbench:
       - preserve unapplied drafts locally when the user chooses Save draft
       - discard only after explicit confirmation
       - stop the observer lease when the folder session closes
+  playlist_export:
+    format: extended M3U encoded as UTF-8 with the .m3u8 extension
+    default_name: >-
+      sanitized unanimous embedded album plus unanimous album-artist/artist when available;
+      otherwise the selected filesystem folder name; playlist.m3u8 only when no useful stem remains
+    identity_rule: tag-derived naming is display/derived-artifact metadata only and never determines media path identity or navigation
+    location: inside the selected filesystem folder or, for grouped disc folders, their real common album parent inside the selected root
+    entries: media paths prefixed with ./ and relative to the playlist location; recursive entries may include descendant directories
+    sort_modes:
+      natural_filename: natural case-insensitive filename ordering with numeric runs compared numerically
+      tag_track_number: embedded disc number then track number, with missing or tied values falling back to natural filename
+      tagged_title: embedded title with natural filename as the deterministic fallback/tie-break
+      modification_time: oldest content-evidence modified time first with natural filename tie-break
+    labels: EXTINF uses embedded artist and title when present and never replaces path identity
+    duration:
+      trusted_source: locally inspected audio-header duration only
+      rendering: rounded to whole seconds for EXTINF when positive
+      fallback: EXTINF -1 when trustworthy duration evidence is unavailable
+    batch_generation:
+      direct_default: one direct-folder snapshot and no recursive traversal
+      recursive_opt_in: recursive playlist planning requires a separate explicit opt-in and never opts into recursive tag writes
+      one_playlist_per_album: >-
+        optional filesystem-first grouping collapses recognized CD, Disc, Disk, or Part folders into their real parent;
+        tags may improve the filename but never choose the target directory
+      materialization: >-
+        preflight every output/entry, reviewed recursive directory set, audio-child membership for every reviewed directory including empty directories, and size/modified-time plus SHA-256 evidence before the first playlist write;
+        stale evidence rejects the frozen plan and requires reconciliation/new preview, otherwise write sequentially with completed/total progress
+    update_policy: regenerate the same deterministic target through a flushed same-directory temporary file; reject playlist symlinks
+    application_boundaries:
+      shared_local_workflow: >-
+        FolderAutoTagWorkflow remains the reusable plan/write service, while FolderMetadataSuiteSession is the client/agent-facing
+        local-root boundary that mints revision-bound reviews and requires explicit confirmation before direct or batch playlist materialization.
+      recursive_local_workflow: >-
+        recursive playlist batch planning is available only after explicit recursive tree preview plus a separate playlist recursive opt-in;
+        FolderMetadataSuiteSession carries recursiveTagOptIn separately and never derives it from playlist consent.
+      reconciliation_session: >-
+        a relevant filesystem/watcher signal invalidates the current session revision, approvals, playlist reviews, and queued derived regeneration;
+        a fresh preview after the adapter's event drain/reconciliation barrier is required before any review becomes current again.
+      post_tag_apply: >-
+        a confirmed tag execution invalidates the session after verified results so playlists can only be derived from a fresh post-write scan.
+      android_tag_studio_export: >-
+        the existing prepared-copy batch export exposes an explicit include-playlist toggle and order selector in its review surface;
+        it writes only inside the verified ZIP and does not invent direct-folder or recursive filesystem access for Android sources.
+      capability_boundary: >-
+        direct-folder controls are exposed only to clients that genuinely own a selected writable local root; current Android prepared-copy and
+        desktop provider/demo browsing do not fabricate such a mapping.
+    post_sync_regeneration:
+      trigger: >-
+        explicit submission of a freshly planned playlist batch after source/local reconciliation;
+        a low-level stale materialization fails closed and remains pending for direct service callers, while the application session revokes
+        queued reviews on a reconciliation signal or stale flush so only a freshly reviewed plan can resume automatic work
+      quiet_window_millis: 250
+      pending_batch_bound: 16
+      playlists_per_batch_bound: 256
+      invariant: the regeneration service depends only on playlist plans/writer and has no tag toolkit or tag-apply dependency
+    security:
+      - never resolve or persist provider stream capabilities
+      - never emit an absolute media path
+      - reject path or symbolic-link escapes outside the selected root or planned playlist directory
+      - reject media path components containing CR, LF, or NUL because M3U cannot represent them faithfully
   view:
     header:
       content:
@@ -123,6 +210,10 @@ folder_tag_workbench:
       - calculate folder consistency and deterministic proposals
       - publish one coherent FolderTagSnapshot generation
       - drain queued observer events and reconcile before declaring live
+    recursive_tree_boundary:
+      default: one direct folder only
+      opt_in: callers must explicitly request recursive tree preview; symbolic-link directories are not followed
+      semantics: each discovered directory is scanned as its own direct-folder snapshot and receives its own generation
     content_evidence:
       fast: stable file key when available, size, and nanosecond-capable modified time
       authoritative_before_apply: SHA-256 of the exact original bytes
@@ -137,9 +228,25 @@ folder_tag_workbench:
       - a cancelled scan publishes no falsely complete generation
   watching:
     adapters:
-      local: platform WatchService or native inotify-backed adapter
+      local: >-
+        implemented neutral JVM WatchService adapter behind LocalFolderRootCapability; native inotify-backed adapters may replace it later,
+        but no provider cache or prepared download is implicitly treated as a writable local root
       source_change_feed: provider ChangeFeedSource when an ordered cursor exists
       fallback: bounded polling plus manual refresh, labelled as non-live
+    current_jvm_host:
+      lease: WatchService directory registration completes synchronously before initial metadata scan begins
+      immediate_invalidation: relevant audio/create/delete/modify, overflow, or invalid-observer callbacks revoke current session reviews before debounce
+      reconciliation: coalesced batches trigger one authoritative full preview; a generation is live only when no newer watcher event raced with that scan
+      storm_bound: raw per-batch event detail is capped at 4096 and degrades to synthetic overflow/full-rescan evidence rather than unbounded accumulation
+      worker_bound: at most one background reconciliation worker is scheduled; newer batch sequences collapse into that worker or one follow-up request
+      recursive_registration: explicitly recursive sessions register non-symlink descendants and newly created directories without following links
+      derived_playlist_events: .m3u/.m3u8 writes are not media events; playlist materialization keeps its own content/membership preflight
+      client_binding: implemented for explicit native-desktop local-directory selection only; Android prepared copies and desktop provider/demo sources remain outside this authority boundary
+      desktop_identity: source ID is an opaque hash of the canonical selected root and node IDs are opaque hashes of root-relative filesystem paths; tags and provider values never determine identity
+      desktop_lifetime: source switch or application close cancels the status projection, closes LocalFolderWorkbenchHost, removes the local source, and clears queued entries that require the closed root
+      desktop_progress: explicit tag dry-run/apply and playlist-batch progress is projected as completed/total work without exposing private paths
+      desktop_persistence: the selected private root path is not persisted in the current implementation; restart requires a new explicit selection
+      flatpak_boundary: current package has neither broad host/home filesystem access nor a document-portal directory lease, so local-root selection fails closed inside Flatpak
     bootstrap_without_gap:
       - register the observer before or under the same generation barrier as initial enumeration
       - capture the initial snapshot
@@ -158,9 +265,10 @@ folder_tag_workbench:
         - symbolic links are not followed by default and loops or folder escape are rejected
         - temporary and backup files may be hidden from rows but their final rename target must be reconciled
     own_writes:
-      - correlate an apply operation by operation ID, path identity, and resulting content evidence
-      - expected self-events still pass through reconciliation
-      - never suppress a coincident external change merely because an apply operation is active
+      - the portable JVM host deliberately does not suppress expected self-events; they pass through the same immediate invalidation and authoritative reconciliation path
+      - tag replacement and authoritative rescans share one operation mutex so a watcher-driven rescan cannot parse half-completed user mutation work
+      - a confirmed tag write waits one observer quiet window and requires a fresh stable snapshot before the host clears reconciliation-required state
+      - a future operation-ID/path correlation layer may improve presentation only; it must never suppress a coincident external change
     presentation:
       - keep useful rows visible during reconciliation
       - mark stale or changed rows immediately
@@ -177,9 +285,11 @@ folder_tag_workbench:
       - copy an exactly unanimous album or album-artist value into a missing field
     review_required_rules:
       - parse configured track, artist, and title groups from filename
-      - infer album or disc from the selected folder name or its immediate parent
+      - infer title from filename stem when configured
+      - infer artist and album from configurable ancestor depths in Artist/Album/Track.ext style layouts
+      - recognize common CD, Disc, Disk, or Part folder names and infer disc number while shifting artist/album depth past that container
       - normalize title or artist case when the transformation is not lossless
-      - sequence tracks from explicit current table order
+      - sequence tracks from natural case-insensitive filename order with numeric runs compared numerically
       - select fields from a reviewed MusicBrainz candidate
     forbidden_rules:
       - overwrite a non-empty conflicting field without explicit selection
@@ -210,22 +320,37 @@ folder_tag_workbench:
       - run a bounded decoder or container validation probe
       - preserve required mode, ownership, timestamps, and extended attributes when supported; abort before replacement when a security-relevant attribute cannot be preserved
       - fsync staged bytes and metadata
-      - revalidate the original identity and SHA-256 immediately before replacement
-      - create a private same-filesystem rollback sibling containing the exact original bytes
+      - revalidate the original identity and SHA-256 before creating recovery bytes
+      - create and fsync a private same-filesystem rollback sibling containing the exact original bytes
+      - for the native selected-root desktop only, atomically publish a private sibling recovery record before replacement containing encoded target/rollback basenames plus reviewed-original and expected-result SHA-256; other clients use no-op recovery authority
+      - revalidate the source SHA-256 again after rollback/recovery-authority creation and immediately before the destructive replacement boundary
       - replace through the platform atomic-move primitive with no cross-filesystem fallback
       - fsync the parent directory where the platform supports it
       - reread final tags and SHA-256 and verify the selected patch
       - mark verified only after watcher reconciliation observes the resulting content evidence
     failure_and_rollback:
-      - before replacement, delete staging and leave the source untouched
+      - durable recovery-authority arming failure aborts before media replacement
+      - before replacement, disarm any published recovery record, delete private staging/rollback siblings when safely possible, and leave externally changed source bytes untouched
       - after replacement but before verification, restore the exact rollback bytes atomically and verify them
-      - when rollback cannot be proven, mark indeterminate, retain recovery evidence, and stop the batch
+      - if the atomic-replace operation reports failure after the exact staged candidate is cryptographically proven current, mark indeterminate, retain the exact rollback copy, and expose only hash-guarded rollback
+      - if current bytes match neither the reviewed original nor the staged candidate, mark indeterminate without rollback authority over those current bytes and require manual reconciliation
+      - an indeterminate apply keeps the workbench mutation gate closed even when a subsequent scan can describe the current directory
+      - explicit rollback has no force mode; it requires the current SHA-256 to match the recorded result SHA-256, restores exact original bytes, fsyncs file and parent directory where supported, and verifies the original SHA-256
+      - >-
+        after process loss, native recovery discovery runs only after explicit root reselection;
+        current-original records are cleaned, exact expected-result plus exact rollback bytes reconstruct guarded rollback authority,
+        and missing/malformed/mismatched evidence remains mutation-blocking without overwrite authority
+      - when rollback cannot be proven durable, mark indeterminate, retain available recovery evidence, and stop the batch
       - never report partial verification as complete success
     batch_policy:
       - approval freezes one plan generation
+      - recursive scope is opt-in twice, once for tree preview and again when freezing the recursive batch plan
+      - dry-run is the default execution mode and performs no staging or media-byte replacement
       - files apply sequentially or with a very small bounded concurrency
       - a conflict skips that file and does not weaken checks for later files
       - cancellation stops before the next file transaction, not during atomic replacement
+      - progress reports completed count, total count, current stable file identity, dry-run state, and apply status when available
+      - every frozen item retains the expected content SHA-256; verified results retain resulting SHA-256 and rollback bytes when available
   remote_sources:
     allowed:
       - inspect exact prepared bytes
@@ -242,6 +367,12 @@ folder_tag_workbench:
       - field proposals and explicit user edits
       - approval state before final confirmation
       - redacted apply audit and rollback reference
+    native_desktop_current_boundary:
+      - selected-root authorization remains process-session scoped; the complete selected-root path is not persisted and restart always requires explicit directory reselection
+      - before destructive replacement a private same-directory recovery record persists only encoded target/rollback basenames and original/expected-result SHA-256 values; no complete or root-relative private path is stored in the record
+      - after explicit reselection the desktop walks only that selected non-symlink tree for recovery records and reconstructs FileApplyResult authority only when the target still matches the expected result hash and rollback bytes match the exact original hash
+      - current bytes equal to the reviewed original prove that replacement did not survive or rollback already completed, so the stale record can be retired; malformed, missing, symlinked, or externally changed states remain blocked and are not silently discarded
+      - normal reread-verified apply disarms the cross-process record while retaining the existing same-session rollback sibling; successful guarded rollback also disarms it
     invalidation:
       - changed content invalidates that file's approval
       - changed folder identity closes the session
@@ -251,7 +382,8 @@ folder_tag_workbench:
     - Complete private paths and raw tags are excluded from diagnostics by default.
     - Online lookup remains separately consented and discloses every outgoing field.
     - Audio bytes are never sent to metadata lookup providers.
-    - Temp, staging, rollback, and audit files use private permissions and unpredictable names.
+    - Temp, staging, rollback, recovery, and audit files use private permissions and unpredictable names.
+    - Native recovery records encode basenames and hashes only; complete selected-root, parent, and media paths are never serialized into them.
     - Filenames and tag strings are untrusted Unicode data, never shell or local-path instructions.
     - No token, signed URL, provider body, private media bytes, or metadata-provider key enters release evidence.
   accessibility:
@@ -269,9 +401,39 @@ folder_tag_workbench:
       - TEST-TAG-FOLDER-CONFLICT
       - TEST-TAG-FOLDER-ATOMIC-APPLY
       - TEST-TAG-FOLDER-ROLLBACK
+      - TEST-TAG-FOLDER-POWER-LOSS-RECOVERY
+      - TEST-TAG-FOLDER-HIERARCHY-DEPTH
+      - TEST-TAG-FOLDER-NATURAL-ORDER
+      - TEST-TAG-FOLDER-DISC-INFERENCE
+      - TEST-TAG-FOLDER-DERIVED-CONFLICT
+      - TEST-TAG-FOLDER-RECURSIVE-OPT-IN
+      - TEST-TAG-FOLDER-BATCH-DRY-RUN
+      - TEST-TAG-FOLDER-BATCH-PROGRESS
       - TEST-TAG-FOLDER-NONATOMIC-EXPORT-ONLY
       - TEST-TAG-FOLDER-ACCESSIBILITY
+      - TEST-TAG-FOLDER-PLAYLIST
+      - TEST-TAG-FOLDER-PLAYLIST-MTIME-ORDER
+      - TEST-TAG-FOLDER-PLAYLIST-DURATION-FALLBACK
+      - TEST-TAG-FOLDER-PLAYLIST-ALBUM-NAME
+      - TEST-TAG-FOLDER-PLAYLIST-RECURSIVE-OPT-IN
+      - TEST-TAG-FOLDER-PLAYLIST-ONE-PER-ALBUM
+      - TEST-TAG-FOLDER-PLAYLIST-PATH-SAFETY
+      - TEST-TAG-FOLDER-PLAYLIST-REGENERATION
+      - TEST-TAG-FOLDER-PLAYLIST-STALE-PLAN
+      - TEST-TAG-FOLDER-PLAYLIST-STALE-MEMBERSHIP
+      - TEST-TAG-FOLDER-PLAYLIST-STALE-SUBTREE
+      - TEST-TAG-FOLDER-PLAYLIST-APPLICATION-BOUNDARY
+      - TEST-TAG-FOLDER-PLAYLIST-NO-TAG-WRITE
+      - TEST-TAG-FOLDER-SESSION-RECONCILIATION
+      - TEST-TAG-FOLDER-LOCAL-SUITE-E2E
+      - TEST-TAG-FOLDER-WATCHSERVICE-BOOTSTRAP-RACE
+      - TEST-TAG-FOLDER-WATCHSERVICE-OVERFLOW
+      - TEST-TAG-FOLDER-WATCHSERVICE-INVALID-OBSERVER
+      - TEST-TAG-FOLDER-WATCHSERVICE-SELF-EVENT
+      - TEST-TAG-FOLDER-WATCHSERVICE-STALE-PROJECTION
+      - TEST-TAG-FOLDER-WATCHSERVICE-REAL-IO
     release_boundary: >-
-      The specification may ship before implementation. A future release may claim the
-      workbench only after real filesystem watcher, conflict, power-loss, rollback, and
-      accessibility evidence passes on Linux and the applicable Android storage adapter.
+      The shared core, revision-bound session, explicit local-root capability, neutral JVM watcher/reconciliation host, and native-desktop selected-directory binding harden stale-source checks through the final destructive boundary, preserve ambiguous replacement evidence, keep indeterminate outcomes write-blocking, and expose only exact-hash-guarded rollback.
+      The native desktop now implements a pre-replacement durable sibling recovery authority whose record contains no complete private path and is re-associated only after explicit root reselection by exact target/result/original hashes; authored restart tests cover terminate-after-replace, already-original cleanup, external mismatch blocking, malformed-record blocking, guarded rollback, and normal verified disarm.
+      Local Kotlin/JUnit execution and real package/power-cut evidence remain release evidence gaps when the pinned toolchain/artifacts are unavailable; packaged keyboard/focus/semantics/high-contrast/large-text plus real AT-SPI evidence also remain separately required.
+      Flatpak remains intentionally fail-closed until it gains a truthful document-portal directory lease rather than broad filesystem access, and any future Android direct-folder claim remains independently scoped to SAF with its own platform evidence.

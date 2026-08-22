@@ -35,6 +35,8 @@ dependencies {
     testImplementation(libs.coroutines.test)
 }
 
+val appVersion = providers.fileContents(rootProject.layout.projectDirectory.file("VERSION")).asText.get().trim()
+
 compose.desktop {
     application {
         mainClass = "dev.properpcloud.desktop.MainKt"
@@ -42,10 +44,13 @@ compose.desktop {
             targetFormats(TargetFormat.Deb, TargetFormat.Rpm)
             modules("java.sql", "jdk.security.auth")
             packageName = "properpcloud"
-            packageVersion = providers.fileContents(rootProject.layout.projectDirectory.file("VERSION")).asText.get().trim()
+            packageVersion = appVersion
             description = "Folder-first pCloud audio player"
             vendor = "properpcloud contributors"
             linux {
+                // RPM reserves '-' for the package release delimiter. Use '~' so a SemVer
+                // prerelease remains ordered before the corresponding final version.
+                rpmPackageVersion = appVersion.replace("-", "~")
                 shortcut = true
                 menuGroup = "AudioVideo"
                 appCategory = "AudioVideo"

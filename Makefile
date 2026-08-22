@@ -16,7 +16,7 @@ PCLOUD_CLIENT_ID ?= $(DOTENV_PCLOUD_CLIENT_ID)
 export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
 export PCLOUD_CLIENT_ID
 
-.PHONY: help oauth-config-check oauth-config-test toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts release-020-readiness release-020-pretag release-020-readiness-strict dependencies test desktop-test desktop-smoke desktop-crash-recovery-smoke desktop-resilience-soak desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit desktop-sleep-monitor-smoke desktop-session-audit desktop-run desktop-package desktop-appimage desktop-appimage-smoke desktop-flatpak desktop-flatpak-smoke arch-package-gate linux-packages linux-package-smoke linux-ci docs-install docs-build lint build check ci shell compose install clean
+.PHONY: help oauth-config-check oauth-config-test toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts release-020-readiness release-020-pretag release-020-readiness-strict dependencies fast-test local-check test desktop-test desktop-smoke desktop-crash-recovery-smoke desktop-resilience-soak desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit desktop-sleep-monitor-smoke desktop-session-audit desktop-run desktop-package desktop-appimage desktop-appimage-smoke desktop-flatpak desktop-flatpak-smoke arch-package-gate linux-packages linux-package-smoke linux-ci docs-install docs-build lint build check ci shell compose install clean
 .NOTPARALLEL: linux-ci linux-packages linux-package-smoke
 
 help: ## Show available targets.
@@ -105,6 +105,16 @@ release-020-readiness-strict: oauth-config-test ## Fail unless every 0.2.0 promo
 
 dependencies: ## Resolve dependencies without compiling production code.
 	@bash ./scripts/docker-run.sh dependencies
+
+fast-test: oauth-config-check ## Run portable JVM tests in the existing build image; never builds an APK.
+	@bash ./scripts/docker-run.sh \
+	  :core-model:test \
+	  :metadata-online:test \
+	  :metadata-tags:test \
+	  :source-pcloud:test \
+	  :source-webdav:test
+
+local-check: oauth-config-test oauth-config-check ## Cheap host-side contract/config gate; compilation belongs to CI by default.
 
 test: oauth-config-check robolectric-runtime ## Run JVM unit and module contract tests in Docker.
 	@bash ./scripts/docker-run.sh test

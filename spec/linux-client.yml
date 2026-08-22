@@ -55,12 +55,21 @@ linux_client:
       - source-webdav
       - metadata-tags
       - metadata-online
-    UI: Compose Desktop three-pane browser, inspector, queue, and bottom player
+    UI: Compose Desktop three-pane browser, inspector, queue, bottom player, and explicit local-folder metadata workbench surface
     playback: mpv child process with private Unix JSON IPC and no-config
     persistence: SQLite JDBC with WAL settings, queue, and progress tables
     secrets: bounded asynchronous freedesktop Secret Service lookup through secret-tool with no plaintext fallback
     media_integration: MPRIS root/player interfaces over session D-Bus plus logind PrepareForSleep over the system bus
     paths: XDG config, data, cache, and runtime roots
+    local_source:
+      selection: explicit native directory picker before LocalFolderRootCapability construction
+      identity: opaque selected-root SourceId plus root-relative opaque node IDs; tags and provider values are not identity inputs
+      browse_and_stream: non-symlink supported audio enumeration with deterministic folder/track ordering and verified file URI playback handles
+      metadata_host: LocalFolderWorkbenchHost state and revision are projected into Compose; watcher changes revoke held tag/playlist reviews
+      progress: tag dry-run/apply and recursive playlist writes project completed/total counts without private path disclosure
+      mutation: field review then dry-run then explicit tag replacement confirmation; playlist review and write confirmation remain separate and recursive playlist/tag consent are independent
+      lifetime: source switch or controller close closes the observer host and removes queue entries for the closed root
+      persistence: session-scoped only; no complete selected private path is persisted and restart requires explicit reselection
     verification:
       - desktop unit tests for XDG, SQLite, deterministic media, correlated IPC responses, Secret Service boundaries, shortcut resolution, and stream-failure classification
       - host smoke for generated WAV, recursive queue, SQLite, and real mpv IPC
@@ -304,7 +313,8 @@ linux_client:
       - Secret Service through session D-Bus permission
       - logind PrepareForSleep through narrowly scoped system D-Bus permission
       - host mpv invocation accepts only properpcloud's deterministic no-config launch flags and private IPC path
-      - XDG cache and user-approved file access
+      - XDG cache remains available, but local-root selection is currently disabled because no document-portal directory lease is implemented
+      - host/home filesystem permissions are not widened to make local-root selection appear to work inside the sandbox
   implementation_path:
     phase_0_shared_extraction:
       - Split current core-model into domain and application modules without Android imports.

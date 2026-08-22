@@ -64,6 +64,10 @@ class JAudioTaggerToolkit : AudioTagToolkit {
             } else {
                 emptyList()
             },
+            durationMillis = audioFile.audioHeader?.trackLength
+                ?.takeIf { it > 0 }
+                ?.toLong()
+                ?.times(1_000L),
         )
     }
 
@@ -77,7 +81,7 @@ class JAudioTaggerToolkit : AudioTagToolkit {
         require(stagingDirectory.exists() || stagingDirectory.mkdirs()) { "could not create staging directory" }
         require(stagingDirectory.isDirectory) { "staging path must be a directory" }
 
-        val sourceHash = source.sha256()
+        val sourceHash = source.sha256ForTagToolkit()
         if (expectedSourceSha256 != null) {
             require(sourceHash.equals(expectedSourceSha256, ignoreCase = true)) {
                 "source content changed before metadata staging"
@@ -86,9 +90,13 @@ class JAudioTaggerToolkit : AudioTagToolkit {
 
         val original = inspect(source)
         val changedFields = patch.changedFields(original)
+        val siblingTransaction = runCatching {
+            stagingDirectory.canonicalFile == source.parentFile?.canonicalFile
+        }.getOrDefault(false)
+        val prefix = if (siblingTransaction) ".properpcloud-stage-" else ""
         val staged = File(
             stagingDirectory,
-            "${source.nameWithoutExtension.take(80)}-${UUID.randomUUID()}.${source.extension.lowercase()}",
+            "$prefix${source.nameWithoutExtension.take(80)}-${UUID.randomUUID()}.${source.extension.lowercase()}",
         )
         source.copyTo(staged, overwrite = false)
 
@@ -109,16 +117,49 @@ class JAudioTaggerToolkit : AudioTagToolkit {
 
             val verified = inspect(staged)
             verifyPatch(patch, verified)
+            verifyUnchangedModeledMetadata(original, patch, verified)
             return StagedTagResult(
                 stagedFile = staged,
                 sourceSha256 = sourceHash,
-                stagedSha256 = staged.sha256(),
+                stagedSha256 = staged.sha256ForTagToolkit(),
                 snapshot = verified,
                 changedFields = changedFields,
             )
         } catch (error: Throwable) {
             staged.delete()
             throw error
+        }
+    }
+
+    /**
+     * A metadata repair is a surgical edit, not a tag rewrite.  Even when the underlying
+     * container library needs to rewrite the tag block, every modeled field that the user did
+     * not select must round-trip unchanged.  Artwork is also outside the current mutation
+     * surface and therefore must survive byte-affecting staging intact.
+     *
+     * ID3v2 is deliberately extensible, so this check supplements rather than replaces the
+     * library's preservation of unknown/native frames: properpcloud never reconstructs a tag
+     * from only the fields it understands.
+     */
+    private fun verifyUnchangedModeledMetadata(
+        original: TagSnapshot,
+        patch: TagPatch,
+        verified: TagSnapshot,
+    ) {
+        val selected = patch.mutations
+            .filterValues { it !is TagMutation.Keep }
+            .keys
+        fieldKeys.keys
+            .filterNot { it in selected }
+            .forEach { field ->
+                val before = original.fields[field]?.value
+                val after = verified.fields[field]?.value
+                check(before == after) {
+                    "tag verification changed unselected field $field"
+                }
+            }
+        check(original.artwork == verified.artwork) {
+            "tag verification changed artwork outside the approved mutation surface"
         }
     }
 
@@ -162,7 +203,7 @@ class JAudioTaggerToolkit : AudioTagToolkit {
     }
 }
 
-private fun File.sha256(): String {
+private fun File.sha256ForTagToolkit(): String {
     val digest = MessageDigest.getInstance("SHA-256")
     inputStream().use { stream ->
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)

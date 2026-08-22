@@ -14,6 +14,7 @@ release:
       - SQLite state, Secret Service credentials, mpv JSON IPC, and MPRIS
       - explicit process restart and one bounded stream-capability refresh
       - keyboard-first library and queue operations with no drag-only action
+      - native unsandboxed selected-directory local metadata workbench with final-boundary hash guards, mutation-blocking indeterminate outcomes, exact-hash rollback, and pre-replacement durable recovery authority for explicit restart/reselection recovery
     packaging:
       - application image
       - tagged AppImage and Flatpak packages
@@ -21,6 +22,8 @@ release:
   automated_evidence:
     required_commands:
       - make release-020-readiness
+      - python3 -m unittest -v tests.test_phase7_local_workbench_release_boundary
+      - python3 -m unittest -v tests.test_phase8_local_workbench_power_loss_recovery
       - make test
       - make desktop-test
       - make linux-ci
@@ -68,7 +71,49 @@ release:
       result: passed_current_host
       evidence: build/evidence/0.2.0-current-session.json
       physical_cycle: pending_manual
+  phase7_local_workbench_evidence:
+    source_contracts:
+      result: passed_current_host
+      evidence: docs/reviews/phase7-local-workbench-release-boundary.yml
+      checks: 10_of_10
+    kotlin_recovery_regressions:
+      result: passed_current_host
+      command: make desktop-test
+      evidence: 37_of_37_desktop_tests_passed_in_pinned_properpcloud_android_build_2026_08
+    packaged_accessibility_and_smoke:
+      result: pending_manual_local_workbench_review
+      evidence: build/evidence/0.2.0-accessibility.json
+      passed_current_host: packaged desktop smoke and 200 percent high-contrast capture
+      remaining: selected-folder keyboard/focus/large-text and real AT-SPI workbench traversal
+    cross_process_power_loss_recovery:
+      result: superseded_by_phase8_durable_recovery_implementation
+      evidence: docs/reviews/phase8-local-workbench-power-loss-recovery.yml
+    flatpak_local_folder_boundary:
+      result: fallback_boundary_selected
+      decision: remain fail-closed until a document-portal directory lease exists; do not add host or home filesystem access
+  phase8_local_workbench_power_loss_evidence:
+    source_contracts:
+      result: passed_current_host
+      evidence: docs/reviews/phase8-local-workbench-power-loss-recovery.yml
+      checks: 10_of_10
+    durable_recovery_implementation:
+      result: passed_source_contracts
+      behavior: recovery authority is armed before replacement, persists no complete private path, requires explicit root reselection, and reconstructs rollback only from exact current/result/original hashes
+    kotlin_restart_regressions:
+      result: passed_current_host_simulation
+      command: make desktop-test
+      evidence: 37_of_37_desktop_tests_passed_in_pinned_properpcloud_android_build_2026_08
+      limitation: fresh authority/identity reconstruction is exercised in-process; a real packaged process termination and restart remains pending
+    real_power_cut_durability:
+      result: pending_hardware
+      reason: no physical power-cut filesystem durability exercise is available in this session
+    flatpak_local_folder_boundary:
+      result: fallback_boundary_selected
+      decision: remain fail-closed; no host/home permission or document-portal shortcut was added
   remaining_blockers:
+    - real packaged process terminate -> restart -> explicit root reselection -> guarded rollback exercise
+    - real power-cut filesystem durability evidence for the native recovery record/replacement ordering
+    - packaged selected-folder keyboard/focus/high-contrast/200-percent/large-text and real AT-SPI local-workbench evidence
     - exact immutable v0.2.0 Arch archive rebuild after tag creation
     - protected Europe pCloud playback, expiry, disconnect, and restart
     - protected United States pCloud playback, expiry, disconnect, and restart
