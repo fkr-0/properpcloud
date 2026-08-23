@@ -1,0 +1,63 @@
+review:
+  recorded_on: 2026-08-23
+  scope: native_desktop_packaged_process_restart_reselection_recovery
+  status: passed_current_host_packaged_process
+  objective: >-
+    Exercise the Phase-8 durable local-tag recovery authority across a real packaged process
+    termination and fresh packaged process restart without claiming physical power-cut durability.
+  implementation:
+    packaged_entrypoints:
+      - --local-tag-recovery-kill-smoke requires an explicit selected-root argument
+      - --local-tag-recovery-restart-smoke requires that root to be supplied again to the fresh process
+    first_process:
+      - creates a synthetic local-only fixture under the explicitly supplied scratch root
+      - uses the production DesktopLocalTagRecoveryAuthority and FolderTagApplyService recovery ordering
+      - performs a real same-directory ATOMIC_MOVE + REPLACE_EXISTING of the exact staged candidate
+      - prints readiness only after the replacement boundary has completed
+      - deliberately blocks before normal verification/disarm so the shell harness can terminate the process externally
+    termination:
+      mechanism: external_SIGKILL
+      expected_exit_code: 137
+      normal_disarm_after_replacement: not_executed
+    fresh_process:
+      - launches the packaged executable again
+      - receives the scratch root again as the non-interactive explicit-reselection boundary
+      - constructs the normal DesktopLocalFolderBinding for that selected root
+      - binding open rediscovers the durable recovery authority
+      - rediscovered result remains INDETERMINATE until guarded recovery
+      - rollback uses the existing exact-current-hash guard and verifies the exact original fixture bytes
+      - verified rollback clears durable cross-process recovery authority
+  evidence:
+    command: make desktop-local-tag-recovery-process-smoke
+    result: passed
+    json: build/evidence/0.2.0-local-tag-recovery-process.json
+    packaged_executable: desktop-app/build/compose/binaries/main/app/properpcloud/bin/properpcloud
+    packaged_executable_sha256: 51bc95a8ead1e651eba4d5c15113597ef2ba9c989ad25d587132fcc8b60154d6
+    first_process_exit_code: 137
+  verification:
+    kotlin_compile_and_tests:
+      command: make desktop-test
+      result: passed_in_pinned_properpcloud_android_build_2026_08
+    focused_contracts:
+      command: python3 -m unittest -v tests.test_phase9_local_recovery_process_smoke
+      result: passed_6_of_6
+    local_check:
+      command: make local-check
+      result_before_evidence_update: passed_108_of_108
+    diff_check:
+      result_before_evidence_update: passed
+  privacy:
+    selected_root_path_recorded: false
+    media_path_recorded: false
+    provider_url_recorded: false
+    credential_recorded: false
+    fixture_content_private_or_user_media: false
+  limitations:
+    physical_power_cut_filesystem_durability:
+      status: pending_hardware
+      reason: SIGKILL proves process-boundary rediscovery but does not remove kernel/filesystem power or test storage write-cache durability
+    interactive_folder_picker:
+      status: not_claimed_by_this_smoke
+      reason: the non-interactive harness supplies the scratch root explicitly to each fresh packaged process so the recovery code sees the same authorization boundary without automating a GUI picker
+    accessibility:
+      status: separate_pending_gate

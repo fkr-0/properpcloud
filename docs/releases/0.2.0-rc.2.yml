@@ -1,0 +1,38 @@
+  version: 0.2.0-rc.2
+  tag: v0.2.0-rc.2
+  status: release_candidate_for_hands_on_testing
+  base_release: v0.2.0-rc.1
+  final_target: v0.2.0
+  objective: publish the Phase 9/10 release-hardening progress as an immutable prerelease for CI-built operator artifacts without claiming final promotion
+  verified_before_tag:
+    - make doctor
+    - make local-check
+    - make desktop-test
+    - make linux-ci
+    - make ci
+    - git diff --check
+    - make spec
+    - make release-020-readiness
+    - python3 scripts/validate-020-readiness.py --pre-tag remains fail-closed on explicit final-release blockers
+  included_work:
+    - real packaged local-tag recovery process smoke with externally delivered SIGKILL after the recovery-armed atomic replacement boundary
+    - fresh packaged process restart with explicit selected-root boundary, durable recovery rediscovery, and exact-hash guarded rollback verification
+    - redacted recovery evidence that stores no selected-root/media path, provider URL, or credential
+    - release-gate truthfulness update distinguishing packaged process restart evidence from physical power-cut durability
+    - explicit upstream Linux accessibility blocker for real AT-SPI/screen-reader traversal under the current Compose Multiplatform Linux target
+  final_0_2_0_blockers_not_claimed_by_this_candidate:
+    - physical power-cut filesystem durability evidence
+    - packaged selected-folder keyboard/focus/large-text review and a supported Linux accessibility bridge or explicit maintainer exception
+    - real Linux screen-reader traversal after a supported accessibility bridge exists
+    - physical media-key behavior
+    - physical suspend/resume cycle
+    - GNOME and KDE Plasma session observations
+    - protected Europe and United States pCloud account validation
+    - retained protected-provider soak with real capability expiry and suspend/resume
+    - exact immutable v0.2.0 Arch archive rebuild after final tag creation
+  readiness_snapshot:
+    passed_status_groups: 19
+    blocking_status_groups: 9
+    strict_final_promotion: blocked_as_expected
+  publication_scope: debug-signed Android demonstration APK plus verified AppImage and Flatpak, checksums, evidence, and attestations from tag-triggered CI
+  warning: this prerelease is for hands-on testing; final v0.2.0 promotion remains governed by docs/reviews/0.2.0-promotion-matrix.yml

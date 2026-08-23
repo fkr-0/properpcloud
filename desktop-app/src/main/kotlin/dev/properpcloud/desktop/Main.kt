@@ -29,6 +29,14 @@ import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 
 fun main(args: Array<String>) {
+    argumentValue(args, "--local-tag-recovery-kill-smoke")?.let { selectedRoot ->
+        runLocalTagRecoveryPreKillSmoke(selectedRoot)
+        return
+    }
+    argumentValue(args, "--local-tag-recovery-restart-smoke")?.let { selectedRoot ->
+        runLocalTagRecoveryRestartSmoke(selectedRoot)
+        return
+    }
     if (args.contains("--locked-keyring-smoke")) {
         runLockedKeyringSmoke()
         return
@@ -58,6 +66,12 @@ fun main(args: Array<String>) {
         return
     }
     launchDesktop()
+}
+
+private fun argumentValue(args: Array<String>, name: String): String? {
+    val index = args.indexOf(name)
+    if (index < 0) return null
+    return args.getOrNull(index + 1) ?: error("$name requires one directory argument")
 }
 
 private fun runCrashRecoverySmoke() = runBlocking {

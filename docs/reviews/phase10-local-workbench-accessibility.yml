@@ -1,0 +1,52 @@
+review:
+  recorded_on: 2026-08-23
+  scope: linux_compose_desktop_local_workbench_accessibility_release_boundary
+  status: blocked_upstream_linux_at_spi
+  compose_multiplatform_version: 1.10.3
+  objective: >-
+    Determine whether the remaining real AT-SPI local-workbench and screen-reader promotion
+    gates can be executed truthfully on the current native Linux Compose Desktop client.
+  current_host:
+    at_spi2_core: present
+    gobject_introspection_atspi_2_0: present
+    xvfb: present
+    dbus_run_session: present
+    xdotool: present
+    java_atk_wrapper_system_package: absent
+  upstream_boundary:
+    source: https://kotlinlang.org/docs/multiplatform/compose-desktop-accessibility.html
+    current_documented_status:
+      macos: fully_supported
+      windows: supported_via_java_access_bridge
+      linux: not_supported
+    implication: >-
+      Compose semantics and visual/focus affordances in properpcloud do not establish a Linux
+      AT-SPI application tree. A real Linux screen-reader traversal cannot be promoted to passed
+      until the framework gains Linux accessibility support or properpcloud adopts an independently
+      supported Linux accessibility bridge/UI boundary.
+  current_host_observation:
+    - the packaged Compose application still launches and renders under Xvfb with compose accessibility explicitly enabled
+    - the ordinary 200 percent high-contrast visual accessibility audit remains green
+    - an isolated real AT-SPI bus and registry can be started and queried through gi.repository.Atspi
+    - the AT-SPI desktop registry does not expose the packaged Compose application as an accessible application tree on Linux
+    - no product semantics defect was inferred from the absence because the upstream framework documents Linux accessibility as unsupported
+  retained_passed_evidence:
+    - build/evidence/0.2.0-accessibility.json
+    - keyboard implementation unit coverage
+    - explicit Compose heading, selected/current, player-state, local-workbench, and recovery semantics in source
+  intentionally_not_retained:
+    experimental_at_spi_smoke_code: removed_after_boundary_confirmation
+    failed_at_spi_screenshot_or_json: removed
+    reason: do not ship a gate that cannot succeed on the supported framework and do not retain failed scratch as release evidence
+  release_implication:
+    real_at_spi_local_workbench_traversal: blocked_upstream
+    real_linux_screen_reader_review: blocked_upstream
+    selected_folder_keyboard_focus_large_text_review: still_required_separately
+    policy_choices_before_final_0_2_0:
+      - explicitly accept/document Linux screen-reader support as a known release exception
+      - move the Linux UI/accessibility boundary to a framework/bridge with AT-SPI support
+      - defer final 0.2.0 until Compose Multiplatform supports Linux accessibility and re-run the gate
+  non_claims:
+    - this review does not mark AT-SPI traversal passed
+    - this review does not mark a human screen-reader review passed
+    - installing java-atk-wrapper alone is not treated as sufficient because the current upstream Compose documentation says Linux accessibility is unsupported

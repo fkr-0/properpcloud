@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.2] - 2026-08-23
+
+### Testing
+
+- Added a packaged native-desktop recovery smoke that externally sends `SIGKILL` only after
+  the recovery-armed atomic tag replacement completes, then starts a fresh packaged process,
+  supplies the selected scratch root again, rediscovers durable recovery authority, and verifies
+  exact-hash guarded rollback without retaining private paths, provider URLs, or credentials.
+- Revalidated the release candidate with the pinned Docker toolchain, desktop JVM/JUnit suite,
+  complete Linux CI smoke set, host specification checks, and fail-closed `0.2.0` readiness gates.
+
+### Changed
+
+- Promotion evidence now distinguishes verified packaged process restart/reselection recovery
+  from still-unverified physical power-loss durability.
+- Linux screen-reader/AT-SPI promotion status now records the current Compose Multiplatform Linux
+  accessibility boundary as an upstream blocker instead of presenting it as an ordinary manual
+  check that could be completed on the existing packaged UI.
+
+### Known limitations
+
+- Physical power-cut durability, physical media-key and suspend/resume observation, GNOME/KDE
+  session checks, protected EU/US provider accounts and retained provider soak, and the exact
+  post-tag `v0.2.0` Arch rebuild remain explicit promotion gates.
+- Real Linux AT-SPI/screen-reader traversal is blocked by the current Compose Multiplatform
+  Linux accessibility boundary; final promotion requires an explicit documented exception or a
+  supported Linux accessibility bridge/UI strategy rather than silently marking that gate passed.
+
 ## [0.2.0-rc.1] - 2026-08-22
 
 ### Added
@@ -611,7 +639,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.1...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.2...HEAD
+[0.2.0-rc.2]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.1...v0.2.0-rc.2
 [0.2.0-rc.1]: https://github.com/fkr-0/properpcloud/compare/v0.1.10...v0.2.0-rc.1
 [0.1.10]: https://github.com/fkr-0/properpcloud/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/fkr-0/properpcloud/compare/v0.1.8...v0.1.9
