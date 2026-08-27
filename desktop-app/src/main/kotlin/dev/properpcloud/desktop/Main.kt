@@ -27,8 +27,14 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
+import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
+    if (playlistCliRequested(args)) {
+        val exitCode = runPlaylistCli(args)
+        if (exitCode != 0) exitProcess(exitCode)
+        return
+    }
     argumentValue(args, "--local-tag-recovery-kill-smoke")?.let { selectedRoot ->
         runLocalTagRecoveryPreKillSmoke(selectedRoot)
         return

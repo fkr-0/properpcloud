@@ -55,7 +55,7 @@ folder_tag_workbench:
       - ranked per-file online candidates with explicit per-field approval
       - hash-guarded staged apply boundary and per-file results
       - folder, artist, and album catalog projections with addDirectory as the sole add command
-      - portable UTF-8 playlist generation from inspected snapshots with natural-filename, embedded disc/track, tagged-title, or modification-time ordering
+      - portable UTF-8 playlist generation from inspected snapshots with natural-filename, embedded disc/track, tagged-title, explicit title-number, or modification-time ordering
       - trusted audio-header duration evidence for EXTINF with explicit unknown-duration fallback
       - explicitly opted-in subtree playlist batches, optional one-playlist-per-album disc-folder grouping, progress, and bounded playlist-only post-sync regeneration
       - explicit LocalFolderRootCapability that proves a caller-selected root is readable, writable, non-symlink, and supports same-directory atomic move before local workbench hosting
@@ -88,6 +88,10 @@ folder_tag_workbench:
       natural_filename: natural case-insensitive filename ordering with numeric runs compared numerically
       tag_track_number: embedded disc number then track number, with missing or tied values falling back to natural filename
       tagged_title: embedded title with natural filename as the deterministic fallback/tie-break
+      title_number: >-
+        the leading decimal integer in the trimmed embedded TITLE is compared numerically with arbitrary precision;
+        numeric titles sort first, then non-numeric embedded titles in natural title order, then missing titles;
+        full title, natural filename, and stable path identity provide deterministic tie-breakers without locale/filesystem iteration dependence
       modification_time: oldest content-evidence modified time first with natural filename tie-break
     labels: EXTINF uses embedded artist and title when present and never replaces path identity
     duration:
@@ -103,6 +107,9 @@ folder_tag_workbench:
       materialization: >-
         preflight every output/entry, reviewed recursive directory set, audio-child membership for every reviewed directory including empty directories, and size/modified-time plus SHA-256 evidence before the first playlist write;
         stale evidence rejects the frozen plan and requires reconciliation/new preview, otherwise write sequentially with completed/total progress
+      review_checkpoint: >-
+        FolderMetadataSuiteSession mints a typed revision-bound checkpoint containing the exact safe ./-relative target playlist path and every final M3U8 line in final order;
+        planning/review writes zero playlist bytes, and materialization may use only that still-current reviewed plan after full preflight completes before the first output byte
     update_policy: regenerate the same deterministic target through a flushed same-directory temporary file; reject playlist symlinks
     application_boundaries:
       shared_local_workflow: >-
@@ -122,6 +129,11 @@ folder_tag_workbench:
       capability_boundary: >-
         direct-folder controls are exposed only to clients that genuinely own a selected writable local root; current Android prepared-copy and
         desktop provider/demo browsing do not fabricate such a mapping.
+      native_desktop_cli: >-
+        --generate-playlists accepts one explicitly supplied local root and reuses DesktopLocalFolderBinding/LocalFolderWorkbenchHost rather than
+        bypassing the revision-bound application session; preview is the default and prints every exact target and final M3U8 line, title-number is an
+        explicit operator-visible order rather than an alias, --write is the separate materialization confirmation, recursive traversal is independently
+        opted in, one-per-album requires recursive review, and the command has no tag-stage/apply or provider-remote write path.
     post_sync_regeneration:
       trigger: >-
         explicit submission of a freshly planned playlist batch after source/local reconciliation;
@@ -131,6 +143,9 @@ folder_tag_workbench:
       pending_batch_bound: 16
       playlists_per_batch_bound: 256
       invariant: the regeneration service depends only on playlist plans/writer and has no tag toolkit or tag-apply dependency
+      watcher_boundary: >-
+        low-level WatchService events invalidate and reconcile reviews but never write playlists by themselves; watcher-triggered unattended writing
+        remains forbidden, so automatic regeneration resumes only from an explicitly submitted, still-current reviewed playlist batch.
     security:
       - never resolve or persist provider stream capabilities
       - never emit an absolute media path
@@ -189,17 +204,22 @@ folder_tag_workbench:
         - editable final value and explicit Keep, Clear, or Set choice
         - cross-folder consistency summary limited to the active folder session
       rules:
-        - current and proposed values are simultaneously visible
+        - current/proposed proposal evidence remains visible while the primary frozen review vocabulary is Earlier and Later
         - selection is per field and per file
         - no state depends on color alone
     review_drawer:
       content:
         - exact selected files and fields
-        - before and after values
+        - explicit Earlier and Later values grouped by filesystem-relative file identity
+        - typed changed, added-from-empty, removal-to-empty/destructive, and unchanged transition state; empty is never rendered as an ordinary value
+        - the exact workbench revision and exact selected field decisions frozen into the review
+        - rule/confidence provenance, warnings, and conflicts remain discoverable beside the value transition
         - bytes that will be replaced
         - backup and rollback policy
         - conflicts requiring rescan
-      confirmation: Apply selected local tag corrections
+      dry_run_boundary: the successful dry run consumes the same frozen Earlier/Later review that final replacement confirmation references
+      invalidation: watcher/reconciliation revision drift invalidates the frozen review instead of refreshing values underneath the user
+      confirmation: Apply selected local tag corrections from this frozen Earlier/Later review
   scanning:
     pipeline:
       - establish observer lease and generation barrier
@@ -387,7 +407,7 @@ folder_tag_workbench:
     - Filenames and tag strings are untrusted Unicode data, never shell or local-path instructions.
     - No token, signed URL, provider body, private media bytes, or metadata-provider key enters release evidence.
   accessibility:
-    - Table and inspector expose filename, current value, proposed value, selection, warning, and changed-on-disk state semantically.
+    - Table, inspector, and frozen review expose filename/path identity, explicit Earlier/Later values, empty/destructive transition labels, selection, warning, and changed-on-disk state semantically.
     - Every checkbox and batch action has keyboard and screen-reader alternatives.
     - Focus remains on the same stable row after reconciliation when that row survives.
     - Dynamic text reflows rather than removing filenames or apply controls.
@@ -411,7 +431,11 @@ folder_tag_workbench:
       - TEST-TAG-FOLDER-BATCH-PROGRESS
       - TEST-TAG-FOLDER-NONATOMIC-EXPORT-ONLY
       - TEST-TAG-FOLDER-ACCESSIBILITY
+      - TEST-TAG-FOLDER-EARLIER-LATER-REVIEW
+      - TEST-TAG-FOLDER-REVIEW-REVISION-FROZEN
       - TEST-TAG-FOLDER-PLAYLIST
+      - TEST-TAG-FOLDER-PLAYLIST-TITLE-NUMBER
+      - TEST-TAG-FOLDER-PLAYLIST-EXACT-REVIEW
       - TEST-TAG-FOLDER-PLAYLIST-MTIME-ORDER
       - TEST-TAG-FOLDER-PLAYLIST-DURATION-FALLBACK
       - TEST-TAG-FOLDER-PLAYLIST-ALBUM-NAME
@@ -424,6 +448,8 @@ folder_tag_workbench:
       - TEST-TAG-FOLDER-PLAYLIST-STALE-SUBTREE
       - TEST-TAG-FOLDER-PLAYLIST-APPLICATION-BOUNDARY
       - TEST-TAG-FOLDER-PLAYLIST-NO-TAG-WRITE
+      - TEST-TAG-FOLDER-PLAYLIST-CLI
+      - TEST-TAG-FOLDER-TAG-TO-PLAYLIST-E2E
       - TEST-TAG-FOLDER-SESSION-RECONCILIATION
       - TEST-TAG-FOLDER-LOCAL-SUITE-E2E
       - TEST-TAG-FOLDER-WATCHSERVICE-BOOTSTRAP-RACE

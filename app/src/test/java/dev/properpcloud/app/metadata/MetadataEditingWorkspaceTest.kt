@@ -73,6 +73,48 @@ class MetadataEditingWorkspaceTest {
     }
 
     @Test
+    fun bundlePlaylistTitleNumberOrderMatchesPortableLeadingTitleContract() = runTest {
+        val workspace = MetadataEditingWorkspace(
+            context = context,
+            tagToolkit = toolkit,
+            onlineProvider = object : OnlineMetadataProvider {
+                override suspend fun search(query: MetadataSearchQuery, limit: Int) = emptyList<dev.properpcloud.core.model.MetadataCandidate>()
+            },
+        )
+        fun staged(name: String, title: String): StagedTagResult {
+            val file = File(context.cacheDir, "metadata-test-${System.nanoTime()}-$name").apply { writeText(name) }
+            return StagedTagResult(
+                stagedFile = file,
+                sourceSha256 = "a".repeat(64),
+                stagedSha256 = "b".repeat(64),
+                snapshot = dev.properpcloud.core.model.TagSnapshot(
+                    "ID3",
+                    mapOf(
+                        TagField.ARTIST to MetadataValue("Artist", MetadataProvenance.EMBEDDED),
+                        TagField.ALBUM to MetadataValue("Album", MetadataProvenance.EMBEDDED),
+                        TagField.TITLE to MetadataValue(title, MetadataProvenance.EMBEDDED),
+                    ),
+                ),
+                changedFields = setOf(TagField.TITLE),
+            )
+        }
+        val items = listOf(
+            MetadataBundleItem("ten.mp3", staged("ten.mp3", "10 Tenth")),
+            MetadataBundleItem("one.mp3", staged("one.mp3", "01 First")),
+            MetadataBundleItem("two.mp3", staged("two.mp3", "2 Second")),
+        )
+
+        val artifact = workspace.bundle(items, includePlaylist = true, playlistOrder = FolderPlaylistOrder.TITLE_NUMBER)
+        val playlist = java.util.zip.ZipFile(artifact.file).use { zip ->
+            zip.getInputStream(requireNotNull(zip.getEntry("Artist - Album.m3u8"))).bufferedReader().readText()
+        }
+
+        assertTrue(playlist.indexOf("./one.mp3") < playlist.indexOf("./two.mp3"))
+        assertTrue(playlist.indexOf("./two.mp3") < playlist.indexOf("./ten.mp3"))
+        artifact.file.delete()
+    }
+
+    @Test
     fun bundleIncludesManifestAndEveryVerifiedCandidate() = runTest {
         val source = DemoAudioSource(context)
         val workspace = MetadataEditingWorkspace(

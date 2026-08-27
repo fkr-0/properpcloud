@@ -17,6 +17,7 @@ import dev.properpcloud.metadata.tags.StagedTagResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.math.BigInteger
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.zip.ZipEntry
@@ -100,6 +101,7 @@ private fun bundlePlaylist(entries: List<BundleEntry>, order: FolderPlaylistOrde
                 val title = NaturalTextComparator.compare(bundleTitle(left), bundleTitle(right))
                 if (title != 0) title else NaturalTextComparator.compare(left.filename, right.filename)
             }
+            FolderPlaylistOrder.TITLE_NUMBER -> compareBundleTitleNumber(left, right)
             FolderPlaylistOrder.TAG_TRACK_NUMBER -> {
                 val disc = compareValues(bundleNumber(left, TagField.DISC_NUMBER), bundleNumber(right, TagField.DISC_NUMBER))
                 if (disc != 0) return@Comparator disc
@@ -135,6 +137,39 @@ private fun bundlePlaylist(entries: List<BundleEntry>, order: FolderPlaylistOrde
 private fun bundleTitle(entry: BundleEntry): String =
     entry.item.result.snapshot.fields[TagField.TITLE]?.value?.trim()?.takeIf(String::isNotBlank)
         ?: entry.filename.substringBeforeLast('.', entry.filename)
+
+private fun compareBundleTitleNumber(left: BundleEntry, right: BundleEntry): Int {
+    val leftTitle = bundleEmbeddedTitle(left)
+    val rightTitle = bundleEmbeddedTitle(right)
+    val leftNumber = leadingBundleTitleNumber(leftTitle)
+    val rightNumber = leadingBundleTitleNumber(rightTitle)
+    val leftRank = when {
+        leftNumber != null -> 0
+        leftTitle != null -> 1
+        else -> 2
+    }
+    val rightRank = when {
+        rightNumber != null -> 0
+        rightTitle != null -> 1
+        else -> 2
+    }
+    if (leftRank != rightRank) return leftRank.compareTo(rightRank)
+    if (leftNumber != null && rightNumber != null) {
+        val byNumber = leftNumber.compareTo(rightNumber)
+        if (byNumber != 0) return byNumber
+    }
+    if (leftTitle != null && rightTitle != null) {
+        val byTitle = NaturalTextComparator.compare(leftTitle, rightTitle)
+        if (byTitle != 0) return byTitle
+    }
+    return NaturalTextComparator.compare(left.filename, right.filename)
+}
+
+private fun bundleEmbeddedTitle(entry: BundleEntry): String? =
+    entry.item.result.snapshot.fields[TagField.TITLE]?.value?.trim()?.takeIf(String::isNotBlank)
+
+private fun leadingBundleTitleNumber(title: String?): BigInteger? =
+    title?.let { Regex("^(\\d+)").find(it)?.groupValues?.get(1) }?.toBigIntegerOrNull()
 
 private fun bundleNumber(entry: BundleEntry, field: TagField): Int =
     entry.item.result.snapshot.fields[field]?.value

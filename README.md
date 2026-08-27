@@ -6,7 +6,7 @@
 
 Folder-first pCloud audio playback for Android and Linux.
 
-[![Version](https://img.shields.io/badge/version-0.1.6-59636e)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.0--rc.2-59636e)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-properpcloud.fkr.dev-276a51)](https://properpcloud.fkr.dev)
 
@@ -36,7 +36,8 @@ Both clients share the same Kotlin/JVM source, folder, sorting, queue, progress,
 - browser OAuth support when a registered public application ID is available;
 - raw provider and metadata inspection with secrets redacted;
 - staged, hash-guarded metadata export and repair planning;
-- shared preview-first relative `.m3u8` generation with four deterministic order modes, stale-evidence guards, and playlist-only post-sync regeneration; Android exposes verified ZIP export today, while direct local-root client binding remains pending;
+- diff-first native-desktop tag review with explicit Earlier/Later values, typed add/remove/destructive transitions, frozen revision identity, and the existing dry-run plus final-confirmation hash/rollback boundary;
+- shared preview-first relative `.m3u8` generation with five deterministic order modes including explicit numeric `title-number`, an exact target-and-content checkpoint before creation, stale-evidence guards, bounded playlist-only post-sync regeneration, native-desktop selected-root UI binding, and a preview-by-default `--generate-playlists` CLI that prints every prospective line; Android keeps verified ZIP export rather than inventing writable local-root authority;
 - deterministic generated-WAV demo media requiring no account or network;
 - Linux MPRIS media keys, Secret Service tokens, SQLite state, and XDG paths;
 - a pre-rendered Markdown documentation site deployed through GitHub Pages.

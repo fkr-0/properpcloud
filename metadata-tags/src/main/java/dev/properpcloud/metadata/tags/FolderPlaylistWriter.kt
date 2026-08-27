@@ -7,6 +7,7 @@ import dev.properpcloud.core.model.NaturalTextComparator
 import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.TagField
 import java.io.File
+import java.math.BigInteger
 import java.nio.channels.FileChannel
 import java.nio.charset.StandardCharsets
 import java.nio.file.AtomicMoveNotSupportedException
@@ -21,6 +22,7 @@ enum class FolderPlaylistOrder {
     NATURAL_FILENAME,
     TAG_TRACK_NUMBER,
     TAGGED_TITLE,
+    TITLE_NUMBER,
     MODIFICATION_TIME,
 }
 
@@ -88,6 +90,7 @@ data class FolderPlaylistBatchPlan(
     val playlists: List<FolderPlaylistPlan>,
     val reviewedDirectories: Set<File> = emptySet(),
     val reviewedDirectoryEvidence: List<FolderPlaylistDirectoryEvidence> = emptyList(),
+    val order: FolderPlaylistOrder = playlists.firstOrNull()?.order ?: FolderPlaylistOrder.TAG_TRACK_NUMBER,
 ) {
     init {
         require(!recursive || recursiveOptInConfirmed) {
@@ -238,6 +241,7 @@ class FolderPlaylistWriter {
             playlists = playlists,
             reviewedDirectories = reviewedDirectories,
             reviewedDirectoryEvidence = reviewedDirectoryEvidence,
+            order = command.order,
         )
     }
 
@@ -498,6 +502,7 @@ class FolderPlaylistWriter {
                 val byTitle = NaturalTextComparator.compare(tagTitle(left), tagTitle(right))
                 if (byTitle != 0) byTitle else compareFilename(left, right)
             }
+            FolderPlaylistOrder.TITLE_NUMBER -> compareTitleNumber(left, right)
             FolderPlaylistOrder.TAG_TRACK_NUMBER -> {
                 val disc = compareValues(tagNumber(left, TagField.DISC_NUMBER), tagNumber(right, TagField.DISC_NUMBER))
                 if (disc != 0) return@Comparator disc
@@ -573,6 +578,48 @@ class FolderPlaylistWriter {
             ?.takeIf(String::isNotEmpty)
             ?: row.identity.file.nameWithoutExtension
 
+    /**
+     * "Title number" is the leading decimal integer in the embedded TITLE after trimming.
+     * Numeric titles sort first by arbitrary-precision numeric value, then full title and
+     * filesystem identity. Non-numeric titles follow in natural title order; missing titles
+     * sort last by natural filename/path. This is deterministic and locale-independent.
+     */
+    private fun compareTitleNumber(left: FileTagProposals, right: FileTagProposals): Int {
+        val leftTitle = embeddedTitle(left)
+        val rightTitle = embeddedTitle(right)
+        val leftNumber = leadingTitleNumber(leftTitle)
+        val rightNumber = leadingTitleNumber(rightTitle)
+        val leftRank = when {
+            leftNumber != null -> 0
+            leftTitle != null -> 1
+            else -> 2
+        }
+        val rightRank = when {
+            rightNumber != null -> 0
+            rightTitle != null -> 1
+            else -> 2
+        }
+        if (leftRank != rightRank) return leftRank.compareTo(rightRank)
+        if (leftNumber != null && rightNumber != null) {
+            val byNumber = leftNumber.compareTo(rightNumber)
+            if (byNumber != 0) return byNumber
+        }
+        if (leftTitle != null && rightTitle != null) {
+            val byTitle = NaturalTextComparator.compare(leftTitle, rightTitle)
+            if (byTitle != 0) return byTitle
+        }
+        return compareFilename(left, right)
+    }
+
+    private fun embeddedTitle(row: FileTagProposals): String? =
+        row.originalSnapshot.fields[TagField.TITLE]?.value
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+
+    private fun leadingTitleNumber(title: String?): BigInteger? = title
+        ?.let { LEADING_TITLE_NUMBER.find(it)?.groupValues?.get(1) }
+        ?.toBigIntegerOrNull()
+
     private fun displayTitle(row: FileTagProposals): String {
         val title = tagTitle(row)
         val artist = row.originalSnapshot.fields[TagField.ARTIST]?.value
@@ -633,6 +680,7 @@ class FolderPlaylistWriter {
     }
 
     companion object {
+        private val LEADING_TITLE_NUMBER = Regex("^(\\d+)")
         private const val MAX_PLAYLIST_STEM_CHARS = 120
         private val UNSAFE_PLAYLIST_NAME_CHARS = Regex("[\\u0000-\\u001f<>:\"/\\\\|?*\\u007f]")
         private val WINDOWS_RESERVED_NAME = Regex("(?i)^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\\..*)?$")

@@ -84,6 +84,7 @@ private fun playlistOrderLabel(order: FolderPlaylistOrder): String = when (order
     FolderPlaylistOrder.NATURAL_FILENAME -> "Natural filename"
     FolderPlaylistOrder.TAG_TRACK_NUMBER -> "Disc and track tags"
     FolderPlaylistOrder.TAGGED_TITLE -> "Tagged title"
+    FolderPlaylistOrder.TITLE_NUMBER -> "Title number"
     FolderPlaylistOrder.MODIFICATION_TIME -> "Modification time"
 }
 

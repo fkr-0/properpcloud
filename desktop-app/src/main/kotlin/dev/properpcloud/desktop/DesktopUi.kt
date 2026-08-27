@@ -91,9 +91,32 @@ import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.metadata.tags.FolderPlaylistOrder
+import dev.properpcloud.metadata.tags.FolderTagReviewTransition
+import dev.properpcloud.metadata.tags.FolderTagReviewValue
+import dev.properpcloud.metadata.tags.FolderTagReviewValueKind
 import dev.properpcloud.metadata.tags.LocalFolderWorkbenchWatchState
 import dev.properpcloud.source.pcloud.PCloudAccountRegion
 import java.awt.SystemColor
+
+private fun playlistOrderLabel(order: FolderPlaylistOrder): String = when (order) {
+    FolderPlaylistOrder.NATURAL_FILENAME -> "natural filename"
+    FolderPlaylistOrder.TAG_TRACK_NUMBER -> "disc and track tags"
+    FolderPlaylistOrder.TAGGED_TITLE -> "tagged title"
+    FolderPlaylistOrder.TITLE_NUMBER -> "title number"
+    FolderPlaylistOrder.MODIFICATION_TIME -> "modification time"
+}
+
+private fun tagReviewValueLabel(value: FolderTagReviewValue): String = when (value.kind) {
+    FolderTagReviewValueKind.EMPTY -> "Empty"
+    FolderTagReviewValueKind.PRESENT -> value.value!!
+}
+
+private fun tagTransitionLabel(transition: FolderTagReviewTransition): String = when (transition) {
+    FolderTagReviewTransition.CHANGED -> "Changed value"
+    FolderTagReviewTransition.ADDED_FROM_EMPTY -> "Added from empty"
+    FolderTagReviewTransition.REMOVAL_TO_EMPTY -> "Removal to empty — destructive"
+    FolderTagReviewTransition.UNCHANGED -> "No byte-level value change"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -338,9 +361,11 @@ private fun LocalWorkbenchPane(
                         Column(Modifier.weight(1f)) {
                             Text("${proposal.filename} · ${proposal.field}", style = MaterialTheme.typography.bodySmall)
                             Text(
-                                "${proposal.currentValue ?: "—"} → ${proposal.proposedValue ?: "—"} · ${proposal.ruleId}",
+                                "Earlier: ${proposal.currentValue?.takeUnless(String::isBlank) ?: "Empty"} · " +
+                                    "Later: ${proposal.proposedValue?.takeUnless(String::isBlank) ?: "Empty (proposed removal)"}",
                                 style = MaterialTheme.typography.labelSmall,
                             )
+                            Text("Rule ${proposal.ruleId} · confidence ${proposal.confidence}", style = MaterialTheme.typography.labelSmall)
                             proposal.warnings.forEach { warning ->
                                 Text("Warning: $warning", style = MaterialTheme.typography.labelSmall)
                             }
@@ -378,15 +403,79 @@ private fun LocalWorkbenchPane(
             }
         }
 
+        state.tagReview?.let { review ->
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Frozen Earlier / Later review",
+                Modifier.semantics { heading() },
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Text(
+                "Revision ${review.revision} · ${review.changedFieldCount} changed field(s)" +
+                    if (review.hasDestructiveChanges) " · includes destructive removal" else "",
+                style = MaterialTheme.typography.labelSmall,
+            )
+            LazyColumn(Modifier.fillMaxWidth().height(180.dp)) {
+                itemsIndexed(review.files, key = { _, file -> file.nodeId.value }) { _, file ->
+                    ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(8.dp)) {
+                            Text(file.relativePath, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                            file.fields.forEach { field ->
+                                Column(
+                                    Modifier.fillMaxWidth().padding(top = 5.dp).semantics(mergeDescendants = true) {
+                                        contentDescription = buildString {
+                                            append("${file.relativePath}, ${field.field}. ")
+                                            append("Earlier ${tagReviewValueLabel(field.earlier)}. ")
+                                            append("Later ${tagReviewValueLabel(field.later)}. ")
+                                            append("${tagTransitionLabel(field.transition)}. Rule ${field.ruleId}. ")
+                                            append("Confidence ${field.confidence}.")
+                                            if (field.conflictsWithExistingValue) append(" Conflicts with existing value.")
+                                            if (field.warnings.isNotEmpty()) append(" Warning: ${field.warnings.joinToString("; ")}")
+                                        }
+                                        stateDescription = tagTransitionLabel(field.transition)
+                                    },
+                                ) {
+                                    Text("${field.field} · ${tagTransitionLabel(field.transition)}", style = MaterialTheme.typography.labelSmall)
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text("Earlier", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                                            Text(tagReviewValueLabel(field.earlier), style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        Column(Modifier.weight(1f)) {
+                                            Text("Later", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                                            Text(
+                                                if (field.transition == FolderTagReviewTransition.REMOVAL_TO_EMPTY) {
+                                                    "Empty — will remove value"
+                                                } else {
+                                                    tagReviewValueLabel(field.later)
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                            )
+                                        }
+                                    }
+                                    Text("Rule ${field.ruleId} · confidence ${field.confidence}", style = MaterialTheme.typography.labelSmall)
+                                    Text(field.explanation, style = MaterialTheme.typography.labelSmall)
+                                    if (field.conflictsWithExistingValue) {
+                                        Text("Conflict: existing embedded value will change only after confirmation.", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    field.warnings.forEach { warning -> Text("Warning: $warning", style = MaterialTheme.typography.labelSmall) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(8.dp))
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box {
-                    OutlinedButton(onClick = { orderMenu = true }, enabled = live) { Text("Playlist: ${playlistOrder.name.lowercase().replace('_', ' ')}") }
+                    OutlinedButton(onClick = { orderMenu = true }, enabled = live) { Text("Playlist: ${playlistOrderLabel(playlistOrder)}") }
                     DropdownMenu(expanded = orderMenu, onDismissRequest = { orderMenu = false }) {
                         FolderPlaylistOrder.values().forEach { order ->
                             DropdownMenuItem(
-                                text = { Text(order.name.lowercase().replace('_', ' ')) },
+                                text = { Text(playlistOrderLabel(order)) },
                                 onClick = { playlistOrder = order; orderMenu = false },
                             )
                         }
@@ -432,14 +521,34 @@ private fun LocalWorkbenchPane(
                 ) { Text("Write reviewed playlist") }
             }
         }
-        state.playlistReview?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+        state.playlistReview?.let { review ->
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Exact playlist checkpoint · revision ${review.revision} · ${playlistOrderLabel(review.order)}",
+                Modifier.semantics { heading() },
+                style = MaterialTheme.typography.labelLarge,
+            )
+            LazyColumn(Modifier.fillMaxWidth().height(160.dp)) {
+                itemsIndexed(review.files, key = { _, file -> file.targetRelativePath }) { _, file ->
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp).semantics(mergeDescendants = true) {
+                            contentDescription = "Playlist target ${file.targetRelativePath}. Exact final content: ${file.finalLines.joinToString(". ")}"
+                        },
+                    ) {
+                        Text("Target ${file.targetRelativePath}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        file.finalLines.forEach { line -> Text(line, style = MaterialTheme.typography.labelSmall) }
+                    }
+                }
+            }
+            Text("Reviewing writes zero playlist bytes; Write reviewed playlist revalidates this exact checkpoint first.", style = MaterialTheme.typography.labelSmall)
+        }
     }
 
     if (confirmTagWrite) {
         AlertDialog(
             onDismissRequest = { confirmTagWrite = false },
             title = { Text("Replace reviewed tag bytes?") },
-            text = { Text("The dry run passed. Only the exact reviewed fields and hashes will be applied; watcher reconciliation runs afterwards.") },
+            text = { Text("The dry run passed for the frozen Earlier / Later review at revision ${state.tagReview?.revision ?: state.sessionRevision}. Only those exact reviewed fields and hashes will be applied; watcher reconciliation runs afterwards.") },
             confirmButton = {
                 Button(onClick = { confirmTagWrite = false; controller.applyReviewedLocalTags(confirmWrite = true) }) { Text("Apply") }
             },

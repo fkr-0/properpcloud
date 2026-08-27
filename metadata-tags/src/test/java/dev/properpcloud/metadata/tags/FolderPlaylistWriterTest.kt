@@ -90,6 +90,43 @@ class FolderPlaylistWriterTest {
     }
 
     @Test
+    fun titleNumberOrderUsesLeadingEmbeddedNumberThenDeterministicFallbacksAndTies() {
+        val directory = temporary.newFolder("title-number")
+        val ten = media(directory, "z-ten.mp3", "10 Ten", null)
+        val twoTieTen = media(directory, "10-tie.mp3", "2 Same", null)
+        val twoTieTwo = media(directory, "2-tie.mp3", "2 Same", null)
+        val one = media(directory, "z-one.mp3", "01 One", null)
+        val nonNumericTen = media(directory, "10-appendix.mp3", "Appendix", null)
+        val nonNumericTwo = media(directory, "2-appendix.mp3", "Appendix", null)
+        val missing = media(directory, "3-missing.mp3", null, null)
+
+        val plan = FolderPlaylistWriter().plan(
+            FolderPlaylistWriteCommand(
+                snapshot(
+                    directory,
+                    listOf(ten, twoTieTen, nonNumericTen, missing, one, twoTieTwo, nonNumericTwo),
+                ),
+                FolderPlaylistOrder.TITLE_NUMBER,
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                "./z-one.mp3",
+                "./2-tie.mp3",
+                "./10-tie.mp3",
+                "./z-ten.mp3",
+                "./2-appendix.mp3",
+                "./10-appendix.mp3",
+                "./3-missing.mp3",
+            ),
+            plan.relativeEntries,
+        )
+        assertTrue(plan.extendedM3u.contains("\n./z-one.mp3\n"))
+        assertFalse(plan.extendedM3u.contains(directory.absolutePath))
+    }
+
+    @Test
     fun extinfUsesTrustedDurationAndFallsBackExplicitlyWhenUnknown() {
         val directory = temporary.newFolder("duration")
         val known = media(directory, "01-known.mp3", "Known", 1, durationMillis = 61_000)
@@ -388,7 +425,7 @@ class FolderPlaylistWriterTest {
     private fun media(
         directory: File,
         name: String,
-        title: String,
+        title: String?,
         track: Int?,
         disc: Int? = null,
         artist: String? = null,
@@ -402,7 +439,7 @@ class FolderPlaylistWriterTest {
 
     private fun row(
         file: File,
-        title: String,
+        title: String?,
         track: Int?,
         disc: Int? = null,
         artist: String? = null,
@@ -410,9 +447,8 @@ class FolderPlaylistWriterTest {
         durationMillis: Long? = null,
         modifiedTimeNanos: Long? = null,
     ): FileTagProposals {
-        val fields = linkedMapOf<TagField, MetadataValue>(
-            TagField.TITLE to MetadataValue(title, MetadataProvenance.EMBEDDED),
-        )
+        val fields = linkedMapOf<TagField, MetadataValue>()
+        title?.let { fields[TagField.TITLE] = MetadataValue(it, MetadataProvenance.EMBEDDED) }
         track?.let { fields[TagField.TRACK_NUMBER] = MetadataValue(it.toString(), MetadataProvenance.EMBEDDED) }
         disc?.let { fields[TagField.DISC_NUMBER] = MetadataValue(it.toString(), MetadataProvenance.EMBEDDED) }
         artist?.let { fields[TagField.ARTIST] = MetadataValue(it, MetadataProvenance.EMBEDDED) }

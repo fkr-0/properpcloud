@@ -41,16 +41,19 @@ data class ReviewedFolderApproval internal constructor(
 data class ReviewedFolderTagBatch internal constructor(
     internal val revision: Long,
     val plan: FolderTagBatchPlan,
+    val projection: FolderTagReviewProjection,
 )
 
 data class ReviewedFolderPlaylist internal constructor(
     internal val revision: Long,
     val plan: FolderPlaylistPlan,
+    val projection: FolderPlaylistReviewProjection,
 )
 
 data class ReviewedFolderPlaylistBatch internal constructor(
     internal val revision: Long,
     val plan: FolderPlaylistBatchPlan,
+    val projection: FolderPlaylistReviewProjection,
 )
 
 /**
@@ -173,7 +176,12 @@ class FolderMetadataSuiteSession(
         }
         return try {
             val plan = workflow.planBatch(preview, approvals.map(ReviewedFolderApproval::approval), recursiveTagOptIn)
-            issueAtRevision(reviewRevision, ReviewedFolderTagBatch(reviewRevision, plan), "Tag batch is ready for dry-run review.")
+            val projection = tagReviewProjection(reviewRevision, plan)
+            issueAtRevision(
+                reviewRevision,
+                ReviewedFolderTagBatch(reviewRevision, plan, projection),
+                "Tag batch is frozen at revision $reviewRevision with ${projection.changedFieldCount} Earlier/Later field change(s); dry-run before replacement.",
+            )
         } catch (error: RuntimeException) {
             failure(error.message ?: "Could not build the tag batch review.")
         }
@@ -261,7 +269,12 @@ class FolderMetadataSuiteSession(
         }
         return try {
             val plan = workflow.planPlaylist(FolderPlaylistWriteCommand(preview.snapshots.single(), order))
-            issueAtRevision(reviewRevision, ReviewedFolderPlaylist(reviewRevision, plan), playlistReviewMessage(plan))
+            val projection = playlistReviewProjection(reviewRevision, plan)
+            issueAtRevision(
+                reviewRevision,
+                ReviewedFolderPlaylist(reviewRevision, plan, projection),
+                playlistReviewMessage(plan),
+            )
         } catch (error: RuntimeException) {
             failure(error.message ?: "Could not build the playlist review.")
         }
@@ -311,10 +324,11 @@ class FolderMetadataSuiteSession(
                 onePlaylistPerAlbum = onePlaylistPerAlbum,
                 order = order,
             )
+            val projection = playlistReviewProjection(reviewRevision, plan)
             issueAtRevision(
                 reviewRevision,
-                ReviewedFolderPlaylistBatch(reviewRevision, plan),
-                "Playlist batch review contains ${plan.playlistCount} derived file(s) and ${plan.entryCount} media entr${if (plan.entryCount == 1) "y" else "ies"}.",
+                ReviewedFolderPlaylistBatch(reviewRevision, plan, projection),
+                "Playlist batch review at revision $reviewRevision contains ${projection.playlistCount} exact target(s) and ${projection.entryCount} media entr${if (projection.entryCount == 1) "y" else "ies"}.",
             )
         } catch (error: RuntimeException) {
             failure(error.message ?: "Could not build the playlist batch review.")

@@ -1,9 +1,15 @@
 package dev.properpcloud.metadata.tags
 
 import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.ApprovedFieldEdit
+import dev.properpcloud.core.model.ContentEvidence
+import dev.properpcloud.core.model.FieldDecision
+import dev.properpcloud.core.model.FileApproval
 import dev.properpcloud.core.model.FolderMetadataLookup
+import dev.properpcloud.core.model.LocalFileIdentity
 import dev.properpcloud.core.model.MetadataProvenance
 import dev.properpcloud.core.model.MetadataValue
+import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.QueueOperation
@@ -11,6 +17,7 @@ import dev.properpcloud.core.model.QueueReducer
 import dev.properpcloud.core.model.SnapshotGeneration
 import dev.properpcloud.core.model.SourceId
 import dev.properpcloud.core.model.TagField
+import dev.properpcloud.core.model.TagFieldProposal
 import dev.properpcloud.core.model.TagMutation
 import dev.properpcloud.core.model.TagPatch
 import dev.properpcloud.core.model.TagSnapshot
@@ -60,6 +67,114 @@ class FolderMetadataSuiteSessionTest {
     }
 
     @Test
+    fun earlierLaterProjectionClassifiesChangedAddedAndDestructiveRemovalWithoutPresentationGuessing() {
+        val root = temporary.newFolder("earlier-later-model")
+        val file = File(root, "song.mp3").apply { writeText("audio") }
+        val snapshot = TagSnapshot(
+            format = "ID3",
+            fields = mapOf(
+                TagField.TITLE to MetadataValue("Old title", MetadataProvenance.EMBEDDED),
+                TagField.ARTIST to MetadataValue("Old artist", MetadataProvenance.EMBEDDED),
+            ),
+        )
+        val identity = LocalFileIdentity(
+            sourceId = SourceId("local"),
+            nodeId = NodeId("file:review"),
+            file = file.canonicalFile,
+            filename = file.name,
+            contentEvidence = ContentEvidence(file.length(), file.lastModified() * 1_000_000L),
+        )
+        fun proposal(field: TagField, earlier: String?, later: String?) = TagFieldProposal(
+            field = field,
+            ruleId = "review:${field.name.lowercase()}",
+            currentValue = earlier,
+            proposedValue = later,
+            confidence = 0.9,
+            autoPreselected = false,
+            explanation = "Focused Earlier/Later fixture for $field",
+            warnings = if (field == TagField.ARTIST) listOf("Destructive removal") else emptyList(),
+        )
+        val titleProposal = proposal(TagField.TITLE, "Old title", "New title")
+        val albumProposal = proposal(TagField.ALBUM, null, "New album")
+        val artistProposal = proposal(TagField.ARTIST, "Old artist", null)
+        val approval = FileApproval(
+            identity = identity,
+            approvedFields = mapOf(
+                TagField.TITLE to ApprovedFieldEdit(TagField.TITLE, FieldDecision.SET, "New title", titleProposal),
+                TagField.ALBUM to ApprovedFieldEdit(TagField.ALBUM, FieldDecision.SET, "New album", albumProposal),
+                TagField.ARTIST to ApprovedFieldEdit(TagField.ARTIST, FieldDecision.CLEAR, null, artistProposal),
+            ),
+            originalSnapshot = snapshot,
+            expectedContentHash = "a".repeat(64),
+        )
+        val projection = tagReviewProjection(
+            revision = 42,
+            plan = FolderTagBatchPlan(
+                rootDirectory = root.canonicalFile,
+                recursive = false,
+                recursiveOptInConfirmed = true,
+                items = listOf(FolderTagBatchPlanItem(approval, "song.mp3")),
+            ),
+        )
+
+        assertEquals(42L, projection.revision)
+        assertEquals("song.mp3", projection.files.single().relativePath)
+        val byField = projection.files.single().fields.associateBy { it.field }
+        assertEquals(FolderTagReviewTransition.CHANGED, byField.getValue(TagField.TITLE).transition)
+        assertEquals("Old title", byField.getValue(TagField.TITLE).earlier.value)
+        assertEquals("New title", byField.getValue(TagField.TITLE).later.value)
+        assertEquals(FolderTagReviewTransition.ADDED_FROM_EMPTY, byField.getValue(TagField.ALBUM).transition)
+        assertEquals(FolderTagReviewValueKind.EMPTY, byField.getValue(TagField.ALBUM).earlier.kind)
+        assertEquals(FolderTagReviewTransition.REMOVAL_TO_EMPTY, byField.getValue(TagField.ARTIST).transition)
+        assertEquals(FolderTagReviewValueKind.EMPTY, byField.getValue(TagField.ARTIST).later.kind)
+        assertTrue(projection.hasDestructiveChanges)
+        assertEquals(3, projection.changedFieldCount)
+    }
+
+    @Test
+    fun frozenTagReviewRequiresConfirmationDryRunUsesSameRevisionAndWatcherInvalidationRejectsIt() = runBlocking {
+        val artist = temporary.newFolder("Review Artist")
+        val album = File(artist, "Review Album").apply { mkdirs() }
+        File(album, "01 - One.mp3").writeText("audio")
+        val toolkit = RecordingToolkit()
+        val session = session(artist, toolkit)
+        val preview = session.previewTree(command(album, generation = 7)).value!!
+        val snapshot = preview.snapshots.single()
+        val row = snapshot.files.single()
+        val approval = session.approveLocalProposals(
+            ApproveLocalProposalsCommand(
+                snapshot = snapshot,
+                nodeId = row.identity.nodeId,
+                acceptedRuleByField = mapOf(TagField.ALBUM to TagProposalEngine.RULE_INFER_ALBUM_FOLDER),
+            ),
+        ).value!!
+        val review = session.reviewTagBatch(listOf(approval)).value!!
+
+        assertEquals(session.status().revision, review.projection.revision)
+        assertEquals(FolderTagReviewTransition.ADDED_FROM_EMPTY, review.projection.files.single().fields.single().transition)
+        assertEquals("Review Album", review.projection.files.single().fields.single().later.value)
+
+        val unconfirmed = session.executeTagBatch(
+            review,
+            stagingDirectory = File(artist, ".review-scratch"),
+            dryRun = false,
+            confirmWrite = false,
+        )
+        assertFalse(unconfirmed.succeeded)
+        assertEquals(0, toolkit.stagePatchCalls)
+
+        val dryRun = session.executeTagBatch(review, File(artist, ".review-scratch"), dryRun = true)
+        assertTrue(dryRun.succeeded)
+        assertEquals(0, toolkit.stagePatchCalls)
+
+        session.invalidateForFilesystemChange("Watcher observed external drift.")
+        val stale = session.executeTagBatch(review, File(artist, ".review-scratch"), dryRun = true)
+        assertFalse(stale.succeeded)
+        assertTrue(stale.reconciliationRequired)
+        assertEquals(0, toolkit.stagePatchCalls)
+    }
+
+    @Test
     fun recursivePlaylistOptInIsIndependentReportsProgressAndWatcherInvalidationCancelsAutomation() = runBlocking {
         val root = temporary.newFolder("Library")
         val album2 = File(root, "Album 2").apply { mkdirs() }
@@ -77,6 +192,14 @@ class FolderMetadataSuiteSessionTest {
         val playlistReview = session.reviewPlaylistBatch(recursivePlaylistOptIn = true)
         assertTrue(playlistReview.succeeded)
         assertTrue(playlistReview.value!!.plan.recursiveOptInConfirmed)
+        assertEquals(session.status().revision, playlistReview.value!!.projection.revision)
+        assertEquals(
+            listOf("./Album 2/Album 2.m3u8", "./Album 10/Album 10.m3u8"),
+            playlistReview.value!!.projection.files.map { it.targetRelativePath },
+        )
+        assertTrue(playlistReview.value!!.projection.files.all { file ->
+            file.finalLines.first() == "#EXTM3U" && file.entryLines.all { it.startsWith("./") }
+        })
 
         val albumRow = tree.snapshots.single { it.folderPath == album2.canonicalFile }.files.single()
         val tagApproval = session.approveLocalProposals(

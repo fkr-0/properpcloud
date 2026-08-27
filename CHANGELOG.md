@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added a native-desktop `--generate-playlists <local-root>` batch CLI that previews by
+  default, requires `--write` for materialization, exposes all four deterministic playlist
+  orders, and keeps recursive/per-album scope explicit through the same selected-root,
+  revision-bound workbench used by the desktop UI.
+- Added a real-WAV integration test covering folder/filename tag inference, explicit approval,
+  dry-run preflight, verified jaudiotagger-backed local writes, fresh metadata readback,
+  relative extended-M3U generation, and resulting playback queue order.
+
+### Changed
+
+- Clarified that filesystem watcher events invalidate and reconcile reviewed work but do not
+  perform unattended playlist writes; bounded post-sync regeneration remains playlist-only and
+  can resume only from an explicitly submitted, still-current reviewed batch.
+- Updated metadata documentation with the exercised ID3v2.3/v2.4 compatibility boundary,
+  modeled writable fields, preservation of unrelated ID3 frames, current native local-root
+  support, and the preview-first CLI workflow.
+
 ## [0.2.0-rc.2] - 2026-08-23
 
 ### Testing

@@ -48,7 +48,9 @@ import dev.properpcloud.source.pcloud.PCloudRevocationResult
 import dev.properpcloud.source.pcloud.PCloudSessionRevoker
 import dev.properpcloud.source.pcloud.PCloudSourceFactory
 import dev.properpcloud.metadata.tags.ApproveLocalProposalsCommand
+import dev.properpcloud.metadata.tags.FolderPlaylistReviewProjection
 import dev.properpcloud.metadata.tags.FolderPlaylistOrder
+import dev.properpcloud.metadata.tags.FolderTagReviewProjection
 import dev.properpcloud.metadata.tags.FolderTreeTagPreview
 import dev.properpcloud.metadata.tags.LocalFolderWorkbenchStatus
 import dev.properpcloud.metadata.tags.LocalFolderWorkbenchWatchState
@@ -101,8 +103,9 @@ data class DesktopLocalWorkbenchUiState(
     val fileCount: Int = 0,
     val proposals: List<DesktopLocalTagProposal> = emptyList(),
     val reviewedTagCount: Int = 0,
+    val tagReview: FolderTagReviewProjection? = null,
     val tagDryRunReady: Boolean = false,
-    val playlistReview: String? = null,
+    val playlistReview: FolderPlaylistReviewProjection? = null,
     val operationLabel: String? = null,
     val operationCompleted: Int = 0,
     val operationTotal: Int = 0,
@@ -328,6 +331,7 @@ class DesktopController(
             status = reviewedMessage,
             localWorkbench = mutableState.value.localWorkbench.copy(
                 reviewedTagCount = reviewed.value?.plan?.items?.size ?: 0,
+                tagReview = reviewed.value?.projection,
                 tagDryRunReady = false,
                 operationLabel = null,
                 operationCompleted = 0,
@@ -462,7 +466,7 @@ class DesktopController(
             resultMessage = localUserMessage(binding, review.message)
             mutableState.value = mutableState.value.copy(
                 localWorkbench = mutableState.value.localWorkbench.copy(
-                    playlistReview = review.value?.plan?.let { "${it.playlists.size} reviewed playlist(s); explicit write confirmation required" },
+                    playlistReview = review.value?.projection,
                     operationLabel = null,
                     operationCompleted = 0,
                     operationTotal = 0,
@@ -476,7 +480,7 @@ class DesktopController(
             resultMessage = localUserMessage(binding, review.message)
             mutableState.value = mutableState.value.copy(
                 localWorkbench = mutableState.value.localWorkbench.copy(
-                    playlistReview = review.value?.plan?.let { "${it.entries.size} reviewed entry/entries; explicit write confirmation required" },
+                    playlistReview = review.value?.projection,
                     operationLabel = null,
                     operationCompleted = 0,
                     operationTotal = 0,
@@ -961,6 +965,7 @@ class DesktopController(
         mutableState.value = mutableState.value.copy(
             localWorkbench = mutableState.value.localWorkbench.copy(
                 reviewedTagCount = 0,
+                tagReview = null,
                 tagDryRunReady = false,
                 playlistReview = null,
                 operationLabel = null,
