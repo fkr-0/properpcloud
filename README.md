@@ -6,7 +6,7 @@
 
 Folder-first pCloud audio playback for Android and Linux.
 
-[![Version](https://img.shields.io/badge/version-0.2.0--rc.2-59636e)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.0--rc.3-59636e)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-properpcloud.fkr.dev-276a51)](https://properpcloud.fkr.dev)
 

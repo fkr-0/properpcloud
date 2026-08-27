@@ -7,24 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.3] - 2026-08-27
+
 ### Added
 
 - Added a native-desktop `--generate-playlists <local-root>` batch CLI that previews by
-  default, requires `--write` for materialization, exposes all four deterministic playlist
+  default, requires `--write` for materialization, exposes all five deterministic playlist
   orders, and keeps recursive/per-album scope explicit through the same selected-root,
   revision-bound workbench used by the desktop UI.
+- Added an explicit `title-number` playlist order. A leading decimal integer in the embedded
+  `TITLE` sorts numerically (`01`, `2`, `10` => `1`, `2`, `10`), with deterministic handling
+  for ties, non-numeric titles, missing titles, filenames, and stable paths.
+- Added typed, revision-bound tag and playlist review projections. Playlist checkpoints expose
+  every exact safe `./...` target path plus every final M3U8 line before any playlist bytes are
+  created.
 - Added a real-WAV integration test covering folder/filename tag inference, explicit approval,
   dry-run preflight, verified jaudiotagger-backed local writes, fresh metadata readback,
   relative extended-M3U generation, and resulting playback queue order.
 
 ### Changed
 
+- Native-desktop tag review is now diff-first: the frozen review presents explicit **Earlier**
+  and **Later** values and distinguishes ordinary changes, additions from empty values, and
+  destructive removals to empty while retaining rule/confidence provenance, warnings, conflicts,
+  filename/path identity, and the existing hash/revision/rollback safety boundary.
+- A successful tag dry-run and the final replacement confirmation now explicitly reference the
+  same frozen Earlier/Later review revision; watcher/reconciliation drift invalidates that review
+  rather than refreshing values underneath the user.
+- Playlist CLI preview prints the exact prospective playlist contents rather than a count-only
+  summary; `--write` remains the separate materialization confirmation and stale membership,
+  content, or revision evidence fails closed before the first output byte.
 - Clarified that filesystem watcher events invalidate and reconcile reviewed work but do not
   perform unattended playlist writes; bounded post-sync regeneration remains playlist-only and
   can resume only from an explicitly submitted, still-current reviewed batch.
 - Updated metadata documentation with the exercised ID3v2.3/v2.4 compatibility boundary,
   modeled writable fields, preservation of unrelated ID3 frames, current native local-root
   support, and the preview-first CLI workflow.
+
+### Known limitations
+
+- This release candidate does not claim stable `0.2.0` promotion. Physical power-cut filesystem
+  durability, physical media-key behavior, a real suspend/resume cycle, GNOME and KDE Plasma
+  observations, protected Europe/United States pCloud account validation, and the retained
+  protected-provider soak remain unresolved stable-promotion gates.
+- Linux AT-SPI/screen-reader traversal remains blocked by the current Compose Multiplatform Linux
+  accessibility boundary; selected-folder keyboard/focus/large-text review and a supported Linux
+  accessibility bridge or explicit maintainer exception remain required for stable promotion.
+- The exact immutable `v0.2.0` Arch archive rebuild is still a post-tag stable-release gate and is
+  deliberately not represented as completed by this prerelease.
 
 ## [0.2.0-rc.2] - 2026-08-23
 
@@ -658,7 +688,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.2...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.3...HEAD
+[0.2.0-rc.3]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.2...v0.2.0-rc.3
 [0.2.0-rc.2]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.1...v0.2.0-rc.2
 [0.2.0-rc.1]: https://github.com/fkr-0/properpcloud/compare/v0.1.10...v0.2.0-rc.1
 [0.1.10]: https://github.com/fkr-0/properpcloud/compare/v0.1.9...v0.1.10

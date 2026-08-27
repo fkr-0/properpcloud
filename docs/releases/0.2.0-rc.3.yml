@@ -1,0 +1,60 @@
+version: 0.2.0-rc.3
+tag: v0.2.0-rc.3
+status: release_candidate_for_hands_on_testing
+base_release: v0.2.0-rc.2
+final_target: v0.2.0
+date: 2026-08-27
+objective: >-
+  publish the portable metadata and native-desktop review improvements as an immutable
+  prerelease without claiming any remaining stable 0.2.0 external, physical-device,
+  protected-provider, or post-tag promotion gate
+included_work:
+  - typed revision-bound Earlier/Later tag review projection with explicit changed, added-from-empty, and removal-to-empty/destructive transitions
+  - native-desktop accessible diff-first review carrying filename/path identity, rule/confidence provenance, warnings, conflicts, and frozen revision identity through dry-run and final confirmation
+  - explicit title-number playlist ordering based on the leading decimal integer in embedded TITLE with deterministic non-numeric, missing-title, filename, and stable-path fallback/tie handling
+  - typed exact playlist checkpoints exposing safe ./-relative target paths and every final M3U8 line before creation
+  - preview-by-default native playlist CLI printing exact prospective content while --write remains the explicit materialization boundary
+  - real-WAV metadata-to-playlist integration coverage plus focused zero-write, stale-review, title-number, and revision-invalidation regressions
+verified_before_release_commit:
+  - focused metadata-tags, desktop CLI, and Android metadata compatibility tests passed in the Phase-15 feature verification
+  - make local-check passed 108 host-side tests
+  - make fast-test passed the portable JVM matrix
+  - make desktop-test passed
+  - make release-check passed with 12 specs, 20 requirements, and 20 use cases
+  - make doctor passed against the pinned properpcloud/android-build:2026.08 image and reviewed Gradle wrapper
+  - make test passed including the verified Robolectric runtime
+  - make lint passed
+  - make build passed and produced the debug Android build input
+  - make ci passed the combined metadata/spec/docs/tests/lint/APK/desktop-distributable gate
+  - make linux-ci passed the current-host packaged desktop/runtime/recovery/MPRIS/keyring/accessibility-smoke gate
+  - make docs-build passed with zero npm audit vulnerabilities and the release-data tests
+  - make release-020-readiness reported 19 passed status groups and 9 pending/blocking stable-promotion groups
+  - python3 scripts/validate-020-readiness.py --pre-tag exited 1 as required because the stable-promotion blockers remain unresolved
+  - git diff --check passed
+post_commit_pre_tag_verification:
+  - make release-artifacts must run after the exact release commit so release-evidence.json binds that commit
+  - generated SHA256SUMS must verify strictly
+  - feasible versioned Linux package artifact smokes should pass before the local tag
+  - the local annotated tag must peel to the exact release commit
+readiness_snapshot:
+  passed_status_groups: 19
+  blocking_status_groups: 9
+  stable_pre_tag_validation: blocked_as_expected
+final_0_2_0_blockers_not_claimed_by_this_candidate:
+  - physical power-cut filesystem durability evidence
+  - packaged selected-folder keyboard/focus/large-text review and a supported Linux accessibility bridge or explicit maintainer exception
+  - real Linux screen-reader traversal after a supported accessibility bridge exists
+  - physical media-key behavior
+  - physical suspend/resume cycle
+  - GNOME and KDE Plasma session observations
+  - protected Europe and United States pCloud account validation
+  - retained protected-provider soak with real capability expiry and suspend/resume
+  - exact immutable v0.2.0 Arch archive rebuild after final stable tag creation
+stable_promotion_policy: >-
+  docs/reviews/0.2.0-promotion-matrix.yml remains authoritative and pending, blocked,
+  manual, external-session, protected, and post-tag stable-release states are not converted
+  to success for this release candidate
+publication_scope: >-
+  local release-candidate preparation only in this task; tag-triggered remote release workflows,
+  push, publication, deployment, and GitHub Release creation are explicitly not performed
+warning: this prerelease is for hands-on testing; final v0.2.0 promotion remains fail-closed
