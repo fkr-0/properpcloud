@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.4] - 2026-08-28
+
+### Added
+
+- Added filesystem-first filename search on Android and native desktop. Search opens from the
+  magnifying-glass control, updates automatically from three characters with a short debounce,
+  matches names case-insensitively, and keeps deterministic natural/stable ordering without
+  requiring embedded metadata.
+- Added persisted search match filters for directories, generic files, audio files, and playlist
+  files. Generic `files` remains the intentional superset, while audio/playlist filters can be
+  selected independently when generic files are disabled; duplicate stable identities are removed.
+- Added durable, separately configurable playback history with bounded retention. History is
+  disabled by default, stores stable source/node identities rather than stream capabilities, and
+  remains distinct from the queue/progress state required for crash/session restoration.
+
+### Fixed
+
+- Hardened Android and desktop playback recovery for stale or failed provider stream locations.
+  Retriable HTTP/network failures now re-resolve the playable location from stable media identity,
+  rebuild/reprepare the current item, and preserve the intended queue item and position instead of
+  repeatedly handing Media3/mpv the already-failed direct URL.
+- Explicit **Play** after a terminal playback error now enters the same bounded recovery path, so a
+  bad HTTP status does not permanently poison later Play/Pause attempts. Recovery recognizes the
+  reviewed transient/auth/stale-link status set, follows nested causes, and keeps permanent client
+  failures fail-closed rather than retrying indefinitely.
+- Closed the Android Media3 experimental-API lint boundary at the application container so release
+  lint remains green without a baseline or global lint suppression.
+
+### Changed
+
+- Queue state is persisted after successful queue/selection mutations and restored by stable
+  identity at startup. Expiring provider URLs are never used as durable queue identity.
+- Playback progress now checkpoints on a 30-second cadence and at lifecycle/transition boundaries
+  such as pause, item change, stop/close, completion, and forced shutdown paths, avoiding repeated
+  per-second paused writes while preserving bounded resume accuracy.
+- Android DataStore and desktop SQLite persistence were extended additively for the new player,
+  history, and search-preference state; malformed/stale positions are normalized conservatively and
+  existing persistence remains backward-compatible.
+- pCloud and local-folder library adapters now expose stable generic/playlist file nodes needed by
+  filename search instead of discarding every non-audio entry from the searchable library model.
+
+### Testing
+
+- Added deterministic loopback-HTTP recovery coverage proving failed/stale stream resolution is
+  reacquired and resumed without persisting the ephemeral URL, plus Android explicit-recovery tests.
+- Added search/filter, queue/progress/history persistence, repository codec/SQLite, and desktop
+  process-smoke coverage. The release gate exercises filename search plus queue, progress, history,
+  and filter restoration after SQLite reopen.
+- Revalidated the complete Android/JVM/desktop/docs/Linux release stack, including packaged crash
+  recovery, local-tag recovery, MPRIS controls, locked-keyring handling, accessibility capture,
+  release metadata, and zero-vulnerability documentation dependencies.
+
+### Known limitations
+
+- Search in this candidate is filename/name based. ID3 artist, title, year, and other embedded-tag
+  match types remain intentionally deferred until the filesystem-first path is established.
+- This candidate does not promote stable `0.2.0`: physical power-cut durability, physical media-key
+  and suspend/resume observations, GNOME/KDE session evidence, protected EU/US provider validation
+  and soak, and the existing Linux accessibility/promotion boundaries remain explicit blockers.
+
 ## [0.2.0-rc.3] - 2026-08-27
 
 ### Added
@@ -688,8 +748,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.3...HEAD
-[0.2.0-rc.3]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.2...v0.2.0-rc.3
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.4...HEAD
+[0.2.0-rc.4]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.2...v0.2.0-rc.4
+[0.2.0-rc.3]: https://github.com/fkr-0/properpcloud/commit/638ac07e69ccfa59a16e0f6df5e1862a0eb6beb2
 [0.2.0-rc.2]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.1...v0.2.0-rc.2
 [0.2.0-rc.1]: https://github.com/fkr-0/properpcloud/compare/v0.1.10...v0.2.0-rc.1
 [0.1.10]: https://github.com/fkr-0/properpcloud/compare/v0.1.9...v0.1.10
