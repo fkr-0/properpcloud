@@ -45,16 +45,21 @@ definition_of_done:
       - Large-folder behavior meets memory and latency budgets.
       - Missing or malformed tags do not hide playable files.
       - Path and parent navigation uses IDs rather than string parsing.
+      - Filename search uses the loaded filesystem model, three-character threshold, deterministic case-insensitive matching, persisted accessible match-type filters, and no mandatory tag lookup.
     queue:
       - Direct and recursive operations are deterministic.
       - Empty replacement does not clear queue silently.
       - Cancellation leaves prior generation intact.
       - Partial result has omission report.
       - Concurrent edits reject stale generation.
+      - Every successful mutation and player-driven current selection is durably persisted using stable identity only.
+      - Startup restoration cannot overwrite a newer user mutation and restores paused without autoplay.
     playback:
       - Stable media ID is persisted and exposed to controller.
       - Direct URI is resolved just in time and redacted.
       - Link expiry recovery is bounded and tested.
+      - Bad HTTP/network recovery re-resolves from stable identity, preserves queue/current/position, and explicit Play cannot reuse the failed capability.
+      - Permanent HTTP/media errors remain surfaced without an infinite refresh loop.
       - Audio focus, headset disconnect, process recreation, and service teardown are tested.
       - Progress loss window is measured.
     modern_player:
@@ -67,6 +72,8 @@ definition_of_done:
       - Revision-compatible restore and changed-content decision are tested.
       - Completion threshold and explicit reset are tested.
       - Writes are coalesced but flushed on lifecycle boundaries.
+      - Active checkpoints are approximately 30 seconds, pause is transition-driven rather than per-tick, and effectively completed/stale positions normalize safely.
+      - Optional playback history is disabled by default, stable-identity-only, configurable, and hard-bounded to 500 entries.
       - Migration preserves prior progress.
     offline_cache:
       - Completed content is hash or revision verified.

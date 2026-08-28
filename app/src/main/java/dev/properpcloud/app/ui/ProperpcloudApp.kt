@@ -28,7 +28,9 @@ import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
@@ -42,6 +44,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
@@ -57,6 +60,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -74,6 +78,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -96,8 +101,11 @@ import dev.properpcloud.app.BuildConfig
 import dev.properpcloud.app.data.SourceKind
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.LibraryFile
+import dev.properpcloud.core.model.LibraryFileKind
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.QueueOperation
+import dev.properpcloud.core.model.SearchMatchType
 import dev.properpcloud.core.model.TrackSortKey
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -167,6 +175,45 @@ fun ProperpcloudApp(
 }
 
 @Composable
+private fun LibrarySearchControls(state: AppUiState, actions: AppActions) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedTextField(
+            value = state.search.query,
+            onValueChange = actions.updateLibrarySearchQuery,
+            modifier = Modifier.fillMaxWidth().testTag("library-search-field"),
+            singleLine = true,
+            label = { Text("Filename search") },
+            placeholder = { Text("Type at least 3 characters") },
+            leadingIcon = { Icon(Icons.Default.Search, null) },
+        )
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SearchMatchType.entries.forEach { type ->
+                FilterChip(
+                    selected = type in state.search.matchTypes,
+                    onClick = { actions.toggleSearchMatchType(type) },
+                    label = { Text(searchTypeLabel(type)) },
+                    modifier = Modifier.testTag("search-filter-${type.name.lowercase()}"),
+                )
+            }
+        }
+        when {
+            state.search.searching -> LinearProgressIndicator(Modifier.fillMaxWidth().testTag("library-search-loading"))
+            state.search.query.trim().length in 1 until 3 -> Text(
+                "Enter at least 3 characters to search the loaded file list.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
 private fun MetadataSelectionBar(state: AppUiState, actions: AppActions) {
     Surface(
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -205,12 +252,19 @@ private fun LibraryScreen(state: AppUiState, actions: AppActions, expanded: Bool
                 }
             },
             actions = {
+                IconButton(onClick = actions.toggleLibrarySearch) {
+                    Icon(
+                        if (state.search.expanded) Icons.Default.Close else Icons.Default.Search,
+                        contentDescription = if (state.search.expanded) "Close filename search" else "Search filenames",
+                    )
+                }
                 SortMenu(state.sortKey, actions.setSort)
                 IconButton(onClick = actions.refresh, enabled = !state.refreshing) {
                     Icon(Icons.Default.Refresh, contentDescription = "Refresh folder")
                 }
             },
         )
+        if (state.search.expanded) LibrarySearchControls(state, actions)
         if (state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth())
         SourceBanner(state, actions)
         if (state.queueBuilding) {
@@ -288,10 +342,21 @@ private fun Breadcrumbs(state: AppUiState, actions: AppActions) {
 
 @Composable
 private fun FolderContent(state: AppUiState, actions: AppActions, modifier: Modifier) {
+    val searchActive = state.search.expanded && state.search.query.trim().length >= 3
+    val visibleNodes = if (searchActive) state.search.results else state.nodes
     Box(modifier) {
         when {
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center).testTag("library-loading"))
             state.errorMessage != null -> ErrorState(state.errorMessage, actions.refresh, Modifier.align(Alignment.Center))
+            searchActive && !state.search.searching && visibleNodes.isEmpty() -> Column(
+                Modifier.align(Alignment.Center).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(Icons.Default.Search, null, Modifier.size(48.dp))
+                Spacer(Modifier.height(8.dp))
+                Text("No matching filenames", style = MaterialTheme.typography.titleMedium)
+                Text("Adjust the query or match-type filters.", style = MaterialTheme.typography.bodySmall)
+            }
             state.nodes.isEmpty() -> EmptyFolderState(state.currentFolder, actions, Modifier.align(Alignment.Center))
             else -> LazyColumn(Modifier.fillMaxSize().testTag("library-list")) {
                 if (state.metadataSelection.isNotEmpty()) {
@@ -300,7 +365,7 @@ private fun FolderContent(state: AppUiState, actions: AppActions, modifier: Modi
                 item {
                     FolderQuickActions(state.currentFolder, actions)
                 }
-                items(state.nodes, key = { it.sourceId.value + ":" + it.id.value }) { node ->
+                items(visibleNodes, key = { it.sourceId.value + ":" + it.id.value }) { node ->
                     MediaNodeRow(node, state, actions)
                     HorizontalDivider(Modifier.padding(start = 72.dp))
                 }
@@ -343,6 +408,7 @@ private fun MediaNodeRow(node: MediaNode, state: AppUiState, actions: AppActions
                 when (node) {
                     is AudioFolder -> actions.openFolder(node)
                     is AudioTrack -> actions.playTrack(node)
+                    is LibraryFile -> actions.inspect(node)
                 }
             }
             .testTag("node-${node.id.value}"),
@@ -354,16 +420,18 @@ private fun MediaNodeRow(node: MediaNode, state: AppUiState, actions: AppActions
             )
         },
         supportingContent = {
-            if (node is AudioTrack) {
-                Text(
+            when (node) {
+                is AudioTrack -> Text(
                     buildString {
                         if (node.taggedTitle != null) append(node.name).append(" · ")
                         node.durationMillis?.let { append(formatDuration(it)) }
                     }.trim().trimEnd('·').trim(),
                     maxLines = 2,
                 )
-            } else {
-                Text("Folder · stable source identity")
+                is AudioFolder -> Text("Folder · stable source identity")
+                is LibraryFile -> Text(
+                    if (node.kind == LibraryFileKind.PLAYLIST) "Playlist file · stable source identity" else "File · stable source identity",
+                )
             }
         },
         leadingContent = {
@@ -371,9 +439,14 @@ private fun MediaNodeRow(node: MediaNode, state: AppUiState, actions: AppActions
                 when {
                     selectedForMetadata -> Icons.Default.CheckCircle
                     isFolder -> Icons.Default.Folder
+                    node is LibraryFile -> Icons.Default.Description
                     else -> Icons.Default.AudioFile
                 },
-                contentDescription = if (isFolder) "Folder" else "Audio file",
+                contentDescription = when (node) {
+                    is AudioFolder -> "Folder"
+                    is AudioTrack -> "Audio file"
+                    is LibraryFile -> if (node.kind == LibraryFileKind.PLAYLIST) "Playlist file" else "File"
+                },
                 tint = when {
                     selectedForMetadata -> MaterialTheme.colorScheme.secondary
                     isFolder -> MaterialTheme.colorScheme.tertiary
@@ -723,6 +796,36 @@ private fun SettingsScreen(state: AppUiState, actions: AppActions, onAuthorizePC
                 Bullet("OAuth token encrypted locally and excluded from backup")
                 Bullet("Signed media links are resolved just in time and never persisted")
                 Bullet("Empty or cancelled scans preserve the previous queue")
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Playback history", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Disabled by default. When enabled, stores stable media identity, progress, completion, and timestamp only.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(
+                        checked = state.playbackHistoryEnabled,
+                        onCheckedChange = actions.setPlaybackHistoryEnabled,
+                        modifier = Modifier.testTag("playback-history-toggle"),
+                    )
+                }
+                if (state.playbackHistoryEnabled) {
+                    Text("History retention", style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(25, 100, 250, 500).forEach { retention ->
+                            FilterChip(
+                                selected = state.playbackHistoryRetention == retention,
+                                onClick = { actions.setPlaybackHistoryRetention(retention) },
+                                label = { Text("$retention items") },
+                                modifier = Modifier.testTag("history-retention-$retention"),
+                            )
+                        }
+                    }
+                }
             }
         }
         item {
@@ -933,6 +1036,13 @@ private val destinations = listOf(
     DestinationItem(AppDestination.SETTINGS, "Settings", Icons.Default.Settings),
 )
 
+private fun searchTypeLabel(type: SearchMatchType): String = when (type) {
+    SearchMatchType.DIRECTORIES -> "Dirs"
+    SearchMatchType.FILES -> "Files"
+    SearchMatchType.AUDIO_FILES -> "Audio files"
+    SearchMatchType.PLAYLIST_FILES -> "Playlist files"
+}
+
 private fun sortLabel(key: TrackSortKey): String = when (key) {
     TrackSortKey.NATURAL_FILENAME -> "Natural filename"
     TrackSortKey.DISC_THEN_TRACK -> "Disc and track"
@@ -953,6 +1063,9 @@ data class AppActions(
     val openFolder: (AudioFolder) -> Unit,
     val navigateBreadcrumb: (Int) -> Unit,
     val refresh: () -> Unit,
+    val toggleLibrarySearch: () -> Unit,
+    val updateLibrarySearchQuery: (String) -> Unit,
+    val toggleSearchMatchType: (SearchMatchType) -> Unit,
     val setSort: (TrackSortKey) -> Unit,
     val playTrack: (AudioTrack) -> Unit,
     val enqueueTrack: (AudioTrack, QueueOperation) -> Unit,
@@ -990,6 +1103,8 @@ data class AppActions(
     val openPCloudDeveloperConsole: () -> Unit,
     val selectSource: (SourceKind) -> Unit,
     val disconnectPCloud: () -> Unit,
+    val setPlaybackHistoryEnabled: (Boolean) -> Unit,
+    val setPlaybackHistoryRetention: (Int) -> Unit,
     val consumeMessage: () -> Unit,
     val playPause: () -> Unit,
     val skipNext: () -> Unit,

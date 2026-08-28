@@ -7,6 +7,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -21,6 +22,7 @@ import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.QueueOperation
+import dev.properpcloud.core.model.SearchMatchType
 import dev.properpcloud.core.model.SourceId
 import dev.properpcloud.core.model.MetadataProvenance
 import dev.properpcloud.core.model.MetadataCandidate
@@ -49,6 +51,39 @@ class ProperpcloudAppTest {
         compose.onNodeWithText("Audiobooks").assertIsDisplayed()
         compose.onNodeWithText("A Door in the Rain").assertIsDisplayed()
         compose.onNodeWithTag("library-list").assertIsDisplayed()
+    }
+
+    @Test
+    fun filenameSearchExpandsCollapsesAndFilterInteractionReachesAction() {
+        val state = mutableStateOf(sampleState())
+        var toggled: SearchMatchType? = null
+        compose.setContent {
+            ProperpcloudApp(
+                state = state.value,
+                actions = noOpActions().copy(
+                    toggleLibrarySearch = {
+                        val search = state.value.search
+                        state.value = state.value.copy(
+                            search = if (search.expanded) {
+                                search.copy(expanded = false, query = "", results = emptyList())
+                            } else {
+                                search.copy(expanded = true)
+                            },
+                        )
+                    },
+                    toggleSearchMatchType = { toggled = it },
+                ),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithTag("library-search-field").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Search filenames").performClick()
+        compose.onNodeWithTag("library-search-field").assertIsDisplayed()
+        compose.onNodeWithTag("search-filter-audio_files").performClick()
+        assertTrue(toggled == SearchMatchType.AUDIO_FILES)
+        compose.onNodeWithContentDescription("Close filename search").performClick()
+        compose.onNodeWithTag("library-search-field").assertDoesNotExist()
     }
 
     @Test
@@ -406,6 +441,9 @@ class ProperpcloudAppTest {
         openFolder = {},
         navigateBreadcrumb = {},
         refresh = {},
+        toggleLibrarySearch = {},
+        updateLibrarySearchQuery = {},
+        toggleSearchMatchType = {},
         setSort = {},
         playTrack = {},
         enqueueTrack = { _, _: QueueOperation -> },
@@ -443,6 +481,8 @@ class ProperpcloudAppTest {
         openPCloudDeveloperConsole = {},
         selectSource = {},
         disconnectPCloud = {},
+        setPlaybackHistoryEnabled = {},
+        setPlaybackHistoryRetention = {},
         consumeMessage = {},
         playPause = {},
         skipNext = {},

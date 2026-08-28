@@ -11,6 +11,8 @@ import com.pcloud.sdk.internal.LegacyTokenAuthenticators
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioSource
 import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.LibraryFile
+import dev.properpcloud.core.model.LibraryFileKind
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.MetadataContentSource
 import dev.properpcloud.core.model.NodeId
@@ -52,7 +54,7 @@ class PCloudAudioSource internal constructor(
             PCloudNodeKind.FILE -> client.loadFile(parsed.numericId).execute()
             PCloudNodeKind.FOLDER -> client.loadFolder(parsed.numericId).execute()
         }
-        requireNotNull(toMediaNode(entry)) { "node is not playable audio or folder" }
+        requireNotNull(toMediaNode(entry)) { "node is unavailable" }
     }
 
     override suspend fun resolveStream(trackId: NodeId): StreamHandle = withContext(Dispatchers.IO) {
@@ -161,7 +163,16 @@ class PCloudAudioSource internal constructor(
             entry.isFile -> {
                 val file = entry.asFile()
                 if (!file.looksLikeAudio()) {
-                    null
+                    LibraryFile(
+                        sourceId = id,
+                        id = PCloudNodeIds.file(file.fileId()),
+                        parentId = PCloudNodeIds.folder(file.parentFolderId()),
+                        name = file.name(),
+                        modifiedAtEpochMillis = file.lastModified().time,
+                        contentType = file.contentType(),
+                        sizeBytes = file.size(),
+                        kind = LibraryFileKind.fromFilename(file.name()),
+                    )
                 } else {
                     AudioTrack(
                         sourceId = id,

@@ -78,6 +78,22 @@ contracts:
       invariants:
         - position_ms is clamped to known duration.
         - completion state follows policy or explicit user action.
+        - Effectively completed records restart at zero on ordinary session restoration.
+    PlaybackHistoryEntry:
+      key: [source_id, node_id]
+      fields:
+        position_ms: non-negative Long
+        duration_ms: optional positive Long
+        observed_at: Instant
+        completed: Boolean
+      policy:
+        enabled_by_default: false
+        default_retention_items: 100
+        maximum_retention_items: 500
+      invariants:
+        - History is separate from the authoritative queue/current/progress restoration state.
+        - Stable source/node identity is the only media identity.
+        - StreamHandle, signed URL, token, provider response body, and complete private path are forbidden.
     SavedRoot:
       fields:
         id: UUID
@@ -329,6 +345,10 @@ contracts:
         mutate_atomically: typed queue command plus expected generation
       concurrency:
         - Reject stale generation rather than silently overwrite concurrent user action.
+      durability:
+        - Persist every successful add, remove, move, replace, clear, and current-item selection.
+        - Startup repair is durable before repaired state is reported complete.
+        - A startup restore in flight must not overwrite a newer user mutation.
     IF-PROGRESS-REPOSITORY:
       methods:
         get: stable media identity -> optional ProgressRecord
@@ -336,10 +356,21 @@ contracts:
         upsert: ProgressRecord
         reset: identity plus explicit reason
       write_policy:
-        - Coalesce frequent samples.
-        - Force flush on lifecycle boundaries.
+        - Coalesce active samples to an approximately 30-second periodic checkpoint cadence.
+        - Force flush on pause transitions, item/queue transitions, playback failure, lifecycle/background/task-removal boundaries, completion, and shutdown when available.
+        - Repeated paused ticker samples do not create one write per tick.
         - Stable source/node identity is resolved against the active queue before writing.
         - A forced flush returns an observable completion handle to orchestration tests.
+    IF-PLAYBACK-HISTORY-REPOSITORY:
+      methods:
+        list: newest-first bounded PlaybackHistoryEntry list
+        set_enabled: Boolean
+        set_retention: positive bounded item count
+        upsert_from_progress: ProgressRecord when enabled
+      guarantees:
+        - Disabled history creates no new history entry.
+        - Retention is never greater than 500 entries.
+        - Upsert replaces the previous record for the same stable media identity rather than growing duplicate rows indefinitely.
     IF-PERSISTENCE-COMPATIBILITY-CORPUS:
       fixtures: spec/fixtures/0.1.5
       records: [queue_json, queue_index, progress_json]
@@ -371,6 +402,9 @@ contracts:
       guarantees:
         - PlaybackState always contains stable media identity when an item is selected.
         - Ephemeral URI is not exposed to presentation.
+        - A restored queue may be installed with a validated start position in one operation and defaults to paused/no-autoplay.
+        - Explicit Play after a retriable terminal HTTP/network failure re-resolves through stable identity before prepare.
+        - Non-retriable HTTP/media failures remain surfaced and do not trigger capability refresh.
     IF-AUDIO-TAG-TOOLKIT:
       methods:
         inspect:
@@ -433,6 +467,11 @@ contracts:
     ResolvePlayableItem:
       input: queue item and optional cached preference
       output: verified local handle or fresh StreamHandle
+      recovery:
+        retriable_http_statuses: [401, 403, 404, 408, 410, 425, 429, 5xx]
+        retriable_network: [connection_failed, connection_timeout]
+        rule: invalidate only ephemeral stream location, keep queue/current/position stable, re-resolve from source/node identity under bounded retry
+        permanent: surface without automatic or explicit capability-refresh loop
     SavePlaybackProgress:
       input: stable media ID, revision, position, duration, speed, trigger, observation time
       output: stored record and completion transition
@@ -549,6 +588,12 @@ contracts:
       key: singleton profile or queue_id
       columns: [generation, created_at, current_index, ordering_json, grouping_json, duplicate_policy]
       class: user_state
+    DB-PLAYBACK-HISTORY:
+      key: source_id, node_id
+      columns: [position_ms, duration_ms, observed_ms, completed]
+      class: optional_bounded_user_state
+      defaults: [enabled=false, retention=100, maximum_retention=500]
+      forbidden_columns: [signed_url, stream_handle, token, provider_body, complete_private_path]
     DB-TAG-WORKBENCH-DRAFT:
       key: source_id, folder_id, snapshot_generation
       columns: [rule_profile, proposal_patch_json, explicit_edits_json, approval_state, updated_at]

@@ -2,6 +2,8 @@ package dev.properpcloud.desktop.data
 
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.LibraryFile
+import dev.properpcloud.core.model.LibraryFileKind
 import dev.properpcloud.metadata.tags.LocalFolderRootCapability
 import java.io.File
 import java.net.URI
@@ -25,6 +27,7 @@ class DesktopLocalFolderAudioSourceTest {
         File(root, "10-track.mp3").writeText("ten")
         File(root, "2-track.mp3").writeText("two")
         File(root, "notes.txt").writeText("not audio")
+        File(root, "mix.m3u8").writeText("#EXTM3U")
         val nested = File(album, "01-nested.flac").apply { writeText("nested") }
 
         val firstIdentity = DesktopLocalFilesystemIdentity.forSelectedRoot(root)
@@ -38,10 +41,11 @@ class DesktopLocalFolderAudioSourceTest {
         val source = DesktopLocalFolderAudioSource(capability, firstIdentity)
         val rootNodes = source.list(source.root.id)
 
-        assertEquals(listOf("Album", "2-track.mp3", "10-track.mp3"), rootNodes.map { it.name })
+        assertEquals(listOf("Album", "2-track.mp3", "10-track.mp3", "mix.m3u8", "notes.txt"), rootNodes.map { it.name })
         assertTrue(rootNodes.first() is AudioFolder)
-        assertTrue(rootNodes.drop(1).all { it is AudioTrack })
-        assertFalse(rootNodes.any { it.name == "notes.txt" })
+        assertEquals(2, rootNodes.filterIsInstance<AudioTrack>().size)
+        assertEquals(LibraryFileKind.PLAYLIST, rootNodes.filterIsInstance<LibraryFile>().single { it.name == "mix.m3u8" }.kind)
+        assertEquals(LibraryFileKind.GENERIC, rootNodes.filterIsInstance<LibraryFile>().single { it.name == "notes.txt" }.kind)
 
         val track = rootNodes.filterIsInstance<AudioTrack>().first()
         val stream = source.resolveStream(track.id)
@@ -56,7 +60,7 @@ class DesktopLocalFolderAudioSourceTest {
     }
 
     @Test
-    fun `browse rejects symlink escapes and unsupported files`() = runTest {
+    fun `browse rejects symlink escapes`() = runTest {
         val root = temporary.newFolder("symlink-library")
         val outside = temporary.newFolder("outside")
         File(root, "inside.mp3").writeText("inside")

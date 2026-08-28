@@ -17,6 +17,8 @@ import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.FolderQueueAssembler
 import dev.properpcloud.core.model.FolderQueueBuilder
+import dev.properpcloud.core.model.LibrarySearch
+import dev.properpcloud.core.model.LibrarySearchRequest
 import dev.properpcloud.core.model.MediaIdentity
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.NodeId
@@ -29,6 +31,7 @@ import dev.properpcloud.core.model.QueueRestoration
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.QueueReducer
 import dev.properpcloud.core.model.ResumePolicy
+import dev.properpcloud.core.model.SearchMatchType
 import dev.properpcloud.core.model.TagField
 import dev.properpcloud.core.model.TrackSortKey
 import dev.properpcloud.core.model.TrackSortPolicy
@@ -40,6 +43,7 @@ import dev.properpcloud.source.pcloud.PCloudDirectLoginRejectionReason
 import dev.properpcloud.source.pcloud.PCloudRevocationResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,6 +60,9 @@ class MainViewModel(
     val state: StateFlow<AppUiState> = _state.asStateFlow()
     private var folderJob: Job? = null
     private var queueJob: Job? = null
+    private var searchJob: Job? = null
+    private var queuePersistenceJob: Job? = null
+    private var queueMutationRevision: Long = 0
     private val checkpointPolicy = PlaybackCheckpointPolicy()
     private var checkpointCursor = PlaybackCheckpointCursor()
     private var lastPlaybackError: String? = null
@@ -67,6 +74,7 @@ class MainViewModel(
     private var metadataExportArtifact: MetadataExportArtifact? = null
 
     init {
+        val startupQueueMutationRevision = queueMutationRevision
         viewModelScope.launch {
             val settings = container.preferences.settings.first()
             val selected = if (settings.sourceKind == SourceKind.PCLOUD && container.sources.hasPCloudSession()) {
@@ -79,24 +87,70 @@ class MainViewModel(
                 sourceKind = selected,
                 clientId = settings.clientId,
                 sortKey = settings.sortKey,
+                search = _state.value.search.copy(matchTypes = settings.searchMatchTypes),
+                playbackHistoryEnabled = settings.playbackHistoryEnabled,
+                playbackHistoryRetention = settings.playbackHistoryRetention,
                 pCloudConnected = container.sources.hasPCloudSession(),
             )
             openRoot()
-            restoreQueue()
+            restoreQueue(startupQueueMutationRevision)
         }
         viewModelScope.launch {
             playbackConnection.state.collect { playback ->
-                val queue = synchronizeQueueSelection(_state.value.queue, playback.mediaId)
+                val previous = _state.value
+                if (previous.playback.mediaId != null && previous.playback.mediaId != playback.mediaId) {
+                    persistPlaybackProgress(previous.queue, previous.playback, force = true, scope = container.applicationScope)
+                }
+                val queue = synchronizeQueueSelection(previous.queue, playback.mediaId)
+                val queueChanged = queue != previous.queue
                 val newError = playback.error?.takeIf { it != lastPlaybackError }
                 lastPlaybackError = playback.error
-                _state.value = _state.value.copy(
+                if (queueChanged) queueMutationRevision += 1
+                _state.value = previous.copy(
                     playback = playback,
                     queue = queue,
-                    message = newError?.let { "Playback controller reported: $it" } ?: _state.value.message,
+                    message = newError?.let { "Playback controller reported: $it" } ?: previous.message,
                 )
+                if (queueChanged) container.preferences.saveQueue(queue)
                 checkpointProgress(queue, playback)
             }
         }
+    }
+
+    fun toggleLibrarySearch() {
+        val search = _state.value.search
+        if (search.expanded) {
+            searchJob?.cancel()
+            _state.value = _state.value.copy(
+                search = search.copy(expanded = false, query = "", results = emptyList(), searching = false),
+            )
+        } else {
+            _state.value = _state.value.copy(search = search.copy(expanded = true))
+        }
+    }
+
+    fun updateLibrarySearchQuery(query: String) {
+        _state.value = _state.value.copy(search = _state.value.search.copy(query = query))
+        scheduleLibrarySearch()
+    }
+
+    fun toggleSearchMatchType(type: SearchMatchType) {
+        val search = _state.value.search
+        val updated = if (type in search.matchTypes) search.matchTypes - type else search.matchTypes + type
+        _state.value = _state.value.copy(search = search.copy(matchTypes = updated))
+        viewModelScope.launch { container.preferences.updateSearchMatchTypes(updated) }
+        scheduleLibrarySearch()
+    }
+
+    fun setPlaybackHistoryEnabled(enabled: Boolean) {
+        _state.value = _state.value.copy(playbackHistoryEnabled = enabled)
+        viewModelScope.launch { container.preferences.updatePlaybackHistoryEnabled(enabled) }
+    }
+
+    fun setPlaybackHistoryRetention(retention: Int) {
+        val normalized = dev.properpcloud.core.model.PlaybackHistoryPolicy.normalizeRetention(retention)
+        _state.value = _state.value.copy(playbackHistoryRetention = normalized)
+        viewModelScope.launch { container.preferences.updatePlaybackHistoryRetention(normalized) }
     }
 
     private fun beginMetadataWorkspace(title: String, total: Int = 1) {
@@ -693,9 +747,8 @@ class MainViewModel(
     fun selectQueueItem(index: Int) {
         flushPlaybackProgress()
         val queue = QueueReducer.select(_state.value.queue, index)
-        _state.value = _state.value.copy(queue = queue)
+        commitQueue(queue)
         playbackConnection.select(index)
-        viewModelScope.launch { container.preferences.saveQueue(queue) }
     }
 
     fun removeQueueItem(index: Int) {
@@ -713,8 +766,8 @@ class MainViewModel(
         flushPlaybackProgress()
         val queue = PlaybackQueue(generation = _state.value.queue.generation + 1)
         playbackConnection.clearQueue()
-        _state.value = _state.value.copy(queue = queue, message = "Queue cleared")
-        viewModelScope.launch { container.preferences.saveQueue(queue) }
+        commitQueue(queue)
+        _state.value = _state.value.copy(message = "Queue cleared")
     }
 
     fun openContainingFolder(track: AudioTrack) {
@@ -864,8 +917,7 @@ class MainViewModel(
             flushPlaybackProgress()
             playbackConnection.clearQueue()
             val clearedQueue = PlaybackQueue(generation = _state.value.queue.generation + 1)
-            _state.value = _state.value.copy(queue = clearedQueue)
-            viewModelScope.launch { container.preferences.saveQueue(clearedQueue) }
+            commitQueue(clearedQueue)
         }
         val session = container.sources.disconnectPCloudLocally()
         _state.value = _state.value.copy(
@@ -944,6 +996,7 @@ class MainViewModel(
                     loading = false,
                     refreshing = false,
                 )
+                scheduleLibrarySearch()
             }.onFailure { error ->
                 if (error is CancellationException) return@onFailure
                 _state.value = _state.value.copy(
@@ -973,12 +1026,25 @@ class MainViewModel(
 
     private fun applyQueue(queue: PlaybackQueue, play: Boolean) {
         flushPlaybackProgress()
-        _state.value = _state.value.copy(queue = queue)
+        commitQueue(queue)
         playbackConnection.setQueue(queue, play)
-        viewModelScope.launch { container.preferences.saveQueue(queue) }
     }
 
-    private suspend fun restoreQueue() {
+    private fun commitQueue(queue: PlaybackQueue) {
+        queueMutationRevision += 1
+        _state.value = _state.value.copy(queue = queue)
+        persistQueue(queue)
+    }
+
+    private fun persistQueue(queue: PlaybackQueue) {
+        val previous = queuePersistenceJob
+        queuePersistenceJob = container.applicationScope.launch {
+            previous?.join()
+            container.preferences.saveQueue(queue)
+        }
+    }
+
+    private suspend fun restoreQueue(expectedMutationRevision: Long) {
         val stored = container.preferences.loadQueue()
         val restoredEntries = stored.entries.map { reference ->
             val source = container.sources.source(reference.sourceId)
@@ -993,6 +1059,9 @@ class MainViewModel(
         }
         val restoration = QueueRestoration.repair(restoredEntries, stored.currentIndex)
         val queue = restoration.queue
+        // Startup restoration must never overwrite a queue the user already mutated while
+        // storage/source resolution was in flight.
+        if (queueMutationRevision != expectedMutationRevision) return
         if (queue.entries.isEmpty()) {
             if (stored.entries.isNotEmpty()) {
                 container.preferences.saveQueue(queue)
@@ -1011,12 +1080,33 @@ class MainViewModel(
                 _state.value.message
             },
         )
-        playbackConnection.setQueue(queue, play = false)
-        queue.current?.track?.let { track ->
+        val startPositionMillis = queue.current?.track?.let { track ->
             container.preferences.loadProgress(track.sourceId, track.id)?.let { progress ->
-                val normalized = ResumePolicy().normalize(progress, System.currentTimeMillis())
-                playbackConnection.seekTo(normalized.positionMillis)
+                ResumePolicy().resumePositionMillis(
+                    progress,
+                    System.currentTimeMillis(),
+                    track.durationMillis ?: progress.durationMillis,
+                )
             }
+        } ?: 0
+        playbackConnection.setQueue(queue, play = false, startPositionMillis = startPositionMillis)
+    }
+
+    private fun scheduleLibrarySearch() {
+        searchJob?.cancel()
+        val snapshot = _state.value
+        val request = LibrarySearchRequest(snapshot.search.query, snapshot.search.matchTypes)
+        if (request.query.trim().length < LibrarySearch.MIN_QUERY_LENGTH) {
+            _state.value = snapshot.copy(search = snapshot.search.copy(results = emptyList(), searching = false))
+            return
+        }
+        _state.value = snapshot.copy(search = snapshot.search.copy(searching = true))
+        searchJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MILLIS)
+            val current = _state.value
+            if (current.search.query != request.query || current.search.matchTypes != request.matchTypes) return@launch
+            val results = LibrarySearch.matches(current.nodes, request)
+            _state.value = current.copy(search = current.search.copy(results = results, searching = false))
         }
     }
 
@@ -1067,6 +1157,7 @@ class MainViewModel(
         flushPlaybackProgress()
         folderJob?.cancel()
         queueJob?.cancel()
+        searchJob?.cancel()
         metadataJob?.cancel()
         pCloudLoginJob?.cancel()
         discardMetadataSources()
@@ -1084,6 +1175,7 @@ class MainViewModel(
 
     private companion object {
         const val MAX_METADATA_BATCH_ITEMS = 20
+        const val SEARCH_DEBOUNCE_MILLIS = 200L
     }
 }
 

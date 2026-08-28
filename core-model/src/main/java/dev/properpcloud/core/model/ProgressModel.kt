@@ -31,4 +31,24 @@ data class ResumePolicy(
         val rewind = if (interruption >= longInterruptionMillis) smartRewindLongMillis else smartRewindShortMillis
         return record.copy(positionMillis = (record.positionMillis - rewind).coerceAtLeast(0))
     }
+
+    /**
+     * Returns a safe startup position. Effectively completed items restart at zero and stale
+     * positions are clamped to the currently known duration before smart rewind is applied.
+     */
+    fun resumePositionMillis(
+        record: PlaybackProgress,
+        nowEpochMillis: Long,
+        knownDurationMillis: Long? = record.durationMillis,
+    ): Long {
+        val duration = knownDurationMillis?.takeIf { it > 0 } ?: record.durationMillis?.takeIf { it > 0 }
+        val clamped = if (duration == null) record.positionMillis else record.positionMillis.coerceAtMost(duration)
+        val effectivelyCompleted = record.completed ||
+            (duration != null && clamped.toDouble() / duration >= completionRatio)
+        if (effectivelyCompleted) return 0
+
+        val interruption = (nowEpochMillis - record.observedAtEpochMillis).coerceAtLeast(0)
+        val rewind = if (interruption >= longInterruptionMillis) smartRewindLongMillis else smartRewindShortMillis
+        return (clamped - rewind).coerceAtLeast(0)
+    }
 }

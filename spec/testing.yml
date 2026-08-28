@@ -119,6 +119,19 @@ testing:
         TEST-BROWSE-UNTRUSTED-NAMES:
           given: [control characters, bidi marks, very long names, path separators]
           expect: safe rendering and no local-path interpretation
+    filename_search:
+      level: domain_application_ui
+      cases:
+        TEST-SEARCH-THRESHOLD:
+          expect: [queries shorter than three characters show no result set, three characters search loaded nodes]
+        TEST-SEARCH-FILENAME-CASE:
+          expect: case-insensitive filename match with deterministic natural/stable-ID ordering
+        TEST-SEARCH-FILTERS:
+          expect: [dirs independent, files subsume audio and playlist, specialized file filters work when files is off, duplicate identities suppressed]
+        TEST-SEARCH-PREFERENCES:
+          expect: all match types default selected and later selections survive restart without persisting query text
+        TEST-SEARCH-UI:
+          expect: [search icon expands and collapses field, filter chips are accessible, loading and empty states are explicit]
     queue:
       level: domain_application
       cases:
@@ -153,6 +166,12 @@ testing:
         TEST-PLAY-LINK-EXPIRY:
           inject: 403 after initial prepare
           expect: bounded re-resolution and resume
+        TEST-PLAY-LOCAL-HTTP-RECOVERY:
+          fixture: loopback HTTP server plus fake AudioSource; no pCloud credential
+          inject: first stable-node resolution returns 403 capability and the next returns playable 200 capability
+          expect: [fresh resolve by stable identity, queue/current item unchanged, intended position preserved, playback bytes reachable, no URL in identity/persistence]
+        TEST-PLAY-EXPLICIT-RECOVERY:
+          expect: [explicit Play after eligible terminal HTTP/network error rebuilds URI-less item, permanent 422/decoder failure remains surfaced]
         TEST-SIGNED-LINK-RETRY-GATE:
           expect: [one immediate retry, no loop inside cooldown, later retry allowed]
         TEST-PLAY-RANGE:
@@ -168,11 +187,11 @@ testing:
     progress:
       cases:
         TEST-PROGRESS-CHECKPOINT:
-          expect: latest sample within configured loss window
+          expect: latest active sample persists on approximately 30-second elapsed or position checkpoint boundary
         TEST-PROGRESS-LIFECYCLE-FLUSH:
           expect: sub-threshold latest position persists on explicit lifecycle force
         TEST-PROGRESS-POLICY:
-          expect: [first sample saved, playing sub-threshold sample coalesced, pause forced, completion derived]
+          expect: [first sample saved, playing sub-threshold sample coalesced, pause transition saved once, repeated paused ticker coalesced, completion derived]
         TEST-PROGRESS-PROCESS-DEATH:
           kill_points: [playing, paused, seeking, transition]
           expect: policy-correct queue and position restore
@@ -185,6 +204,12 @@ testing:
           expect: fixed redacted actionable UI message
         TEST-QUEUE-RESTORE-REPAIR:
           expect: [unavailable entries omitted, selected surviving stable item preserved, deterministic nearest fallback, repaired queue persisted, user informed]
+        TEST-QUEUE-RESTORE-POSITION-ATOMIC:
+          expect: [saved progress normalized before player queue install, no transient zero-position checkpoint, restored player remains paused]
+        TEST-QUEUE-PLAYER-SELECTION-PERSIST:
+          expect: player-driven next/previous/current item changes update durable current_index by stable media identity
+        TEST-PLAYBACK-HISTORY:
+          expect: [disabled by default, enabled history upserts stable identity only, configured retention bounded, no signed URL field]
         TEST-MPV-IPC-CORRELATION:
           expect: [request ID echoed, unrelated events ignored, unmatched responses ignored, provider data absent from fixed failure]
         TEST-SECRET-SERVICE-BOUNDARY:
@@ -296,6 +321,9 @@ testing:
       cases:
         TEST-DB-MIGRATIONS:
           expect: every supported schema preserves user state
+        TEST-DB-HISTORY-ADDITIVE:
+          inject: open legacy SQLite containing settings, queue_entries, and progress but no history table
+          expect: [queue and progress unchanged, history schema added empty, later opt-in history write succeeds]
         TEST-DB-POWER-LOSS:
           inject: interruption between queue header and items
           expect: old or new complete generation, never mixed

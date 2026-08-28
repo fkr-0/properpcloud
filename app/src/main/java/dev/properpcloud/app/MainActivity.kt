@@ -73,6 +73,9 @@ class MainActivity : ComponentActivity() {
                     openFolder = viewModel::openFolder,
                     navigateBreadcrumb = viewModel::navigateBreadcrumb,
                     refresh = viewModel::refresh,
+                    toggleLibrarySearch = viewModel::toggleLibrarySearch,
+                    updateLibrarySearchQuery = viewModel::updateLibrarySearchQuery,
+                    toggleSearchMatchType = viewModel::toggleSearchMatchType,
                     setSort = viewModel::setSort,
                     playTrack = viewModel::playTrack,
                     enqueueTrack = viewModel::enqueueTrack,
@@ -115,6 +118,8 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     disconnectPCloud = viewModel::disconnectPCloud,
+                    setPlaybackHistoryEnabled = viewModel::setPlaybackHistoryEnabled,
+                    setPlaybackHistoryRetention = viewModel::setPlaybackHistoryRetention,
                     consumeMessage = viewModel::consumeMessage,
                     playPause = viewModel::playPause,
                     skipNext = viewModel::skipNext,

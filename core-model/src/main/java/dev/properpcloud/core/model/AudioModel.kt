@@ -9,6 +9,31 @@ value class SourceId(val value: String) {
     }
 }
 
+enum class LibraryFileKind {
+    GENERIC,
+    PLAYLIST,
+    ;
+
+    companion object {
+        private val playlistExtensions = setOf("m3u", "m3u8", "pls", "xspf")
+
+        fun fromFilename(name: String): LibraryFileKind =
+            if (name.substringAfterLast('.', "").lowercase() in playlistExtensions) PLAYLIST else GENERIC
+    }
+}
+
+/** A non-audio file that remains visible in the filesystem-first library model. */
+data class LibraryFile(
+    override val sourceId: SourceId,
+    override val id: NodeId,
+    override val parentId: NodeId,
+    override val name: String,
+    override val modifiedAtEpochMillis: Long? = null,
+    val contentType: String? = null,
+    val sizeBytes: Long? = null,
+    val kind: LibraryFileKind = LibraryFileKind.fromFilename(name),
+) : MediaNode
+
 @JvmInline
 value class NodeId(val value: String) {
     init {

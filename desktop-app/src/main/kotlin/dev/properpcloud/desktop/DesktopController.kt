@@ -8,6 +8,9 @@ import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.FileApplyResult
 import dev.properpcloud.core.model.FolderQueueAssembler
 import dev.properpcloud.core.model.FolderQueueBuilder
+import dev.properpcloud.core.model.LibraryFile
+import dev.properpcloud.core.model.LibrarySearch
+import dev.properpcloud.core.model.LibrarySearchRequest
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.MediaIdentity
 import dev.properpcloud.core.model.NodeId
@@ -20,6 +23,7 @@ import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.QueueReducer
 import dev.properpcloud.core.model.QueueRestoration
 import dev.properpcloud.core.model.ResumePolicy
+import dev.properpcloud.core.model.SearchMatchType
 import dev.properpcloud.core.model.SignedLinkRetryGate
 import dev.properpcloud.core.model.TagField
 import dev.properpcloud.desktop.data.DesktopDemoAudioSource
@@ -121,6 +125,13 @@ data class DesktopUiState(
     val currentFolder: AudioFolder? = null,
     val breadcrumbs: List<AudioFolder> = emptyList(),
     val nodes: List<MediaNode> = emptyList(),
+    val searchExpanded: Boolean = false,
+    val searchQuery: String = "",
+    val searchMatchTypes: Set<SearchMatchType> = SearchMatchType.entries.toSet(),
+    val searchResults: List<MediaNode> = emptyList(),
+    val searchBusy: Boolean = false,
+    val playbackHistoryEnabled: Boolean = false,
+    val playbackHistoryRetention: Int = dev.properpcloud.core.model.PlaybackHistoryPolicy.DEFAULT_RETENTION,
     val queue: PlaybackQueue = PlaybackQueue(),
     val playback: MpvState = MpvState(),
     val status: String = "Starting…",
@@ -146,16 +157,26 @@ class DesktopController(
     private val demoSource = DesktopDemoAudioSource(paths.cache.resolve("demo-media"))
     private val sources = linkedMapOf<dev.properpcloud.core.model.SourceId, AudioSource>(demoSource.id to demoSource)
     private var source: AudioSource = demoSource
-    private val mutableState = MutableStateFlow(DesktopUiState())
+    private val mutableState = MutableStateFlow(
+        DesktopUiState(
+            searchMatchTypes = decodeDesktopSearchTypes(repository.setting(SqliteStateRepository.SEARCH_MATCH_TYPES_KEY)),
+            playbackHistoryEnabled = repository.setting(SqliteStateRepository.HISTORY_ENABLED_KEY)?.toBooleanStrictOrNull() ?: false,
+            playbackHistoryRetention = dev.properpcloud.core.model.PlaybackHistoryPolicy.normalizeRetention(
+                repository.setting(SqliteStateRepository.HISTORY_RETENTION_KEY)?.toIntOrNull()
+                    ?: dev.properpcloud.core.model.PlaybackHistoryPolicy.DEFAULT_RETENTION,
+            ),
+        ),
+    )
     val state: StateFlow<DesktopUiState> = mutableState.asStateFlow()
     private val closing = AtomicBoolean(false)
     private var mpris: MprisService? = null
     private var sleepMonitor: LogindSleepMonitor? = null
     private val sleepTransitionPolicy = SleepTransitionPolicy()
-    private val checkpointPolicy = PlaybackCheckpointPolicy(minimumPositionDeltaMillis = 5_000)
+    private val checkpointPolicy = PlaybackCheckpointPolicy()
     private val streamRetryGate = SignedLinkRetryGate()
     private var checkpointCursor = PlaybackCheckpointCursor()
     private var streamRefreshJob: Job? = null
+    private var searchJob: Job? = null
     private var streamRefreshGeneration = 0L
     private var pCloudConnectJob: Job? = null
     private var pCloudConnectGeneration = 0L
@@ -184,6 +205,26 @@ class DesktopController(
             }
         }
         scope.launch { loadFolder(source.root.id, resetBreadcrumbs = true); restoreQueue() }
+    }
+
+    private fun scheduleSearch() {
+        searchJob?.cancel()
+        val snapshot = mutableState.value
+        val request = LibrarySearchRequest(snapshot.searchQuery, snapshot.searchMatchTypes)
+        if (request.query.trim().length < LibrarySearch.MIN_QUERY_LENGTH) {
+            mutableState.value = snapshot.copy(searchResults = emptyList(), searchBusy = false)
+            return
+        }
+        mutableState.value = snapshot.copy(searchBusy = true)
+        searchJob = scope.launch {
+            delay(SEARCH_DEBOUNCE_MILLIS)
+            val current = mutableState.value
+            if (current.searchQuery != request.query || current.searchMatchTypes != request.matchTypes) return@launch
+            mutableState.value = current.copy(
+                searchResults = LibrarySearch.matches(current.nodes, request),
+                searchBusy = false,
+            )
+        }
     }
 
     fun useDemo() {
@@ -631,6 +672,49 @@ class DesktopController(
     fun open(node: MediaNode) = when (node) {
         is AudioFolder -> scope.launch { loadFolder(node.id) }
         is AudioTrack -> play(node)
+        is LibraryFile -> inspect(node)
+    }
+
+    fun toggleSearch() {
+        val current = mutableState.value
+        if (current.searchExpanded) {
+            searchJob?.cancel()
+            mutableState.value = current.copy(
+                searchExpanded = false,
+                searchQuery = "",
+                searchResults = emptyList(),
+                searchBusy = false,
+            )
+        } else {
+            mutableState.value = current.copy(searchExpanded = true)
+        }
+    }
+
+    fun updateSearchQuery(query: String) {
+        mutableState.value = mutableState.value.copy(searchQuery = query)
+        scheduleSearch()
+    }
+
+    fun toggleSearchMatchType(type: SearchMatchType) {
+        val current = mutableState.value
+        val types = if (type in current.searchMatchTypes) current.searchMatchTypes - type else current.searchMatchTypes + type
+        mutableState.value = current.copy(searchMatchTypes = types)
+        repository.setSetting(
+            SqliteStateRepository.SEARCH_MATCH_TYPES_KEY,
+            types.sortedBy { it.ordinal }.joinToString(",") { it.name },
+        )
+        scheduleSearch()
+    }
+
+    fun setPlaybackHistoryEnabled(enabled: Boolean) {
+        repository.setSetting(SqliteStateRepository.HISTORY_ENABLED_KEY, enabled.toString())
+        mutableState.value = mutableState.value.copy(playbackHistoryEnabled = enabled)
+    }
+
+    fun setPlaybackHistoryRetention(retention: Int) {
+        val normalized = dev.properpcloud.core.model.PlaybackHistoryPolicy.normalizeRetention(retention)
+        repository.setSetting(SqliteStateRepository.HISTORY_RETENTION_KEY, normalized.toString())
+        mutableState.value = mutableState.value.copy(playbackHistoryRetention = normalized)
     }
 
     fun navigateTo(folder: AudioFolder) = scope.launch { loadFolder(folder.id, truncateTo = folder.id) }
@@ -673,7 +757,16 @@ class DesktopController(
 
     fun removeQueue(index: Int) = scope.launch { updateQueue(QueueReducer.remove(mutableState.value.queue, index)) }
     fun moveQueue(index: Int, delta: Int) = scope.launch { updateQueue(QueueReducer.move(mutableState.value.queue, index, index + delta)) }
-    fun playPause() = scope.launch { runCatching { mpv.togglePause() }.onFailure(::playbackFailure) }
+    fun playPause() = scope.launch {
+        val playback = mutableState.value.playback
+        if (playback.streamFailure) {
+            val track = mutableState.value.queue.current?.track
+            if (track != null) streamRetryGate.reset(MediaIdentity.encode(track.sourceId, track.id))
+            refreshStreamAfterFailure(playback)
+        } else {
+            runCatching { mpv.togglePause() }.onFailure(::playbackFailure)
+        }
+    }
     fun pause() = scope.launch { runCatching { mpv.pause(true) }.onFailure(::playbackFailure) }
     fun resume() = scope.launch { runCatching { mpv.pause(false) }.onFailure(::playbackFailure) }
     fun stop() = scope.launch { runCatching { mpv.stop() }.onFailure(::playbackFailure) }
@@ -729,6 +822,7 @@ class DesktopController(
                 busy = false,
                 status = "${nodes.size} items in ${folder.name}",
             )
+            scheduleSearch()
         }.onFailure {
             mutableState.value = mutableState.value.copy(
                 busy = false,
@@ -746,9 +840,11 @@ class DesktopController(
             streamRefreshJob?.cancel()
             streamRetryGate.reset(mediaId)
         }
-        val progress = repository.loadProgress(track.sourceId, track.id)?.let { ResumePolicy().normalize(it, System.currentTimeMillis()) }
+        val progress = repository.loadProgress(track.sourceId, track.id)?.let {
+            ResumePolicy().resumePositionMillis(it, System.currentTimeMillis(), track.durationMillis ?: it.durationMillis)
+        }
         mutableState.value = mutableState.value.copy(status = "Resolving ${track.name}…")
-        runCatching { mpv.load(sourceForTrack.resolveStream(track.id), progress?.positionMillis ?: 0) }
+        runCatching { mpv.load(sourceForTrack.resolveStream(track.id), progress ?: 0) }
             .onSuccess { mutableState.value = mutableState.value.copy(status = "Playing ${track.name}") }
             .onFailure(::playbackFailure)
         updateMpris()
@@ -1202,10 +1298,19 @@ class DesktopController(
         runCatching { repository.close() }
         streamRefreshGeneration += 1
         streamRefreshJob?.cancel()
+        searchJob?.cancel()
         scope.cancel()
     }
 
     private companion object {
         const val PCLOUD_SESSION_KEY = "pcloud-session"
+        const val SEARCH_DEBOUNCE_MILLIS = 200L
     }
 }
+
+private fun decodeDesktopSearchTypes(encoded: String?): Set<SearchMatchType> =
+    encoded?.split(',')
+        ?.filter(String::isNotBlank)
+        ?.mapNotNull { name -> SearchMatchType.entries.firstOrNull { it.name == name } }
+        ?.toSet()
+        ?: SearchMatchType.entries.toSet()

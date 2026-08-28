@@ -7,7 +7,9 @@ import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.PlaybackProgress
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueEntry
+import dev.properpcloud.core.model.SearchMatchType
 import dev.properpcloud.core.model.SourceId
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -25,6 +27,36 @@ class AppPreferencesRepositoryTest {
     @After
     fun cleanUp() {
         context.filesDir.resolve("datastore/properpcloud.preferences_pb").delete()
+    }
+
+    @Test
+    fun searchFiltersAndBoundedHistoryPersistWithoutEphemeralLocations() = runTest {
+        repository.updateSearchMatchTypes(setOf(SearchMatchType.DIRECTORIES, SearchMatchType.PLAYLIST_FILES))
+        repository.updatePlaybackHistoryEnabled(true)
+        repository.updatePlaybackHistoryRetention(2)
+        val source = SourceId("pcloud")
+        listOf(
+            PlaybackProgress(source, NodeId("file:1"), 10_000, 100_000, observedAtEpochMillis = 1),
+            PlaybackProgress(source, NodeId("file:2"), 20_000, 100_000, observedAtEpochMillis = 2),
+            PlaybackProgress(source, NodeId("file:3"), 30_000, 100_000, observedAtEpochMillis = 3),
+        ).forEach { repository.saveProgress(it) }
+
+        val settings = repository.settings.first()
+        assertEquals(setOf(SearchMatchType.DIRECTORIES, SearchMatchType.PLAYLIST_FILES), settings.searchMatchTypes)
+        assertEquals(true, settings.playbackHistoryEnabled)
+        assertEquals(2, settings.playbackHistoryRetention)
+        assertEquals(listOf("file:3", "file:2"), repository.loadPlaybackHistory().map { it.nodeId.value })
+        repository.updatePlaybackHistoryEnabled(false)
+    }
+
+    @Test
+    fun historyDisabledByDefaultAndMalformedLegacyPayloadsFailClosed() = runTest {
+        repository.updatePlaybackHistoryEnabled(false)
+        val progress = PlaybackProgress(SourceId("demo"), NodeId("demo:track:history-off"), 1_000, 10_000, observedAtEpochMillis = 5)
+        repository.saveProgress(progress)
+        assertEquals(emptyList<Any>(), repository.loadPlaybackHistory())
+        assertEquals(emptyList<Any>(), AppPersistenceCodec.decodeQueue("not-json", 4).entries)
+        assertEquals(null, AppPersistenceCodec.decodeProgress("not-json", progress.sourceId, progress.nodeId))
     }
 
     @Test

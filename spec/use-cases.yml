@@ -208,6 +208,21 @@ use_cases:
         no_cache: Show full error with retry and account diagnostics.
         permission_denied: Preserve breadcrumb context and explain access loss.
       tests: [TEST-BROWSE-FRESH, TEST-BROWSE-STALE, TEST-BROWSE-LARGE]
+    UC-SEARCH-FILENAMES:
+      traces: [REQ-BROWSE, REQ-FILENAME-SEARCH]
+      title: Filter the loaded filesystem view by filename
+      trigger: User expands the magnifying-glass search control.
+      flow:
+        - user: Enter at least three filename characters and optionally toggle dirs, files, audio-files, or playlist-files filters.
+        - app: Debounce briefly and search only already-loaded MediaNode rows for the current folder scope.
+        - app: Match filenames case-insensitively, suppress duplicate stable identities, and apply deterministic natural/stable ordering.
+        - app: Treat generic files as a superset of audio/playlist file categories while selected.
+        - app: Persist match-type preferences, not query text or stream locations.
+        - user: Activate a folder/audio result through existing navigation/play behavior or inspect a generic/playlist file.
+      below_threshold: Preserve the normal library view and show no search result set.
+      empty: Show an explicit no-matching-filenames state.
+      deferred: Embedded artist/title/year matching is not part of this tranche.
+      tests: [TEST-SEARCH-THRESHOLD, TEST-SEARCH-FILENAME-CASE, TEST-SEARCH-FILTERS, TEST-SEARCH-PREFERENCES, TEST-SEARCH-UI]
     UC-QUEUE-FOLDER:
       traces: [REQ-QUEUE, REQ-SORTING]
       title: Build queue from direct folder children
@@ -286,11 +301,17 @@ use_cases:
             - resolve new capability
             - resume from last confirmed position
             - allow a later retry after cooldown
+        terminal_retriable_http_or_network:
+          explicit_play:
+            - preserve stable queue identity, current index, and intended position
+            - rebuild the platform item without the failed direct URI
+            - resolve a fresh capability through AudioSource and prepare again
+          permanent_failures: HTTP client/media failures outside the retriable policy remain visible and are not refreshed in a loop
         transient_network:
           result: Bounded backoff with visible retry and cancel.
         unsupported_decoder:
           result: Fail item, preserve queue, offer inspect, download, external-open, or skip.
-      tests: [TEST-PLAY-REMOTE, TEST-PLAY-LINK-EXPIRY, TEST-SIGNED-LINK-RETRY-GATE, TEST-PLAY-RANGE]
+      tests: [TEST-PLAY-REMOTE, TEST-PLAY-LINK-EXPIRY, TEST-PLAY-LOCAL-HTTP-RECOVERY, TEST-PLAY-EXPLICIT-RECOVERY, TEST-SIGNED-LINK-RETRY-GATE, TEST-PLAY-RANGE]
     UC-SAVE-PROGRESS:
       traces: [REQ-PROGRESS]
       title: Persist and restore long-form position
@@ -303,15 +324,19 @@ use_cases:
         - service_teardown
       save_flow:
         - app: Read stable media ID, current position, duration, speed, and content revision.
-        - app: Coalesce writes while preserving latest observation.
+        - app: Coalesce active writes to approximately 30 seconds while preserving latest observation and force important pause/transition/lifecycle boundaries.
         - app: Apply completion policy.
         - app: Commit progress transactionally.
         - app: Return an observable persistence job for forced lifecycle checkpoints.
       restore_flow:
         - app: Compare stored and current content revision.
-        - app: Seek to stored position minus smart rewind when compatible.
+        - app: Clamp against known duration, restart effectively completed items at zero, otherwise seek to stored position minus smart rewind when compatible.
+        - app: Install restored queue/current item and normalized position together in a paused/no-autoplay state so a transient zero sample cannot overwrite durable progress.
         - app: Ask restart, retain, or discard when content materially changed.
-      tests: [TEST-PROGRESS-CHECKPOINT, TEST-PROGRESS-LIFECYCLE-FLUSH, TEST-PROGRESS-POLICY, TEST-PROGRESS-PROCESS-DEATH, TEST-PROGRESS-REVISION]
+      history:
+        - Disabled by default and separate from crash/session restoration.
+        - When enabled, upsert stable media identity plus position/duration/timestamp/completion and trim to configured bounded retention.
+      tests: [TEST-PROGRESS-CHECKPOINT, TEST-PROGRESS-LIFECYCLE-FLUSH, TEST-PROGRESS-POLICY, TEST-PROGRESS-PROCESS-DEATH, TEST-PROGRESS-REVISION, TEST-QUEUE-RESTORE-POSITION-ATOMIC, TEST-PLAYBACK-HISTORY]
     UC-CREATE-SAVED-ROOT:
       traces: [REQ-SAVED-ROOTS]
       title: Create a custom tab from folder

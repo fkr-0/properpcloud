@@ -57,14 +57,14 @@ linux_client:
       - metadata-online
     UI: Compose Desktop three-pane browser, inspector, queue, bottom player, and explicit local-folder metadata workbench surface
     playback: mpv child process with private Unix JSON IPC and no-config
-    persistence: SQLite JDBC with WAL settings, queue, and progress tables
+    persistence: SQLite JDBC with WAL settings, queue/progress tables, persisted search preferences, and optional bounded playback history
     secrets: bounded asynchronous freedesktop Secret Service lookup through secret-tool with no plaintext fallback
     media_integration: MPRIS root/player interfaces over session D-Bus plus logind PrepareForSleep over the system bus
     paths: XDG config, data, cache, and runtime roots
     local_source:
       selection: explicit native directory picker before LocalFolderRootCapability construction
       identity: opaque selected-root SourceId plus root-relative opaque node IDs; tags and provider values are not identity inputs
-      browse_and_stream: non-symlink supported audio enumeration with deterministic folder/track ordering and verified file URI playback handles
+      browse_and_stream: non-symlink readable directory/file enumeration with deterministic ordering, audio classification for queues, generic/playlist file classification for filename search, and verified audio file URI playback handles
       metadata_host: LocalFolderWorkbenchHost state and revision are projected into Compose; watcher changes revoke held tag/playlist reviews
       progress: tag dry-run/apply and recursive playlist writes project completed/total counts without private path disclosure
       mutation: field review then dry-run then explicit tag replacement confirmation; playlist review and write confirmation remain separate and recursive playlist/tag consent are independent
@@ -201,7 +201,7 @@ linux_client:
         - folder tree
       center_pane:
         - current folder
-        - search results
+        - debounced current-scope filename search results with persisted dirs/files/audio/playlist match filters
         - metadata inspector
       right_pane:
         - queue
@@ -268,6 +268,7 @@ linux_client:
         - Never place URL in persistent playlist files.
         - Redact process diagnostics and support bundles.
         - Refresh by loading a new capability at last confirmed position.
+        - Explicit retry after stream failure resets only the bounded per-identity retry state and never changes stable media identity.
       process_failure:
         - Detect process exit and preserve shared queue.
         - Offer restart player and resume.
@@ -276,7 +277,7 @@ linux_client:
         - Re-resolve one fresh capability per stable media identity and cooldown window, resuming from durable progress.
         - Expose only fixed diagnostics; URLs and provider response data never enter UI state or evidence.
       checkpoint_boundaries:
-        - periodic writes are coalesced during playback
+        - periodic writes are coalesced to approximately 30 seconds during playback
         - queue mutation, disconnect, playback failure, and orderly shutdown force the latest sample
     codec_strategy:
       reason_for_mpv: Mature codec and streaming support with minimal JNI complexity.
@@ -287,6 +288,8 @@ linux_client:
     local_schema:
       goal: Logical compatibility with Android persistence records.
       implementation_note: Do not force Room-specific physical schema onto desktop; share migration model and serialized policy formats.
+      history: additive playback_history table keyed by stable source/node identity; disabled by default; default retention 100 and hard maximum 500
+      search_preferences: persisted match-type set; query text is session UI state rather than durable library identity
     cross_device_progress:
       initial: no automatic synchronization
       optional_paths:

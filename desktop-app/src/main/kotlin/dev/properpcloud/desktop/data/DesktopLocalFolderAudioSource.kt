@@ -5,6 +5,8 @@ import dev.properpcloud.core.model.AudioSource
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.FolderQueueBuilder
 import dev.properpcloud.core.model.MediaNode
+import dev.properpcloud.core.model.LibraryFile
+import dev.properpcloud.core.model.LibraryFileKind
 import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.NodeInspection
 import dev.properpcloud.core.model.SourceId
@@ -53,7 +55,8 @@ class DesktopLocalFilesystemIdentity private constructor(
  * Filesystem-first AudioSource for one explicitly selected local root.
  *
  * It never reads tag values to mint source/node identity and never treats symlinks as library
- * nodes. Absolute paths stay inside this adapter and are not exposed by inspection state.
+ * nodes. Audio, playlist, and generic regular files share the same stable root-relative identity;
+ * absolute paths stay inside this adapter and are not exposed by inspection state.
  */
 class DesktopLocalFolderAudioSource(
     val capability: LocalFolderRootCapability,
@@ -110,7 +113,11 @@ class DesktopLocalFolderAudioSource(
                 "nodeId" to node.id.value,
                 "parentId" to node.parentId?.value.orEmpty(),
                 "name" to node.name,
-                "kind" to if (node is AudioFolder) "folder" else "audio",
+                "kind" to when (node) {
+                    is AudioFolder -> "folder"
+                    is AudioTrack -> "audio"
+                    is LibraryFile -> if (node.kind == LibraryFileKind.PLAYLIST) "playlist" else "file"
+                },
                 "filesystemIdentity" to "root-relative opaque path identity",
             ),
         )
@@ -143,6 +150,17 @@ class DesktopLocalFolderAudioSource(
                 sizeBytes = canonical.length(),
             ).also { pathsById[it.id] = canonical }
 
+            safeRegularFile(canonical) -> LibraryFile(
+                sourceId = id,
+                id = identity.nodeId(canonical, directory = false),
+                parentId = requireNotNull(parentId) { "local file parent is outside the selected root" },
+                name = canonical.name,
+                modifiedAtEpochMillis = canonical.lastModified().takeIf { it > 0 },
+                contentType = runCatching { Files.probeContentType(canonical.toPath()) }.getOrNull(),
+                sizeBytes = canonical.length(),
+                kind = LibraryFileKind.fromFilename(canonical.name),
+            ).also { pathsById[it.id] = canonical }
+
             else -> null
         }
     }
@@ -154,6 +172,12 @@ class DesktopLocalFolderAudioSource(
         identity.isInsideRoot(file) &&
             !file.isSymbolicLink() &&
             Files.isDirectory(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
+            Files.isReadable(file.toPath())
+
+    private fun safeRegularFile(file: File): Boolean =
+        identity.isInsideRoot(file) &&
+            !file.isSymbolicLink() &&
+            Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
             Files.isReadable(file.toPath())
 
     private fun safeAudioFile(file: File): Boolean =

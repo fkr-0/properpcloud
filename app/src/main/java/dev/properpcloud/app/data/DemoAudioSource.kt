@@ -6,6 +6,7 @@ import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioSource
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.MediaNode
+import dev.properpcloud.core.model.LibraryFile
 import dev.properpcloud.core.model.MetadataContentSource
 import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.NodeInspection
@@ -28,6 +29,22 @@ class DemoAudioSource(context: Context) : AudioSource, MetadataContentSource {
     private val cityBook = AudioFolder(id, NodeId("demo:folder:city-book"), audiobooks.id, "The Badger and the City")
     private val fieldNotes = AudioFolder(id, NodeId("demo:folder:field-notes"), root.id, "Field recordings")
     private val music = AudioFolder(id, NodeId("demo:folder:music"), root.id, "Numbered tracks")
+    private val playlist = LibraryFile(
+        id,
+        NodeId("demo:file:summer-playlist"),
+        music.id,
+        "Summer demo set.m3u8",
+        contentType = "audio/x-mpegurl",
+        sizeBytes = 96,
+    )
+    private val notes = LibraryFile(
+        id,
+        NodeId("demo:file:notes"),
+        music.id,
+        "Summer demo notes.txt",
+        contentType = "text/plain",
+        sizeBytes = 64,
+    )
 
     private val nodes: Map<NodeId, MediaNode>
     private val children: Map<NodeId, List<MediaNode>>
@@ -52,7 +69,7 @@ class DemoAudioSource(context: Context) : AudioSource, MetadataContentSource {
             audiobooks.id to listOf(cityBook),
             cityBook.id to bookTracks,
             fieldNotes.id to recordings,
-            music.id to numbered,
+            music.id to numbered + listOf(playlist, notes),
         )
         nodes = buildMap {
             put(root.id, root)
@@ -101,7 +118,11 @@ class DemoAudioSource(context: Context) : AudioSource, MetadataContentSource {
                 "nodeId" to node.id.value,
                 "parentId" to node.parentId?.value.orEmpty(),
                 "name" to node.name,
-                "kind" to if (node is AudioFolder) "folder" else "audio",
+                "kind" to when (node) {
+                    is AudioFolder -> "folder"
+                    is AudioTrack -> "audio"
+                    is LibraryFile -> if (node.kind == dev.properpcloud.core.model.LibraryFileKind.PLAYLIST) "playlist" else "file"
+                },
                 "generatedLocally" to "true",
             ),
         )

@@ -33,6 +33,7 @@ architecture:
         media:
           - AudioFolder
           - AudioTrack
+          - generic and playlist LibraryFile nodes
           - raw and normalized metadata values
           - provenance and confidence
         policies:
@@ -41,6 +42,8 @@ architecture:
           - progress and completion
           - saved-root matching
           - cache retention
+          - filename search matching and match-type algebra
+          - playback HTTP recovery classification and bounded history retention
         snapshots:
           - queue snapshot
           - folder snapshot description
@@ -82,6 +85,7 @@ architecture:
         persistence:
           - QueueRepository
           - ProgressRepository
+          - PlaybackHistoryRepository
           - FolderSnapshotRepository
           - SavedRootRepository
           - BookmarkRepository
@@ -97,8 +101,10 @@ architecture:
           - DiagnosticSink
       transactions:
         - Queue replacement is atomic.
+        - Every successful queue mutation/current selection commits durable stable identity before it is considered restored state.
         - Folder refresh applies one consistent generation.
         - Progress and completion update together.
+        - Optional playback history is updated transactionally with a progress checkpoint and remains retention-bounded.
         - Pin intent and cache accounting remain consistent after process death.
         - Mutation audit ends as verified, failed, conflicted, or indeterminate; never silently incomplete.
       concurrency:
@@ -244,6 +250,9 @@ architecture:
           - Long-lived player belongs to service, not Activity or composable.
           - Media ID contains stable source and node identity.
           - Ephemeral URI is resolved before prepare and replaced on eligible expiry.
+          - Eligible terminal HTTP/network recovery rebuilds URI-less MediaItems from stable identity before prepare; explicit Play never retries a stale capability in place.
+          - Permanent HTTP/media failures remain terminal and visible.
+          - Startup resolves saved progress before installing the restored queue, preventing a transient zero-position checkpoint and preserving paused/no-autoplay restoration.
           - UI process can reconnect after recreation without rebuilding authoritative queue.
       linux:
         primary: mpv JSON IPC adapter
@@ -253,6 +262,9 @@ architecture:
           - media keys
           - desktop notifications
           - optional sleep inhibition
+        invariants:
+          - Provider stream refresh re-resolves by stable source/node identity and resumes from the intended position under a bounded per-item retry gate.
+          - Queue/current selection, progress, search filters, and optional bounded history use SQLite user state; provider capability URLs remain process memory only.
     presentation:
       purpose: Accessible interaction and explicit rendering of application state.
       android:
@@ -391,16 +403,24 @@ architecture:
       - QueueRepository atomically commits snapshot
       - Playback observes committed queue and resolves first item
       - UI observes queue and session projections
+    filename_search:
+      - UI expands the filename-search affordance and updates a debounced query.
+      - Application searches only the already-loaded MediaNode projection for the current scope.
+      - Domain applies the three-character threshold, case-insensitive filename predicate, match-type algebra, stable-ID duplicate suppression, and deterministic natural ordering.
+      - Match-type preferences persist independently from query text; embedded-tag matchers remain deferred.
     stream_refresh:
-      - Player reports eligible HTTP failure with stable media ID
+      - Player reports eligible HTTP or network failure with stable media ID
       - Application invalidates only ephemeral StreamHandle
       - Source resolves new handle
       - Playback resumes from last confirmed position
       - Retry budget is decremented and surfaced in diagnostics
+      - Explicit Play after an eligible terminal failure reconstructs the player item from stable identity; permanent failures remain surfaced without refresh
     progress_checkpoint:
       - Playback emits stable media ID and position sample
+      - Application coalesces active samples to approximately 30-second checkpoints and forces writes on pause, item/queue transitions, failure, background/task removal, and shutdown boundaries
       - Application applies completion and smart-rewind policies
       - ProgressRepository upserts in one transaction
+      - Enabled playback history upserts the same stable identity then trims to configured bounded retention
       - Browser and player projections update
     metadata_write:
       - UI submits approved RepairPlan ID

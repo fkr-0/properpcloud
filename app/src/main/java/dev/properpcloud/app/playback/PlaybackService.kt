@@ -11,6 +11,8 @@ import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.ListenableFuture
 import dev.properpcloud.app.ProperpcloudApplication
 import dev.properpcloud.core.model.MediaIdentity
+import dev.properpcloud.core.model.PlaybackFailureRecovery
+import dev.properpcloud.core.model.PlaybackRecoveryPolicy
 import dev.properpcloud.core.model.PlaybackProgress
 import dev.properpcloud.core.model.SignedLinkRetryGate
 import kotlinx.coroutines.CoroutineScope
@@ -36,8 +38,13 @@ class PlaybackService : MediaSessionService() {
             object : Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {
                     checkpointCurrentProgressAsync()
-                    val responseCode = (error.cause as? HttpDataSource.InvalidResponseCodeException)?.responseCode
-                    if (responseCode == 401 || responseCode == 403) refreshCurrentLinkWhenAllowed()
+                    val responseCode = error.findHttpResponseCode()
+                    if (
+                        responseCode != null &&
+                        PlaybackRecoveryPolicy.forHttpStatus(responseCode) == PlaybackFailureRecovery.REFRESH_STREAM_LOCATION
+                    ) {
+                        refreshCurrentLinkWhenAllowed()
+                    }
                 }
             },
         )
@@ -152,4 +159,15 @@ class PlaybackService : MediaSessionService() {
     private companion object {
         const val PROGRESS_FLUSH_TIMEOUT_MILLIS = 1_500L
     }
+}
+
+@UnstableApi
+internal fun Throwable.findHttpResponseCode(): Int? {
+    var current: Throwable? = this
+    val visited = mutableSetOf<Throwable>()
+    while (current != null && visited.add(current)) {
+        if (current is HttpDataSource.InvalidResponseCodeException) return current.responseCode
+        current = current.cause
+    }
+    return null
 }

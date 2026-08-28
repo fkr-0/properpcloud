@@ -1,6 +1,8 @@
 package dev.properpcloud.desktop.data
 
 import dev.properpcloud.core.model.NodeId
+import dev.properpcloud.core.model.PlaybackHistoryEntry
+import dev.properpcloud.core.model.PlaybackHistoryPolicy
 import dev.properpcloud.core.model.PlaybackProgress
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.SourceId
@@ -24,6 +26,7 @@ class SqliteStateRepository(database: Path) : AutoCloseable {
             statement.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             statement.execute("CREATE TABLE IF NOT EXISTS queue_entries (position INTEGER PRIMARY KEY, source_id TEXT NOT NULL, node_id TEXT NOT NULL, origin_id TEXT NOT NULL)")
             statement.execute("CREATE TABLE IF NOT EXISTS progress (source_id TEXT NOT NULL, node_id TEXT NOT NULL, position_ms INTEGER NOT NULL, duration_ms INTEGER, speed REAL NOT NULL, observed_ms INTEGER NOT NULL, completed INTEGER NOT NULL, PRIMARY KEY(source_id,node_id))")
+            statement.execute("CREATE TABLE IF NOT EXISTS playback_history (source_id TEXT NOT NULL, node_id TEXT NOT NULL, position_ms INTEGER NOT NULL, duration_ms INTEGER, observed_ms INTEGER NOT NULL, completed INTEGER NOT NULL, PRIMARY KEY(source_id,node_id))")
         }
     }
 
@@ -69,7 +72,30 @@ class SqliteStateRepository(database: Path) : AutoCloseable {
     }
 
     @Synchronized
-    fun saveProgress(progress: PlaybackProgress) {
+    fun loadPlaybackHistory(): List<PlaybackHistoryEntry> =
+        connection.prepareStatement(
+            "SELECT source_id,node_id,position_ms,duration_ms,observed_ms,completed FROM playback_history ORDER BY observed_ms DESC,source_id,node_id",
+        ).use { query ->
+            query.executeQuery().use { rows ->
+                buildList {
+                    while (rows.next()) {
+                        runCatching {
+                            PlaybackHistoryEntry(
+                                sourceId = SourceId(rows.getString(1)),
+                                nodeId = NodeId(rows.getString(2)),
+                                positionMillis = rows.getLong(3),
+                                durationMillis = rows.getLong(4).takeUnless { rows.wasNull() },
+                                observedAtEpochMillis = rows.getLong(5),
+                                completed = rows.getBoolean(6),
+                            )
+                        }.getOrNull()?.let(::add)
+                    }
+                }
+            }
+        }
+
+    @Synchronized
+    fun saveProgress(progress: PlaybackProgress) = transaction {
         connection.prepareStatement("""
             INSERT INTO progress(source_id,node_id,position_ms,duration_ms,speed,observed_ms,completed)
             VALUES(?,?,?,?,?,?,?) ON CONFLICT(source_id,node_id) DO UPDATE SET
@@ -82,6 +108,30 @@ class SqliteStateRepository(database: Path) : AutoCloseable {
             if (durationMillis == null) it.setNull(4, java.sql.Types.BIGINT) else it.setLong(4, durationMillis)
             it.setFloat(5, progress.playbackSpeed); it.setLong(6, progress.observedAtEpochMillis); it.setBoolean(7, progress.completed)
             it.executeUpdate()
+        }
+        if (setting(HISTORY_ENABLED_KEY)?.toBooleanStrictOrNull() == true) {
+            connection.prepareStatement("""
+                INSERT INTO playback_history(source_id,node_id,position_ms,duration_ms,observed_ms,completed)
+                VALUES(?,?,?,?,?,?) ON CONFLICT(source_id,node_id) DO UPDATE SET
+                position_ms=excluded.position_ms,duration_ms=excluded.duration_ms,
+                observed_ms=excluded.observed_ms,completed=excluded.completed
+            """.trimIndent()).use {
+                it.setString(1, progress.sourceId.value); it.setString(2, progress.nodeId.value)
+                it.setLong(3, progress.positionMillis)
+                val durationMillis = progress.durationMillis
+                if (durationMillis == null) it.setNull(4, java.sql.Types.BIGINT) else it.setLong(4, durationMillis)
+                it.setLong(5, progress.observedAtEpochMillis); it.setBoolean(6, progress.completed)
+                it.executeUpdate()
+            }
+            val retention = PlaybackHistoryPolicy.normalizeRetention(
+                setting(HISTORY_RETENTION_KEY)?.toIntOrNull() ?: PlaybackHistoryPolicy.DEFAULT_RETENTION,
+            )
+            connection.prepareStatement(
+                "DELETE FROM playback_history WHERE rowid NOT IN (SELECT rowid FROM playback_history ORDER BY observed_ms DESC, source_id, node_id LIMIT ?)",
+            ).use {
+                it.setInt(1, retention)
+                it.executeUpdate()
+            }
         }
     }
 
@@ -104,4 +154,10 @@ class SqliteStateRepository(database: Path) : AutoCloseable {
     }
 
     override fun close() = connection.close()
+
+    companion object {
+        const val HISTORY_ENABLED_KEY = "history.enabled"
+        const val HISTORY_RETENTION_KEY = "history.retention"
+        const val SEARCH_MATCH_TYPES_KEY = "search.matchTypes"
+    }
 }

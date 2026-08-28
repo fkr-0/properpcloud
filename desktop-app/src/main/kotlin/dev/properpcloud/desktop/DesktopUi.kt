@@ -23,7 +23,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
@@ -35,6 +37,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Visibility
@@ -50,6 +53,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -88,8 +92,11 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.LibraryFile
+import dev.properpcloud.core.model.LibraryFileKind
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.QueueOperation
+import dev.properpcloud.core.model.SearchMatchType
 import dev.properpcloud.metadata.tags.FolderPlaylistOrder
 import dev.properpcloud.metadata.tags.FolderTagReviewTransition
 import dev.properpcloud.metadata.tags.FolderTagReviewValue
@@ -104,6 +111,16 @@ private fun playlistOrderLabel(order: FolderPlaylistOrder): String = when (order
     FolderPlaylistOrder.TAGGED_TITLE -> "tagged title"
     FolderPlaylistOrder.TITLE_NUMBER -> "title number"
     FolderPlaylistOrder.MODIFICATION_TIME -> "modification time"
+}
+
+private fun desktopVisibleNodes(state: DesktopUiState): List<MediaNode> =
+    if (state.searchExpanded && state.searchQuery.trim().length >= 3) state.searchResults else state.nodes
+
+private fun desktopSearchTypeLabel(type: SearchMatchType): String = when (type) {
+    SearchMatchType.DIRECTORIES -> "Dirs"
+    SearchMatchType.FILES -> "Files"
+    SearchMatchType.AUDIO_FILES -> "Audio"
+    SearchMatchType.PLAYLIST_FILES -> "Playlists"
 }
 
 private fun tagReviewValueLabel(value: FolderTagReviewValue): String = when (value.kind) {
@@ -145,19 +162,21 @@ fun DesktopApp(controller: DesktopController) {
                     DesktopShortcut.ShowHelp -> keyboardHelp = true
                     is DesktopShortcut.SelectLibrary -> {
                         focusTarget = DesktopFocusTarget.LIBRARY
-                        librarySelection = moveSelection(librarySelection, shortcut.delta, state.nodes.size)
+                        librarySelection = moveSelection(librarySelection, shortcut.delta, desktopVisibleNodes(state).size)
                     }
                     is DesktopShortcut.OpenLibrary -> {
-                        val node = state.nodes.getOrNull(librarySelection) ?: return@onPreviewKeyEvent true
+                        val node = desktopVisibleNodes(state).getOrNull(librarySelection) ?: return@onPreviewKeyEvent true
                         when (shortcut.operation) {
                             LibraryKeyboardOperation.OPEN_OR_PLAY -> controller.open(node)
                             LibraryKeyboardOperation.APPEND -> when (node) {
                                 is AudioTrack -> controller.enqueue(node)
                                 is AudioFolder -> controller.enqueueFolder(node, recursive = true, QueueOperation.APPEND)
+                                is LibraryFile -> controller.inspect(node)
                             }
                             LibraryKeyboardOperation.PLAY_REPLACE -> when (node) {
                                 is AudioTrack -> controller.play(node)
                                 is AudioFolder -> controller.enqueueFolder(node, recursive = false, QueueOperation.REPLACE)
+                                is LibraryFile -> controller.inspect(node)
                             }
                             LibraryKeyboardOperation.INSPECT -> controller.inspect(node)
                         }
@@ -635,6 +654,29 @@ private fun NavigationPane(state: DesktopUiState, controller: DesktopController,
                 }
             }
         }
+        Spacer(Modifier.height(16.dp))
+        Text("Playback history", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = state.playbackHistoryEnabled,
+                onCheckedChange = controller::setPlaybackHistoryEnabled,
+            )
+            Text("Keep bounded history", style = MaterialTheme.typography.bodySmall)
+        }
+        if (state.playbackHistoryEnabled) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                listOf(25, 100, 250).forEach { retention ->
+                    FilterChip(
+                        selected = state.playbackHistoryRetention == retention,
+                        onClick = { controller.setPlaybackHistoryRetention(retention) },
+                        label = { Text(retention.toString()) },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -648,6 +690,7 @@ private fun LibraryPane(
     onSelected: (Int) -> Unit,
     modifier: Modifier,
 ) {
+    val visibleNodes = desktopVisibleNodes(state)
     Column(modifier.padding(14.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -660,10 +703,44 @@ private fun LibraryPane(
                     Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Play folder")
                 }
             }
+            IconButton(onClick = controller::toggleSearch) {
+                Icon(
+                    if (state.searchExpanded) Icons.Default.Close else Icons.Default.Search,
+                    if (state.searchExpanded) "Close filename search" else "Search filenames",
+                )
+            }
+        }
+        if (state.searchExpanded) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = state.searchQuery,
+                onValueChange = controller::updateSearchQuery,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Filename search") },
+                placeholder = { Text("Type at least 3 characters") },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                SearchMatchType.entries.forEach { type ->
+                    FilterChip(
+                        selected = type in state.searchMatchTypes,
+                        onClick = { controller.toggleSearchMatchType(type) },
+                        label = { Text(desktopSearchTypeLabel(type)) },
+                    )
+                }
+            }
+            if (state.searchBusy) CircularProgressIndicator(Modifier.height(20.dp).width(20.dp))
+            if (state.searchQuery.isNotEmpty() && state.searchQuery.trim().length < 3) {
+                Text("Enter at least 3 characters; search uses the loaded file list.", style = MaterialTheme.typography.labelSmall)
+            }
         }
         Spacer(Modifier.height(12.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            itemsIndexed(state.nodes, key = { _, node -> node.sourceId.value + node.id.value }) { index, node ->
+            if (state.searchExpanded && state.searchQuery.trim().length >= 3 && !state.searchBusy && visibleNodes.isEmpty()) {
+                item { Text("No matching filenames", style = MaterialTheme.typography.bodyMedium) }
+            }
+            itemsIndexed(visibleNodes, key = { _, node -> node.sourceId.value + node.id.value }) { index, node ->
                 var menu by remember(node.id) { mutableStateOf(false) }
                 val keyboardSelected = keyboardFocused && index == selectedIndex
                 ElevatedCard(
@@ -671,10 +748,10 @@ private fun LibraryPane(
                         .semantics {
                             selected = keyboardSelected
                             stateDescription = if (keyboardSelected) "Keyboard selected" else "Not selected"
-                            contentDescription = if (node is AudioFolder) {
-                                "Folder ${node.name}"
-                            } else {
-                                "Track ${node.name}"
+                            contentDescription = when (node) {
+                                is AudioFolder -> "Folder ${node.name}"
+                                is AudioTrack -> "Track ${node.name}"
+                                is LibraryFile -> if (node.kind == LibraryFileKind.PLAYLIST) "Playlist file ${node.name}" else "File ${node.name}"
                             }
                         }
                         .combinedClickable(
@@ -689,12 +766,21 @@ private fun LibraryPane(
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(if (node is AudioFolder) Icons.Default.Folder else Icons.Default.LibraryMusic, null)
+                        Icon(
+                            when (node) {
+                                is AudioFolder -> Icons.Default.Folder
+                                is AudioTrack -> Icons.Default.LibraryMusic
+                                is LibraryFile -> Icons.Default.Description
+                            },
+                            null,
+                        )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(node.name, fontWeight = FontWeight.Medium)
                             if (node is AudioTrack) {
                                 Text(listOfNotNull(node.taggedTitle, node.durationMillis?.let(::formatDuration)).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+                            } else if (node is LibraryFile) {
+                                Text(if (node.kind == LibraryFileKind.PLAYLIST) "Playlist file" else "File", style = MaterialTheme.typography.bodySmall)
                             }
                             if (keyboardSelected) {
                                 Text("Selected", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
@@ -713,6 +799,7 @@ private fun LibraryPane(
                                     DropdownMenuItem({ Text("Play direct children") }, onClick = { menu = false; controller.enqueueFolder(node, false, QueueOperation.REPLACE) })
                                     DropdownMenuItem({ Text("Append subtree") }, onClick = { menu = false; controller.enqueueFolder(node, true, QueueOperation.APPEND) })
                                 }
+                                is LibraryFile -> Unit
                             }
                             DropdownMenuItem({ Text("Inspect") }, onClick = { menu = false; controller.inspect(node) })
                         }

@@ -212,6 +212,21 @@ product:
       scalability:
         - Lazily render folders above 500 direct children.
         - Never recursively enumerate on the main thread.
+    REQ-FILENAME-SEARCH:
+      priority: must
+      release: v0_2
+      title: Immediate filesystem-first filename search
+      behaviors:
+        - A magnifying-glass action expands or collapses filename search without replacing normal folder navigation.
+        - Queries shorter than three trimmed characters produce no search-result set.
+        - Queries of three or more characters update against the already-loaded folder/file model after a short debounce and never trigger provider traversal per keystroke.
+        - Filename matching is case-insensitive and deterministic; tags are not search identity in this tranche.
+        - Match types are directories, generic files, audio files, and playlist files and all are selected by default on first use.
+        - Generic files subsume audio and playlist files while selected; specialized file types remain independently selectable when generic files are disabled.
+        - A stable source/node identity appears at most once even when several selected match types include it.
+        - Match-type selection survives the next search and normal application restart.
+      deferred:
+        - artist, title, year, and other embedded-tag matchers
     REQ-QUEUE:
       priority: must
       release: mvp_0_1
@@ -228,6 +243,9 @@ product:
         - Recursive operations expose progress, cancellation, partial acceptance, and omissions.
         - Duplicate policy supports preserve and stable-node collapse.
         - An empty result never silently clears an existing queue.
+        - Every successful queue mutation and current-item selection is persisted through one queue-state boundary.
+        - Persisted queue items contain stable source/node/origin identity and non-ephemeral metadata only; stream capabilities are never queue identity.
+        - Startup restores the saved queue/current item in a ready paused state and never surprises the user with autoplay.
     REQ-NAVIGATION:
       priority: must
       release: mvp_0_1
@@ -245,7 +263,9 @@ product:
         - Resolve fresh direct links from stable file IDs just in time.
         - Treat direct links as expiring secrets, not persistent identity.
         - Support seeking and HTTP ranges when provider and format permit.
-        - Refresh a link after an eligible expiry or authorization response.
+        - Refresh a link after an eligible expiry, authorization, transient HTTP, or network transport response.
+        - Explicit Play after an eligible terminal transport failure rebuilds the selected item from stable source/node identity so a failed direct URL is never blindly replayed.
+        - Permanent HTTP client failures and decoder/media failures remain surfaced rather than entering a capability-refresh loop.
         - Preserve queue and last confirmed position across reconnects and process death.
         - Integrate with OS media controls, audio focus, headphones, and foreground execution.
       retry_policy:
@@ -254,6 +274,8 @@ product:
         immediate_refreshes_per_failure_window: 1
         later_retry_after_cooldown: true
         categories: [link_resolution, transient_transport, provider_rate_limit]
+        refreshable_http_statuses: [401, 403, 404, 408, 410, 425, 429, 5xx]
+        permanent_http_examples: [400, 402, 405, 409, 422]
     REQ-SORTING:
       priority: must
       release: mvp_0_1
@@ -282,7 +304,7 @@ product:
         - completion_state
         - observed_at
       checkpoints:
-        - periodic
+        - periodic approximately every 30 seconds while active
         - pause
         - completed_seek
         - item_transition
@@ -303,8 +325,18 @@ product:
         smart_rewind:
           enabled: true
           depends_on: interruption duration
+        completion_threshold_ratio: 0.95
+        invalid_position: clamp to known duration before completion/resume decision
+        effectively_completed_resume: restart at zero
         revision_change:
           action: ask before applying stale progress to materially changed content
+      history:
+        purpose: bounded optional playback history separate from crash/session restoration
+        enabled_by_default: false
+        default_retention_items: 100
+        maximum_retention_items: 500
+        persisted_fields: [source_id, node_id, position_ms, duration_ms, observed_at, completed]
+        forbidden_fields: [signed_url, stream_handle, token, complete_private_path]
     REQ-INSPECTION:
       priority: must
       release: mvp_0_1
@@ -339,6 +371,7 @@ product:
         - Infinite loading indicators are forbidden.
         - Playback-controller and persisted-queue restoration failures are visible and actionable.
         - Android queue/progress persistence is frozen as a replayable cross-platform fixture corpus.
+        - Additive persistence upgrades preserve readable prior queue/progress state while optional history starts empty.
     REQ-LINUX-PARITY:
       priority: must
       release: v0_2
@@ -457,7 +490,7 @@ product:
       progress_write_ms_p95: 50
     reliability_targets:
       queue_survives_process_death: true
-      progress_loss_window_seconds_max: 15
+      progress_loss_window_seconds_max: 30
       mutation_post_write_verification_rate: 1.0
       crash_free_session_ratio: 0.995
     privacy:

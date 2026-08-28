@@ -12,6 +12,7 @@ import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.MediaIdentity
 import dev.properpcloud.core.model.NodeId
+import dev.properpcloud.core.model.PlaybackProgress
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.SourceId
@@ -40,6 +41,92 @@ class MainViewModelTest {
     fun cleanUp() {
         Dispatchers.resetMain()
         context.filesDir.resolve("datastore/properpcloud.preferences_pb").delete()
+    }
+
+    @Test
+    fun playerDrivenCurrentItemChangePersistsSelectedStableQueueItem() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val playback = FakePlaybackController()
+        val container = AppContainer(context.applicationContext as Application, applicationScope = this)
+        val source = container.sources.current.value
+        val folder = source.list(source.root.id)
+            .filterIsInstance<AudioFolder>()
+            .first { it.name == "Numbered tracks" }
+        val tracks = source.list(folder.id).filterIsInstance<AudioTrack>().take(2)
+        container.preferences.saveQueue(
+            PlaybackQueue(entries = tracks.map(::QueueEntry), currentIndex = 0),
+        )
+
+        withViewModel(container, playback) { viewModel ->
+            for (attempt in 0 until 200) {
+                advanceUntilIdle()
+                if (viewModel.state.value.queue.entries.size == 2) break
+                Thread.sleep(10)
+            }
+            val second = tracks[1]
+            playback.emit(
+                PlaybackUiState(
+                    connected = true,
+                    mediaId = MediaIdentity.encode(second.sourceId, second.id),
+                    positionMillis = 500,
+                    durationMillis = second.durationMillis ?: 5_000,
+                    isPlaying = true,
+                ),
+            )
+            advanceUntilIdle()
+
+            assertEquals(1, viewModel.state.value.queue.currentIndex)
+            assertEquals(second.id, viewModel.state.value.queue.current?.track?.id)
+            var stored = container.preferences.loadQueue()
+            for (attempt in 0 until 200) {
+                if (stored.currentIndex == 1) break
+                advanceUntilIdle()
+                Thread.sleep(10)
+                stored = container.preferences.loadQueue()
+            }
+            assertEquals(1, stored.currentIndex)
+            assertEquals(second.id, stored.entries[1].nodeId)
+        }
+    }
+
+    @Test
+    fun queueRestorationInstallsStoredProgressWithoutTransientZeroPosition() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val playback = FakePlaybackController()
+        val container = AppContainer(context.applicationContext as Application, applicationScope = this)
+        val source = container.sources.current.value
+        val folder = source.list(source.root.id)
+            .filterIsInstance<AudioFolder>()
+            .first { it.name == "Audiobooks" }
+        val book = source.list(folder.id).filterIsInstance<AudioFolder>().single()
+        val track = source.list(book.id).filterIsInstance<AudioTrack>().first()
+        container.preferences.saveQueue(
+            PlaybackQueue(entries = listOf(QueueEntry(track)), currentIndex = 0),
+        )
+        container.preferences.saveProgress(
+            PlaybackProgress(
+                sourceId = track.sourceId,
+                nodeId = track.id,
+                positionMillis = 6_000,
+                durationMillis = 8_000,
+                observedAtEpochMillis = System.currentTimeMillis(),
+            ),
+        )
+
+        withViewModel(container, playback) {
+            for (attempt in 0 until 200) {
+                advanceUntilIdle()
+                if (playback.lastSetQueue?.current?.track?.id == track.id) break
+                Thread.sleep(10)
+            }
+
+            assertEquals(track.id, playback.lastSetQueue?.current?.track?.id)
+            assertEquals(1_000L, playback.lastSetQueuePositionMillis)
+            assertEquals(
+                6_000L,
+                container.preferences.loadProgress(track.sourceId, track.id)?.positionMillis,
+            )
+        }
     }
 
     @Test
@@ -141,6 +228,8 @@ class MainViewModelTest {
                 ),
             )
             advanceUntilIdle()
+            assertEquals(track.id, viewModel.state.value.queue.current?.track?.id)
+            assertEquals(mediaId, viewModel.state.value.playback.mediaId)
             requireNotNull(viewModel.flushPlaybackProgress()).join()
 
             assertEquals(
@@ -211,7 +300,13 @@ class MainViewModelTest {
             mutableState.value = value
         }
 
-        override fun setQueue(queue: PlaybackQueue, play: Boolean) = Unit
+        var lastSetQueue: PlaybackQueue? = null
+        var lastSetQueuePositionMillis: Long? = null
+
+        override fun setQueue(queue: PlaybackQueue, play: Boolean, startPositionMillis: Long) {
+            lastSetQueue = queue
+            lastSetQueuePositionMillis = startPositionMillis
+        }
         override fun select(index: Int, play: Boolean) = Unit
         override fun clearQueue() = Unit
         override fun playPause() = Unit

@@ -8,6 +8,7 @@ import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.NodeInspection
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueBuildResult
+import dev.properpcloud.core.model.SearchMatchType
 import dev.properpcloud.core.model.TrackSortKey
 
 enum class AppDestination {
@@ -17,6 +18,14 @@ enum class AppDestination {
     METADATA,
     SETTINGS,
 }
+
+data class LibrarySearchUiState(
+    val expanded: Boolean = false,
+    val query: String = "",
+    val matchTypes: Set<SearchMatchType> = SearchMatchType.entries.toSet(),
+    val results: List<MediaNode> = emptyList(),
+    val searching: Boolean = false,
+)
 
 data class AppUiState(
     val destination: AppDestination = AppDestination.LIBRARY,
@@ -37,6 +46,9 @@ data class AppUiState(
     val queueBuildReport: QueueBuildResult? = null,
     val queueBuilding: Boolean = false,
     val sortKey: TrackSortKey = TrackSortKey.DISC_THEN_TRACK,
+    val search: LibrarySearchUiState = LibrarySearchUiState(),
+    val playbackHistoryEnabled: Boolean = false,
+    val playbackHistoryRetention: Int = 100,
     val playback: PlaybackUiState = PlaybackUiState(),
     val inspection: NodeInspection? = null,
     val inspectedNodeName: String? = null,

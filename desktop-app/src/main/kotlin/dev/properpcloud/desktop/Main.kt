@@ -8,9 +8,12 @@ import androidx.compose.ui.window.rememberWindowState
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.FolderQueueAssembler
+import dev.properpcloud.core.model.LibrarySearch
+import dev.properpcloud.core.model.LibrarySearchRequest
 import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.PlaybackProgress
 import dev.properpcloud.core.model.PlaybackQueue
+import dev.properpcloud.core.model.SearchMatchType
 import dev.properpcloud.core.model.SourceId
 import dev.properpcloud.desktop.data.DesktopDemoAudioSource
 import dev.properpcloud.desktop.data.SqliteStateRepository
@@ -191,22 +194,74 @@ private fun runDesktopSmoke() = runBlocking {
     val paths = XdgPaths(root.resolve("config"), root.resolve("data"), root.resolve("cache"), root.resolve("runtime")).create()
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val source = DesktopDemoAudioSource(paths.cache.resolve("media"))
-    val repository = SqliteStateRepository(paths.data.resolve("state.db"))
+    var repository = SqliteStateRepository(paths.data.resolve("state.db"))
     val mpv = MpvController(paths.runtime, scope, extraArguments = listOf("--ao=null"))
     try {
-        val folder = source.list(source.root.id).filterIsInstance<AudioFolder>().first()
-        val queue = FolderQueueAssembler(source).build(folder.id, recursive = true)
+        val folder = source.list(source.root.id).filterIsInstance<AudioFolder>().first { it.name == "Numbered tracks" }
+        val loadedNodes = source.list(folder.id)
+        val searchTypes = setOf(SearchMatchType.AUDIO_FILES, SearchMatchType.PLAYLIST_FILES)
+        val searchResults = LibrarySearch.matches(
+            loadedNodes,
+            LibrarySearchRequest("signal", searchTypes),
+        )
+        check(searchResults.size == 3 && searchResults.all { it is AudioTrack }) {
+            "filename search did not return the three loaded audio matches"
+        }
+        repository.setSetting(
+            SqliteStateRepository.SEARCH_MATCH_TYPES_KEY,
+            searchTypes.sortedBy { it.ordinal }.joinToString(",") { it.name },
+        )
+        repository.setSetting(SqliteStateRepository.HISTORY_ENABLED_KEY, "true")
+        repository.setSetting(SqliteStateRepository.HISTORY_RETENTION_KEY, "25")
+
+        val queue = FolderQueueAssembler(source).build(folder.id, recursive = false)
         check(queue.entries.isNotEmpty()) { "demo queue is empty" }
-        val playbackQueue = PlaybackQueue(entries = queue.entries, currentIndex = 0)
+        val playbackQueue = PlaybackQueue(entries = queue.entries, currentIndex = 1)
         repository.saveQueue(playbackQueue)
         val track: AudioTrack = playbackQueue.current!!.track
         mpv.load(source.resolveStream(track.id))
         delay(750)
         check(mpv.state.value.running) { "mpv did not remain running" }
-        repository.saveProgress(PlaybackProgress(track.sourceId, track.id, mpv.state.value.positionMillis, track.durationMillis, 1f, System.currentTimeMillis()))
+        val checkpoint = PlaybackProgress(
+            track.sourceId,
+            track.id,
+            mpv.state.value.positionMillis,
+            track.durationMillis,
+            1f,
+            System.currentTimeMillis(),
+        )
+        repository.saveProgress(checkpoint)
         check(repository.loadQueue().entries.size == queue.entries.size) { "queue persistence mismatch" }
         check(repository.loadProgress(track.sourceId, track.id) != null) { "progress persistence mismatch" }
-        println("properpcloud desktop smoke: OK (${queue.entries.size} tracks, mpv IPC, SQLite)")
+        check(repository.loadPlaybackHistory().single().nodeId == track.id) { "history persistence mismatch" }
+
+        // Recreate the durable session boundary while playback state is still externally owned by
+        // mpv. Only stable identity/settings/progress are expected to survive the repository close.
+        repository.close()
+        repository = SqliteStateRepository(paths.data.resolve("state.db"))
+        val restoredQueue = repository.loadQueue()
+        val restoredTrackId = restoredQueue.entries[restoredQueue.currentIndex].nodeId
+        val restoredProgress = requireNotNull(repository.loadProgress(track.sourceId, track.id))
+        check(restoredTrackId == track.id) { "current stable queue identity did not survive reopen" }
+        check(restoredProgress.positionMillis == checkpoint.positionMillis) { "progress did not survive reopen" }
+        check(repository.loadPlaybackHistory().single().nodeId == track.id) { "history did not survive reopen" }
+        check(
+            repository.setting(SqliteStateRepository.SEARCH_MATCH_TYPES_KEY) ==
+                "AUDIO_FILES,PLAYLIST_FILES",
+        ) { "search match preferences did not survive reopen" }
+
+        mpv.stop()
+        mpv.load(source.resolveStream(track.id), restoredProgress.positionMillis)
+        awaitSmokeCondition("restored mpv playback", attempts = 80, delayMillis = 25) {
+            mpv.state.value.running && !mpv.state.value.idle
+        }
+        check(kotlin.math.abs(mpv.state.value.positionMillis - restoredProgress.positionMillis) <= 5_000) {
+            "restored playback exceeded the five-second resume bound"
+        }
+        println(
+            "properpcloud desktop smoke: OK " +
+                "(${queue.entries.size} tracks, filename search, mpv IPC, SQLite reopen, queue/progress/history/filter restore)",
+        )
     } finally {
         mpv.close()
         repository.close()
