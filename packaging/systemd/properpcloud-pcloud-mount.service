@@ -1,0 +1,16 @@
+[Unit]
+Description=properpcloud pCloud rclone mount
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PROPERPCLOUD_PCLOUD_REMOTE=pcloud:
+Environment=PROPERPCLOUD_MOUNT_READ_WRITE=0
+EnvironmentFile=-%h/.config/properpcloud/server.env
+ExecStart=%h/.local/bin/properpcloud-rclone-mount
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target

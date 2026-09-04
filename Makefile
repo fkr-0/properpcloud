@@ -112,6 +112,8 @@ fast-test: oauth-config-check ## Run portable JVM tests in the existing build im
 	  :metadata-online:test \
 	  :metadata-tags:test \
 	  :source-pcloud:test \
+	  :source-server:test \
+	  :server:test \
 	  :source-webdav:test
 
 local-check: oauth-config-test oauth-config-check ## Cheap host-side contract/config gate; compilation belongs to CI by default.

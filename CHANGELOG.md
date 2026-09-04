@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added an optional self-hosted pCloud library server with pooled REST access, owner-only
+  reloadable session files, live connectivity health, recursive provider metadata caching,
+  folder creation, metadata lookup, and signed-link generation while retaining pCloud IDs as
+  stable source identity.
+- Added a persistent rclone full-remote mount template plus systemd user units and an incremental
+  SQLite catalog scanner. Changed audio files are tag-inspected and SHA-256 fingerprinted with
+  technical/path metadata; unchanged files are reused, duplicate groups are indexed, and an
+  unavailable provider or mount preserves the last good catalog for explicit degraded operation.
+- Added server browse/search/status/scan/node/duplicate APIs, short-lived range-capable local
+  playback tickets, a source-neutral server `AudioSource` adapter, and `properpcloud library
+  scan|status|search` commands on the native desktop entry point.
+
+### Security
+
+- Non-loopback server binds require an owner-only bearer-token file and remote catalog clients
+  require HTTPS. pCloud credentials, API bearer values, provider signed URLs, and local mount
+  paths remain outside durable media identity and stream tickets expire from process memory.
+
 ## [0.2.0-rc.4] - 2026-08-28
 
 ### Added

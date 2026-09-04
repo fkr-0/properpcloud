@@ -1,0 +1,19 @@
+[Unit]
+Description=properpcloud local audio library server
+After=network-online.target properpcloud-pcloud-mount.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/.config/properpcloud/server.env
+ExecStart=%h/.local/bin/properpcloud-server serve
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/properpcloud %h/.cache/properpcloud
+
+[Install]
+WantedBy=default.target

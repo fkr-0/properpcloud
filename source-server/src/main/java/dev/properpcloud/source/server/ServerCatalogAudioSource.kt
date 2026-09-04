@@ -1,0 +1,172 @@
+package dev.properpcloud.source.server
+
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
+import dev.properpcloud.core.model.AudioFolder
+import dev.properpcloud.core.model.AudioSource
+import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.LibraryFile
+import dev.properpcloud.core.model.LibraryFileKind
+import dev.properpcloud.core.model.MediaNode
+import dev.properpcloud.core.model.NodeId
+import dev.properpcloud.core.model.NodeInspection
+import dev.properpcloud.core.model.SourceId
+import dev.properpcloud.core.model.StreamHandle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.net.HttpURLConnection
+import java.net.URI
+import java.net.URLEncoder
+
+data class ServerCatalogSession(
+    val baseUrl: String,
+    val apiToken: String? = null,
+) {
+    init {
+        val uri = URI(baseUrl.trimEnd('/'))
+        require(uri.scheme == "https" || (uri.scheme == "http" && uri.host in loopbackHosts)) {
+            "server catalog must use HTTPS except for loopback development"
+        }
+        require(!uri.host.isNullOrBlank()) { "server catalog URL requires a host" }
+        require(apiToken == null || (apiToken.isNotBlank() && apiToken.length <= 4096)) { "invalid server API token" }
+    }
+
+    val normalizedBaseUrl: String = baseUrl.trimEnd('/')
+
+    override fun toString(): String = "ServerCatalogSession(baseUrl=$normalizedBaseUrl, apiToken=<redacted>)"
+
+    private companion object {
+        val loopbackHosts = setOf("localhost", "127.0.0.1", "::1")
+    }
+}
+
+class ServerCatalogAudioSource(
+    private val session: ServerCatalogSession,
+    override val id: SourceId = SourceId("server"),
+) : AudioSource {
+    override val root = AudioFolder(
+        sourceId = id,
+        id = NodeId("catalog:root"),
+        parentId = null,
+        name = "Server library",
+    )
+
+    override suspend fun list(folderId: NodeId): List<MediaNode> = withContext(Dispatchers.IO) {
+        requestJson("/api/v1/library/browse?parent=${encode(folderId.value)}")
+            .getAsJsonArray("entries")
+            .mapNotNull { element ->
+                element.takeIf { it.isJsonObject }?.asJsonObject?.let(::toMediaNode)
+            }
+    }
+
+    override suspend fun load(nodeId: NodeId): MediaNode = withContext(Dispatchers.IO) {
+        val json = requestJson("/api/v1/library/node?id=${encode(nodeId.value)}")
+        requireNotNull(toMediaNode(json.getAsJsonObject("entry"))) { "catalog node is unavailable" }
+    }
+
+    override suspend fun resolveStream(trackId: NodeId): StreamHandle = withContext(Dispatchers.IO) {
+        val json = requestJson("/api/v1/library/stream-link?id=${encode(trackId.value)}", method = "POST")
+        StreamHandle(
+            url = json.get("url").asString,
+            expiresAtEpochMillis = json.get("expiresAtEpochMillis")?.takeUnless { it.isJsonNull }?.asLong,
+            contentType = json.get("contentType")?.takeUnless { it.isJsonNull }?.asString,
+        )
+    }
+
+    override suspend fun inspect(nodeId: NodeId): NodeInspection = withContext(Dispatchers.IO) {
+        val entry = requestJson("/api/v1/library/node?id=${encode(nodeId.value)}").getAsJsonObject("entry")
+        val fields = linkedMapOf<String, String>()
+        listOf(
+            "nodeId", "path", "name", "kind", "contentHash", "title", "artist", "album", "genre",
+            "durationMillis", "sampleRate", "channels", "bitDepth", "format", "metadataError",
+        ).forEach { name ->
+            entry.get(name)?.takeUnless { it.isJsonNull }?.let { fields[name] = it.asString }
+        }
+        NodeInspection(fields)
+    }
+
+    private fun requestJson(path: String, method: String = "GET"): JsonObject {
+        val connection = URI(session.normalizedBaseUrl + path).toURL().openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = method
+            connection.instanceFollowRedirects = false
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 20_000
+            connection.setRequestProperty("Accept", "application/json")
+            session.apiToken?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
+            if (method != "GET") {
+                connection.doOutput = true
+                connection.setFixedLengthStreamingMode(0)
+                connection.outputStream.use { }
+            }
+            val status = connection.responseCode
+            val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.use(::readBoundedUtf8).orEmpty()
+            require(status in 200..299) { "server catalog request failed with HTTP $status" }
+            return JsonParser.parseString(body).asJsonObject
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun readBoundedUtf8(input: java.io.InputStream): String {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        var total = 0
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            total += read
+            require(total <= MAX_RESPONSE_BYTES) { "server catalog response exceeded size limit" }
+            output.write(buffer, 0, read)
+        }
+        return output.toString(Charsets.UTF_8.name())
+    }
+
+    private fun toMediaNode(entry: JsonObject): MediaNode? {
+        val nodeId = NodeId(entry.get("nodeId")?.asString ?: return null)
+        val parentId = entry.get("parentNodeId")?.takeUnless { it.isJsonNull }?.asString?.let(::NodeId)
+        val name = entry.get("name")?.asString ?: return null
+        val modified = entry.get("modifiedAtEpochMillis")?.takeUnless { it.isJsonNull }?.asLong
+        return when (entry.get("kind")?.asString) {
+            "folder" -> AudioFolder(id, nodeId, parentId, name, modified)
+            "audio" -> {
+                val parent = parentId ?: return null
+                AudioTrack(
+                    sourceId = id,
+                    id = nodeId,
+                    parentId = parent,
+                    name = name,
+                    modifiedAtEpochMillis = modified,
+                    contentType = entry.get("contentType")?.takeUnless { it.isJsonNull }?.asString,
+                    sizeBytes = entry.get("sizeBytes")?.takeUnless { it.isJsonNull }?.asLong,
+                    discNumber = entry.get("discNumber")?.takeUnless { it.isJsonNull }?.asInt,
+                    trackNumber = entry.get("trackNumber")?.takeUnless { it.isJsonNull }?.asInt,
+                    taggedTitle = entry.get("title")?.takeUnless { it.isJsonNull }?.asString,
+                    durationMillis = entry.get("durationMillis")?.takeUnless { it.isJsonNull }?.asLong,
+                )
+            }
+            "file" -> {
+                val parent = parentId ?: return null
+                LibraryFile(
+                    sourceId = id,
+                    id = nodeId,
+                    parentId = parent,
+                    name = name,
+                    modifiedAtEpochMillis = modified,
+                    contentType = entry.get("contentType")?.takeUnless { it.isJsonNull }?.asString,
+                    sizeBytes = entry.get("sizeBytes")?.takeUnless { it.isJsonNull }?.asLong,
+                    kind = LibraryFileKind.fromFilename(name),
+                )
+            }
+            else -> null
+        }
+    }
+
+    private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
+
+    private companion object {
+        const val MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+    }
+}

@@ -50,6 +50,21 @@ contracts:
         expected_revision: optional Revision
         headers: minimal redacted-safe request headers
       persistence: forbidden except transient in-memory player state
+    ServerCatalogEntry:
+      fields:
+        - stable node and parent node identity
+        - mount-relative display path and filename
+        - folder | audio | file kind
+        - optional pCloud file/folder ID
+        - size and modification time
+        - optional SHA-256 content fingerprint
+        - optional embedded and path-derived audio metadata
+        - scan generation and bounded parser warning
+      invariants:
+        - pCloud file/folder IDs are preferred stable identity when cached provider metadata is available.
+        - Mount-relative paths are catalog data but never authorization boundaries without root containment validation.
+        - A failed provider refresh or unavailable mount never deletes the last complete catalog generation.
+        - Duplicate detection groups equal content fingerprints without rewriting source identity.
     QueueSnapshot:
       fields:
         id: UUID

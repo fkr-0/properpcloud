@@ -4,7 +4,7 @@ architecture:
     presentation: unidirectional data flow
     integrations: capability-oriented ports and adapters
     persistence: local-first cache with provider-authoritative remote file state
-    backend: no mandatory custom server
+    backend: optional self-hosted local-library server; direct provider clients remain supported
   dependency_rule:
     allowed:
       - presentation -> application
@@ -117,7 +117,15 @@ architecture:
         - Cancellation never commits an incomplete replacement queue.
     source_integration:
       purpose: Translate SDK and protocol behavior into source capabilities.
-      modules: [source-pcloud, source-webdav, future-source-local, future-source-saf]
+      modules: [source-pcloud, source-server, source-webdav, future-source-local, future-source-saf]
+      server_catalog:
+        responsibilities:
+          - browse a server-generated folder-first catalog through stable node identity
+          - resolve short-lived server stream tickets without persisting capability URLs
+          - preserve direct pCloud clients as an independent supported source mode
+        boundaries:
+          - remote cleartext HTTP is rejected
+          - API credentials never become media identity or presentation metadata
       pcloud:
         libraries:
           shared_source_adapter: com.pcloud.sdk:java-core
@@ -495,3 +503,4 @@ architecture:
     ADR-004: Shared Kotlin/JVM core for Android and Linux first.
     ADR-005: Platform playback behind an application port.
     ADR-006: Stable IDs persisted; ephemeral direct URLs never persisted as identity.
+    ADR-007: A self-hosted pCloud catalog server is optional and may centralize provider scanning, mounted-byte access, and rebuildable search metadata without removing direct-client operation.

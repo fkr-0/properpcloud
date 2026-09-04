@@ -10,8 +10,10 @@
 .vscode/
 .idea/
 .gradle/
+.gradle-agent/
 .cache/
 .ws-bridge/
+.wsbridge/
 __pycache__/
 *.py[cod]
 dist/

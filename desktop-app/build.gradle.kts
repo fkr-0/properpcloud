@@ -23,6 +23,7 @@ dependencies {
     implementation(projects.sourceWebdav)
     implementation(projects.metadataOnline)
     implementation(projects.metadataTags)
+    implementation(projects.server)
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation(compose.materialIconsExtended)
@@ -42,7 +43,7 @@ compose.desktop {
         mainClass = "dev.properpcloud.desktop.MainKt"
         nativeDistributions {
             targetFormats(TargetFormat.Deb, TargetFormat.Rpm)
-            modules("java.sql", "jdk.security.auth")
+            modules("java.sql", "jdk.security.auth", "jdk.httpserver")
             packageName = "properpcloud"
             packageVersion = appVersion
             description = "Folder-first pCloud audio player"

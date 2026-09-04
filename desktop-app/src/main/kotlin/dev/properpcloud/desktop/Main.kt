@@ -23,6 +23,7 @@ import dev.properpcloud.desktop.mpris.MprisSnapshot
 import dev.properpcloud.desktop.platform.XdgPaths
 import dev.properpcloud.desktop.playback.MpvController
 import dev.properpcloud.desktop.playback.MpvState
+import dev.properpcloud.server.ServerCli
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,6 +34,11 @@ import java.nio.file.Files
 import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
+    if (args.firstOrNull() == "library") {
+        val exitCode = ServerCli.run(args)
+        if (exitCode != 0) exitProcess(exitCode)
+        return
+    }
     if (playlistCliRequested(args)) {
         val exitCode = runPlaylistCli(args)
         if (exitCode != 0) exitProcess(exitCode)
