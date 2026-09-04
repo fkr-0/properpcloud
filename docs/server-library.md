@@ -45,6 +45,8 @@ The server maintains `~/.local/share/properpcloud/library.db` by default. A scan
 
 If pCloud is offline but the rclone mount is readable, scanning continues using cached provider identity. If the mount is unavailable, the scan fails without deleting the last good catalog, and browse/search remain available from SQLite with degraded status.
 
+Production server scans distinguish the actual configured mount point from its ordinary backing directory. On Linux this is verified against the process mount table (with a filesystem-boundary fallback on platforms without that table), so a stopped or disconnected rclone process cannot make an empty-but-readable mount directory look like a valid library and prune the last-good SQLite generation.
+
 The server starts scans outside HTTP request threads and repeats them every 15 minutes by default. Configure `PROPERPCLOUD_SCAN_INTERVAL_MINUTES` or set `PROPERPCLOUD_SCAN_ON_START=0` when another scheduler owns scans.
 
 ## 5. CLI and HTTP API
@@ -74,6 +76,6 @@ The stream endpoint implements single byte ranges so Media3/mpv can seek against
 
 ## 6. systemd user services
 
-Copy the units in `packaging/systemd/` to `~/.config/systemd/user/`, install the mount and server launchers under `~/.local/bin/`, then enable the mount and server units. The checked-in units are templates; review paths and the reverse-proxy topology for the target host before enabling them.
+Copy the units in `packaging/systemd/` to `~/.config/systemd/user/`, install the mount and server launchers under `~/.local/bin/`, then enable the mount and server units. The checked-in units are templates; review paths and the reverse-proxy topology for the target host before enabling them. Starting the server weakly pulls in the mount unit through `Wants=` and orders itself after that startup attempt; it deliberately does not `Require=` or bind its lifetime to the mount, because the server must remain available for degraded last-good catalog browsing when rclone disconnects.
 
 The mount unit restarts rclone on failure. The catalog's SQLite state remains independent from mount lifecycle, which is what makes degraded/offline browsing possible.

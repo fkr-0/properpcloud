@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeps it out of presentation/queue state, clears transient plaintext byte buffers where
   practical, and probes the server successfully before persisting a new server session.
 
+### Fixed
+
+- Hardened local-library mount loss so production scans verify the configured path is still an
+  actual mount point rather than merely a readable backing directory. A dropped rclone/FUSE mount
+  now fails the scan closed and retains the last-good SQLite catalog instead of pruning it as an
+  empty library; the server unit weakly starts the mount while remaining alive for degraded browse.
+
 ## [0.2.0-rc.4] - 2026-08-28
 
 ### Added

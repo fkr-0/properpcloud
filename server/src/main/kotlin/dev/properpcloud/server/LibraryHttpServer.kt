@@ -28,6 +28,7 @@ class LibraryHttpServer(
     private val repository: CatalogRepository,
     private val scanner: LibraryScanner,
     private val pCloud: PCloudRestClient? = null,
+    private val mountState: MountStateProbe = MountStateProbe.mountedDirectory(config.mountRoot),
     private val gson: Gson = GsonBuilder().disableHtmlEscaping().create(),
 ) : AutoCloseable {
     private val apiToken: ByteArray? = config.apiTokenFile?.let { SecretFile(it).readText().toByteArray(Charsets.UTF_8) }
@@ -104,7 +105,7 @@ class LibraryHttpServer(
 
     private fun health(exchange: HttpExchange) {
         val status = repository.status()
-        val mountOnline = Files.isDirectory(config.mountRoot, LinkOption.NOFOLLOW_LINKS) && Files.isReadable(config.mountRoot)
+        val mountOnline = mountState.isOnline()
         val pCloudConfigured = pCloud != null
         val pCloudOnline = pCloud?.health() ?: false
         val fullyOnline = mountOnline && pCloudOnline

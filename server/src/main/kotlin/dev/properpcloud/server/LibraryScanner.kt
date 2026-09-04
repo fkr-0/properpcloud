@@ -24,9 +24,10 @@ class LibraryScanner(
     private val repository: CatalogRepository,
     private val pCloud: PCloudRestClient? = null,
     private val tagToolkit: JAudioTaggerToolkit = JAudioTaggerToolkit(),
+    private val mountState: MountStateProbe = MountStateProbe.readableDirectory(root),
 ) {
     fun scan(): ScanResult {
-        val mountOnline = Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS) && Files.isReadable(root)
+        val mountOnline = mountState.isOnline()
         var providerOnline = false
         val pCloudClient = pCloud
         if (pCloudClient != null) {
