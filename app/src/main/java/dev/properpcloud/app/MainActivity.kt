@@ -115,9 +115,12 @@ class MainActivity : ComponentActivity() {
                         when (kind) {
                             SourceKind.DEMO -> viewModel.useDemoSource()
                             SourceKind.PCLOUD -> viewModel.usePCloudSource()
+                            SourceKind.SERVER -> viewModel.useServerSource()
                         }
                     },
                     disconnectPCloud = viewModel::disconnectPCloud,
+                    connectServer = viewModel::connectServer,
+                    disconnectServer = viewModel::disconnectServer,
                     setPlaybackHistoryEnabled = viewModel::setPlaybackHistoryEnabled,
                     setPlaybackHistoryRetention = viewModel::setPlaybackHistoryRetention,
                     consumeMessage = viewModel::consumeMessage,

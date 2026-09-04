@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.runtime.mutableStateOf
 import dev.properpcloud.app.data.SourceKind
 import dev.properpcloud.app.metadata.BatchFieldDraft
@@ -31,6 +32,7 @@ import dev.properpcloud.core.model.TagField
 import dev.properpcloud.core.model.TagSnapshot
 import dev.properpcloud.metadata.tags.FolderPlaylistOrder
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -395,6 +397,27 @@ class ProperpcloudAppTest {
     }
 
     @Test
+    fun settingsSubmitServerCatalogUrlAndBearerWithoutPuttingBearerInState() {
+        var submitted: Pair<String, String>? = null
+        compose.setContent {
+            ProperpcloudApp(
+                state = sampleState().copy(destination = AppDestination.SETTINGS),
+                actions = noOpActions().copy(connectServer = { url, token -> submitted = url to token }),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("server-base-url"))
+        compose.onNodeWithTag("server-base-url").performTextInput("https://library.example")
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("server-api-token"))
+        compose.onNodeWithTag("server-api-token").performTextInput("device-secret")
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("server-connect"))
+        compose.onNodeWithTag("server-connect").performClick()
+
+        assertEquals("https://library.example" to "device-secret", submitted)
+    }
+
+    @Test
     fun miniPlayerOpensDedicatedSeekableNowPlayingScreen() {
         val selected = mutableStateOf(AppDestination.LIBRARY)
         compose.setContent {
@@ -481,6 +504,8 @@ class ProperpcloudAppTest {
         openPCloudDeveloperConsole = {},
         selectSource = {},
         disconnectPCloud = {},
+        connectServer = { _, _ -> },
+        disconnectServer = {},
         setPlaybackHistoryEnabled = {},
         setPlaybackHistoryRetention = {},
         consumeMessage = {},

@@ -1,10 +1,13 @@
 package dev.properpcloud.app.data
 
 import dev.properpcloud.app.security.PCloudSessionStore
+import dev.properpcloud.app.security.ServerCatalogSessionStore
 import dev.properpcloud.core.model.AudioSource
 import dev.properpcloud.core.model.SourceId
 import dev.properpcloud.source.pcloud.PCloudSession
 import dev.properpcloud.source.pcloud.PCloudSourceFactory
+import dev.properpcloud.source.server.ServerCatalogAudioSource
+import dev.properpcloud.source.server.ServerCatalogSession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,11 +16,13 @@ import java.util.concurrent.ConcurrentHashMap
 enum class SourceKind(val id: String) {
     DEMO("demo"),
     PCLOUD("pcloud"),
+    SERVER("server"),
 }
 
 class SourceRegistry(
     demoSource: AudioSource,
     private val tokenVault: PCloudSessionStore,
+    private val serverVault: ServerCatalogSessionStore,
 ) {
     private val sources = ConcurrentHashMap<SourceId, AudioSource>()
     private val _current = MutableStateFlow(demoSource)
@@ -27,6 +32,7 @@ class SourceRegistry(
     init {
         sources[demoSource.id] = demoSource
         tokenVault.read()?.let(::installPCloud)
+        serverVault.read()?.let(::installServer)
     }
 
     fun source(id: SourceId): AudioSource? = sources[id]
@@ -55,4 +61,19 @@ class SourceRegistry(
     }
 
     fun hasPCloudSession(): Boolean = sources.containsKey(SourceId(SourceKind.PCLOUD.id))
+
+    fun installServer(session: ServerCatalogSession) {
+        serverVault.write(session)
+        val source = ServerCatalogAudioSource(session)
+        sources[source.id] = source
+        _current.value = source
+    }
+
+    fun disconnectServerLocally() {
+        serverVault.clear()
+        sources.remove(SourceId(SourceKind.SERVER.id))
+        select(SourceKind.DEMO)
+    }
+
+    fun hasServerSession(): Boolean = sources.containsKey(SourceId(SourceKind.SERVER.id))
 }

@@ -95,6 +95,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.properpcloud.app.BuildConfig
@@ -171,6 +172,66 @@ fun ProperpcloudApp(
                 onDismiss = actions.closeInspection,
             )
         }
+    }
+}
+
+@Composable
+private fun ServerCatalogSettings(state: AppUiState, actions: AppActions) {
+    var baseUrl by remember(state.serverBaseUrl) { mutableStateOf(state.serverBaseUrl) }
+    var apiToken by remember { mutableStateOf("") }
+    SettingsSection("Server library") {
+        Text(
+            "Browse the server-generated local catalog instead of recursively scanning pCloud on this device.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (state.serverConnected) {
+            Text(
+                state.serverBaseUrl,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { actions.selectSource(SourceKind.SERVER) }) { Text("Use server") }
+                OutlinedButton(onClick = actions.disconnectServer) { Text("Disconnect") }
+            }
+        } else {
+            OutlinedTextField(
+                value = baseUrl,
+                onValueChange = { baseUrl = it },
+                modifier = Modifier.fillMaxWidth().testTag("server-base-url"),
+                singleLine = true,
+                label = { Text("Server URL") },
+                placeholder = { Text("https://library.example") },
+            )
+            OutlinedTextField(
+                value = apiToken,
+                onValueChange = { apiToken = it },
+                modifier = Modifier.fillMaxWidth().testTag("server-api-token"),
+                singleLine = true,
+                label = { Text("API bearer token (optional on loopback)") },
+                visualTransformation = PasswordVisualTransformation(),
+            )
+            Button(
+                onClick = {
+                    val submittedToken = apiToken
+                    apiToken = ""
+                    actions.connectServer(baseUrl, submittedToken)
+                },
+                enabled = baseUrl.isNotBlank() && !state.serverConnectInProgress,
+                modifier = Modifier.testTag("server-connect"),
+            ) {
+                if (state.serverConnectInProgress) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(if (state.serverConnectInProgress) "Connecting…" else "Connect server")
+            }
+        }
+        Text(
+            "Remote servers must use HTTPS. The bearer token is encrypted with Android Keystore and is never used as queue or media identity.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -295,6 +356,11 @@ private fun LibraryScreen(state: AppUiState, actions: AppActions, expanded: Bool
 @Composable
 private fun SourceBanner(state: AppUiState, actions: AppActions) {
     val isDemo = state.sourceKind == SourceKind.DEMO
+    val message = when (state.sourceKind) {
+        SourceKind.DEMO -> "Playable local demo. Connect pCloud directly or a server library in Settings when ready."
+        SourceKind.PCLOUD -> "Connected directly to pCloud; account credentials are never stored."
+        SourceKind.SERVER -> "Using the server-generated pCloud catalog with short-lived playback tickets."
+    }
     Surface(
         color = if (isDemo) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer,
         modifier = Modifier.fillMaxWidth(),
@@ -309,12 +375,13 @@ private fun SourceBanner(state: AppUiState, actions: AppActions) {
             )
             Spacer(Modifier.width(10.dp))
             Text(
-                if (isDemo) "Playable local demo. Connect pCloud in Settings when ready."
-                else "Connected to pCloud; account credentials are never stored.",
+                message,
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            if (isDemo && state.pCloudConnected) {
+            if (isDemo && state.serverConnected) {
+                TextButton(onClick = { actions.selectSource(SourceKind.SERVER) }) { Text("Use server") }
+            } else if (isDemo && state.pCloudConnected) {
                 TextButton(onClick = { actions.selectSource(SourceKind.PCLOUD) }) { Text("Use pCloud") }
             }
         }
@@ -774,10 +841,18 @@ private fun SettingsScreen(state: AppUiState, actions: AppActions, onAuthorizePC
                             Text("Use pCloud")
                         }
                     }
+                    if (state.serverConnected) {
+                        Button(onClick = { actions.selectSource(SourceKind.SERVER) }) {
+                            Icon(Icons.Default.Cloud, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Use server")
+                        }
+                    }
                 }
             }
         }
         item { PCloudAccountSettings(state, actions, onAuthorizePCloud) }
+        item { ServerCatalogSettings(state, actions) }
         item {
             SettingsSection("Metadata tools") {
                 Bullet("Edit common embedded fields with visible originals and provenance")
@@ -1103,6 +1178,8 @@ data class AppActions(
     val openPCloudDeveloperConsole: () -> Unit,
     val selectSource: (SourceKind) -> Unit,
     val disconnectPCloud: () -> Unit,
+    val connectServer: (String, String) -> Unit,
+    val disconnectServer: () -> Unit,
     val setPlaybackHistoryEnabled: (Boolean) -> Unit,
     val setPlaybackHistoryRetention: (Int) -> Unit,
     val consumeMessage: () -> Unit,

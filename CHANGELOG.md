@@ -20,12 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added server browse/search/status/scan/node/duplicate APIs, short-lived range-capable local
   playback tickets, a source-neutral server `AudioSource` adapter, and `properpcloud library
   scan|status|search` commands on the native desktop entry point.
+- Android can now connect to the optional server catalog, persist it as a selectable source,
+  browse the server-generated folder tree, restore stable server queue identities, and resolve
+  fresh server playback tickets through the existing Media3 path instead of scanning pCloud on
+  the device.
 
 ### Security
 
 - Non-loopback server binds require an owner-only bearer-token file and remote catalog clients
   require HTTPS. pCloud credentials, API bearer values, provider signed URLs, and local mount
   paths remain outside durable media identity and stream tickets expire from process memory.
+- Android stores the optional server API bearer under a separate Android Keystore AES-GCM key,
+  keeps it out of presentation/queue state, clears transient plaintext byte buffers where
+  practical, and probes the server successfully before persisting a new server session.
 
 ## [0.2.0-rc.4] - 2026-08-28
 

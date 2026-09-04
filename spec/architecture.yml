@@ -363,6 +363,7 @@ architecture:
           - feature-inspector
           - feature-settings
           - source-pcloud-jvm
+          - source-server
           - persistence-android
           - playback-android
           - metadata-tags

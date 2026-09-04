@@ -105,13 +105,16 @@ class LibraryHttpServer(
     private fun health(exchange: HttpExchange) {
         val status = repository.status()
         val mountOnline = Files.isDirectory(config.mountRoot, LinkOption.NOFOLLOW_LINKS) && Files.isReadable(config.mountRoot)
+        val pCloudConfigured = pCloud != null
         val pCloudOnline = pCloud?.health() ?: false
+        val fullyOnline = mountOnline && pCloudOnline
         json(
             exchange,
-            if (mountOnline && (pCloud == null || pCloudOnline)) 200 else 503,
+            if (mountOnline) 200 else 503,
             mapOf(
-                "status" to if (mountOnline && (pCloud == null || pCloudOnline)) "ok" else "degraded",
+                "status" to if (fullyOnline) "ok" else "degraded",
                 "mountOnline" to mountOnline,
+                "pcloudConfigured" to pCloudConfigured,
                 "pcloudOnline" to pCloudOnline,
                 "catalogState" to status.state,
                 "generation" to status.generation,

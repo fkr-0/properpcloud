@@ -41,6 +41,8 @@ import dev.properpcloud.source.pcloud.PCloudAccountRegion
 import dev.properpcloud.source.pcloud.PCloudDirectLoginResult
 import dev.properpcloud.source.pcloud.PCloudDirectLoginRejectionReason
 import dev.properpcloud.source.pcloud.PCloudRevocationResult
+import dev.properpcloud.source.server.ServerCatalogAudioSource
+import dev.properpcloud.source.server.ServerCatalogSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -69,6 +71,7 @@ class MainViewModel(
     private var metadataJob: Job? = null
     private var pCloudLoginJob: Job? = null
     private var pCloudLoginGeneration: Long = 0
+    private var serverConnectJob: Job? = null
     private var singleMetadataItem: LoadedMetadataItem? = null
     private val batchMetadataItems = linkedMapOf<String, LoadedMetadataItem>()
     private var metadataExportArtifact: MetadataExportArtifact? = null
@@ -77,12 +80,13 @@ class MainViewModel(
         val startupQueueMutationRevision = queueMutationRevision
         viewModelScope.launch {
             val settings = container.preferences.settings.first()
-            val selected = if (settings.sourceKind == SourceKind.PCLOUD && container.sources.hasPCloudSession()) {
-                SourceKind.PCLOUD
-            } else {
-                SourceKind.DEMO
-            }
+            val selected = when (settings.sourceKind) {
+                SourceKind.PCLOUD -> SourceKind.PCLOUD.takeIf { container.sources.hasPCloudSession() }
+                SourceKind.SERVER -> SourceKind.SERVER.takeIf { container.sources.hasServerSession() }
+                SourceKind.DEMO -> SourceKind.DEMO
+            } ?: SourceKind.DEMO
             container.sources.select(selected)
+            val serverSession = container.serverCatalogVault.read()
             _state.value = _state.value.copy(
                 sourceKind = selected,
                 clientId = settings.clientId,
@@ -91,6 +95,8 @@ class MainViewModel(
                 playbackHistoryEnabled = settings.playbackHistoryEnabled,
                 playbackHistoryRetention = settings.playbackHistoryRetention,
                 pCloudConnected = container.sources.hasPCloudSession(),
+                serverConnected = container.sources.hasServerSession(),
+                serverBaseUrl = serverSession?.normalizedBaseUrl.orEmpty(),
             )
             openRoot()
             restoreQueue(startupQueueMutationRevision)
@@ -114,6 +120,80 @@ class MainViewModel(
                 if (queueChanged) container.preferences.saveQueue(queue)
                 checkpointProgress(queue, playback)
             }
+        }
+    }
+
+    fun useServerSource() {
+        if (!container.sources.select(SourceKind.SERVER)) {
+            _state.value = _state.value.copy(message = "Connect the server library in Settings first.")
+            return
+        }
+        _state.value = _state.value.copy(sourceKind = SourceKind.SERVER, sourceName = "Server library")
+        viewModelScope.launch {
+            container.preferences.updateSource(SourceKind.SERVER)
+            openRoot()
+        }
+    }
+
+    fun connectServer(baseUrl: String, apiToken: String) {
+        serverConnectJob?.cancel()
+        val session = runCatching {
+            ServerCatalogSession(baseUrl.trim(), apiToken.trim().takeIf(String::isNotEmpty))
+        }.getOrElse {
+            _state.value = _state.value.copy(message = it.userMessage("Invalid server configuration"))
+            return
+        }
+        _state.value = _state.value.copy(serverConnectInProgress = true, message = null)
+        serverConnectJob = viewModelScope.launch {
+            try {
+                val candidate = ServerCatalogAudioSource(session)
+                candidate.list(candidate.root.id)
+                container.sources.installServer(session)
+                _state.value = _state.value.copy(
+                    sourceKind = SourceKind.SERVER,
+                    sourceName = "Server library",
+                    serverConnected = true,
+                    serverConnectInProgress = false,
+                    serverBaseUrl = session.normalizedBaseUrl,
+                    message = "Server library connected. Catalog browsing and playback now use server-generated metadata.",
+                )
+                container.preferences.updateSource(SourceKind.SERVER)
+                openRoot()
+            } catch (_: CancellationException) {
+                Unit
+            } catch (error: Throwable) {
+                _state.value = _state.value.copy(
+                    serverConnectInProgress = false,
+                    message = error.userMessage("Could not connect server library"),
+                )
+            }
+        }
+    }
+
+    fun disconnectServer() {
+        serverConnectJob?.cancel()
+        val hadServerQueue = _state.value.queue.entries.any { it.track.sourceId.value == SourceKind.SERVER.id }
+        if (hadServerQueue) {
+            flushPlaybackProgress()
+            playbackConnection.clearQueue()
+            commitQueue(PlaybackQueue(generation = _state.value.queue.generation + 1))
+        }
+        container.sources.disconnectServerLocally()
+        _state.value = _state.value.copy(
+            sourceKind = SourceKind.DEMO,
+            sourceName = "Demo library",
+            serverConnected = false,
+            serverConnectInProgress = false,
+            serverBaseUrl = "",
+            message = if (hadServerQueue) {
+                "Server library disconnected and its active queue was cleared."
+            } else {
+                "Server library disconnected from this device."
+            },
+        )
+        viewModelScope.launch {
+            container.preferences.updateSource(SourceKind.DEMO)
+            openRoot()
         }
     }
 
@@ -831,6 +911,7 @@ class MainViewModel(
         region: PCloudAccountRegion,
     ) {
         pCloudLoginJob?.cancel()
+        serverConnectJob?.cancel()
         val generation = ++pCloudLoginGeneration
         _state.value = _state.value.copy(
             pCloudLoginInProgress = true,
@@ -1160,6 +1241,7 @@ class MainViewModel(
         searchJob?.cancel()
         metadataJob?.cancel()
         pCloudLoginJob?.cancel()
+        serverConnectJob?.cancel()
         discardMetadataSources()
     }
 
