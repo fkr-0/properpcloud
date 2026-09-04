@@ -47,7 +47,7 @@ object ServerCli {
     }
 
     private fun serve(environment: Map<String, String>): Int = withRuntime(environment) { runtime ->
-        val server = LibraryHttpServer(runtime.config, runtime.repository, runtime.scanner, runtime.pCloud)
+        val server = LibraryHttpServer(runtime.config, runtime.repository, runtime.scanner, runtime.pCloud, runtime.mountState)
         Runtime.getRuntime().addShutdownHook(Thread { server.close() })
         server.start()
         if (environment["PROPERPCLOUD_SCAN_ON_START"] != "0") server.requestBackgroundScan()
@@ -68,6 +68,7 @@ data class ServerRuntime(
     val config: ServerConfig,
     val repository: CatalogRepository,
     val pCloud: PCloudRestClient?,
+    val mountState: MountStateProbe,
     val scanner: LibraryScanner,
 ) : AutoCloseable {
     override fun close() = repository.close()
@@ -79,11 +80,13 @@ data class ServerRuntime(
             val pCloud = config.pCloudSessionFile
                 ?.takeIf(Files::isRegularFile)
                 ?.let { PCloudRestClient(PCloudSessionFile(it)) }
+            val mountState = MountStateProbe.mountedDirectory(config.mountRoot)
             return ServerRuntime(
                 config = config,
                 repository = repository,
                 pCloud = pCloud,
-                scanner = LibraryScanner(config.mountRoot, repository, pCloud),
+                mountState = mountState,
+                scanner = LibraryScanner(config.mountRoot, repository, pCloud, mountState = mountState),
             )
         }
     }
