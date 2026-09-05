@@ -106,7 +106,29 @@ class MpvControllerTest {
 
         assertFalse(eof.streamFailure)
         assertFalse(stopped.streamFailure)
+        assertTrue(eof.eofReached)
+        assertFalse(stopped.eofReached)
         assertNull(eof.error)
         assertNull(stopped.error)
+    }
+
+    @Test
+    fun `playback projection preserves bounded speed and normalized volume`() {
+        val playing = MpvState(running = true, paused = false, idle = false)
+
+        val projected = mpvPlaybackState(
+            previous = playing,
+            paused = false,
+            positionMillis = 1_000,
+            durationMillis = 60_000,
+            idle = false,
+            eofReached = false,
+            expectedIdle = false,
+            speed = 1.75f,
+            volume = 0.42f,
+        )
+
+        assertEquals(1.75f, projected.speed)
+        assertEquals(0.42f, projected.volume)
     }
 }
