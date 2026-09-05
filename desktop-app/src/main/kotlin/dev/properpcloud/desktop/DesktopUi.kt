@@ -4,6 +4,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,14 +20,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
@@ -79,6 +84,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
@@ -91,12 +97,14 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.properpcloud.core.model.AudioFolder
+import dev.properpcloud.core.model.AudioTabId
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.LibraryFile
 import dev.properpcloud.core.model.LibraryFileKind
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.SearchMatchType
+import dev.properpcloud.core.model.TrackSortKey
 import dev.properpcloud.metadata.tags.FolderPlaylistOrder
 import dev.properpcloud.metadata.tags.FolderTagReviewTransition
 import dev.properpcloud.metadata.tags.FolderTagReviewValue
@@ -104,6 +112,8 @@ import dev.properpcloud.metadata.tags.FolderTagReviewValueKind
 import dev.properpcloud.metadata.tags.LocalFolderWorkbenchWatchState
 import dev.properpcloud.source.pcloud.PCloudAccountRegion
 import java.awt.SystemColor
+import java.text.DateFormat
+import java.util.Date
 
 private fun playlistOrderLabel(order: FolderPlaylistOrder): String = when (order) {
     FolderPlaylistOrder.NATURAL_FILENAME -> "natural filename"
@@ -112,6 +122,24 @@ private fun playlistOrderLabel(order: FolderPlaylistOrder): String = when (order
     FolderPlaylistOrder.TITLE_NUMBER -> "title number"
     FolderPlaylistOrder.MODIFICATION_TIME -> "modification time"
 }
+
+private fun desktopSortLabel(key: TrackSortKey): String = when (key) {
+    TrackSortKey.NATURAL_FILENAME -> "Name"
+    TrackSortKey.DISC_THEN_TRACK -> "Disc/track"
+    TrackSortKey.TAGGED_TITLE -> "Title"
+    TrackSortKey.MODIFIED_TIME -> "Date"
+    TrackSortKey.SIZE -> "Size"
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024L * 1024L -> "%.1f GB".format(bytes / (1024.0 * 1024.0 * 1024.0))
+    bytes >= 1024L * 1024L -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+    bytes >= 1024L -> "%.1f KB".format(bytes / 1024.0)
+    else -> "$bytes B"
+}
+
+private fun formatLastPlayed(epochMillis: Long): String =
+    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(epochMillis))
 
 private fun desktopVisibleNodes(state: DesktopUiState): List<MediaNode> =
     if (state.searchExpanded && state.searchQuery.trim().length >= 3) state.searchResults else state.nodes
@@ -157,6 +185,8 @@ fun DesktopApp(controller: DesktopController) {
                     DesktopShortcut.PlayPause -> controller.playPause()
                     DesktopShortcut.Next -> controller.next()
                     DesktopShortcut.Previous -> controller.previous()
+                    is DesktopShortcut.Seek -> controller.seek(shortcut.deltaMillis)
+                    is DesktopShortcut.AdjustVolume -> controller.adjustVolume(shortcut.delta)
                     DesktopShortcut.FocusLibrary -> focusTarget = DesktopFocusTarget.LIBRARY
                     DesktopShortcut.FocusQueue -> focusTarget = DesktopFocusTarget.QUEUE
                     DesktopShortcut.ShowHelp -> keyboardHelp = true
@@ -220,6 +250,7 @@ fun DesktopApp(controller: DesktopController) {
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
                 if (state.busy) CircularProgressIndicator(Modifier.fillMaxWidth().height(3.dp))
+                AudioTabStrip(state, controller)
                 Row(Modifier.weight(1f).fillMaxWidth()) {
                     NavigationPane(state, controller, Modifier.width(250.dp).fillMaxHeight())
                     Divider(Modifier.fillMaxHeight().width(1.dp))
@@ -253,6 +284,111 @@ fun DesktopApp(controller: DesktopController) {
         if (accountDialog) AccountDialog(state, controller, onDismiss = { accountDialog = false })
         if (keyboardHelp) KeyboardHelpDialog(onDismiss = { keyboardHelp = false })
     }
+}
+
+@Composable
+private fun AudioTabStrip(state: DesktopUiState, controller: DesktopController) {
+    var addDialogOpen by remember { mutableStateOf(false) }
+    var editDialogOpen by remember { mutableStateOf(false) }
+    val active = state.audioTabs.active
+    Surface(tonalElevation = 1.dp) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            state.audioTabs.tabs.forEach { tab ->
+                FilterChip(
+                    selected = tab.definition.id == state.audioTabs.activeTabId,
+                    onClick = { controller.switchAudioTab(tab.definition.id) },
+                    label = {
+                        Text(
+                            buildString {
+                                tab.definition.icon?.takeIf(String::isNotBlank)?.let { append(it).append(' ') }
+                                append(tab.definition.name)
+                                if (tab.queue.entries.isNotEmpty()) append(" · ${tab.queue.entries.size}")
+                            },
+                            maxLines = 1,
+                        )
+                    },
+                )
+            }
+            IconButton(onClick = { addDialogOpen = true }) { Icon(Icons.Default.Add, "Add audio tab") }
+            IconButton(onClick = { editDialogOpen = true }) { Icon(Icons.Default.Edit, "Edit ${active.definition.name} tab") }
+        }
+    }
+    if (addDialogOpen) {
+        AudioTabEditorDialog(
+            title = "Add audio tab",
+            initialName = "",
+            initialRoot = "",
+            confirmLabel = "Add",
+            onDismiss = { addDialogOpen = false },
+            onConfirm = { name, root ->
+                addDialogOpen = false
+                controller.addAudioTab(name, root)
+            },
+        )
+    }
+    if (editDialogOpen) {
+        AudioTabEditorDialog(
+            title = "Edit ${active.definition.name}",
+            initialName = active.definition.name,
+            initialRoot = active.definition.rootPath,
+            confirmLabel = "Save",
+            canDelete = state.audioTabs.tabs.size > 1,
+            onDelete = {
+                editDialogOpen = false
+                controller.removeAudioTab(active.definition.id)
+            },
+            onDismiss = { editDialogOpen = false },
+            onConfirm = { name, root ->
+                editDialogOpen = false
+                controller.updateAudioTab(active.definition.id, name, root)
+            },
+        )
+    }
+}
+
+@Composable
+private fun AudioTabEditorDialog(
+    title: String,
+    initialName: String,
+    initialRoot: String,
+    confirmLabel: String,
+    canDelete: Boolean = false,
+    onDelete: () -> Unit = {},
+    onDismiss: () -> Unit,
+    onConfirm: (String, String) -> Unit,
+) {
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    var root by remember(initialRoot) { mutableStateOf(initialRoot) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    root,
+                    { root = it },
+                    label = { Text("pCloud root path") },
+                    supportingText = { Text("Relative path, for example hb/Sci-Fi") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(name, root) }, enabled = name.isNotBlank()) { Text(confirmLabel) }
+        },
+        dismissButton = {
+            Row {
+                if (canDelete) TextButton(onClick = onDelete) { Text("Delete") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
 }
 
 @Composable
@@ -607,14 +743,17 @@ private fun KeyboardHelpDialog(onDismiss: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text("Ctrl+L · focus library")
                 Text("Ctrl+Q · focus queue")
-                Text("↑/↓ · select an item")
+                Text("Space · play/pause")
+                Text("←/→ · seek 30 seconds")
+                Text("↑/↓ · volume ±5%")
+                Text("Ctrl+↑/↓ · select an item in the focused pane")
                 Text("Enter · open/play selected item")
                 Text("Shift+Enter · append selected library item")
                 Text("Ctrl+Enter · replace queue and play")
                 Text("Alt+Enter · inspect selected library item")
                 Text("Alt+↑/↓ · move selected queue item")
                 Text("Delete · remove selected queue item")
-                Text("Space · play/pause · Ctrl+←/→ · previous/next")
+                Text("Ctrl+←/→ · previous/next")
                 Text("All queue operations have non-drag alternatives.", fontWeight = FontWeight.SemiBold)
             }
         },
@@ -625,7 +764,8 @@ private fun KeyboardHelpDialog(onDismiss: () -> Unit) {
 @Composable
 private fun NavigationPane(state: DesktopUiState, controller: DesktopController, modifier: Modifier) {
     Column(modifier.padding(12.dp)) {
-        Text("Folders", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(state.audioTabs.active.definition.name, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text("Root: ${state.audioTabs.active.definition.rootPath.ifBlank { "/" }}", style = MaterialTheme.typography.labelSmall)
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             itemsIndexed(state.breadcrumbs) { index, folder ->
@@ -691,16 +831,34 @@ private fun LibraryPane(
     modifier: Modifier,
 ) {
     val visibleNodes = desktopVisibleNodes(state)
+    var sortMenu by remember { mutableStateOf(false) }
     Column(modifier.padding(14.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(state.currentFolder?.name ?: "Library", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
                 Text("Double-click to open or play; right-click for queue actions", style = MaterialTheme.typography.bodySmall)
-                if (keyboardFocused) Text("Keyboard focus · ↑/↓ select · Enter open/play · F1 help", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                if (keyboardFocused) Text("Keyboard focus · Ctrl+↑/↓ select · Enter open/play · F1 help", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
             state.currentFolder?.let { folder ->
                 FilledTonalButton(onClick = { controller.enqueueFolder(folder, recursive = false, QueueOperation.REPLACE) }) {
                     Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Play folder")
+                }
+            }
+            Box {
+                OutlinedButton(onClick = { sortMenu = true }) { Text("Sort: ${desktopSortLabel(state.sortKey)}") }
+                DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                    listOf(
+                        TrackSortKey.NATURAL_FILENAME,
+                        TrackSortKey.MODIFIED_TIME,
+                        TrackSortKey.SIZE,
+                        TrackSortKey.TAGGED_TITLE,
+                        TrackSortKey.DISC_THEN_TRACK,
+                    ).forEach { key ->
+                        DropdownMenuItem(
+                            text = { Text(desktopSortLabel(key)) },
+                            onClick = { sortMenu = false; controller.setSort(key) },
+                        )
+                    }
                 }
             }
             IconButton(onClick = controller::toggleSearch) {
@@ -717,7 +875,7 @@ private fun LibraryPane(
                 onValueChange = controller::updateSearchQuery,
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                label = { Text("Filename search") },
+                label = { Text("Search ${state.audioTabs.active.definition.name}") },
                 placeholder = { Text("Type at least 3 characters") },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
             )
@@ -732,7 +890,7 @@ private fun LibraryPane(
             }
             if (state.searchBusy) CircularProgressIndicator(Modifier.height(20.dp).width(20.dp))
             if (state.searchQuery.isNotEmpty() && state.searchQuery.trim().length < 3) {
-                Text("Enter at least 3 characters; search uses the loaded file list.", style = MaterialTheme.typography.labelSmall)
+                Text("Enter at least 3 characters; pCloud search stays inside this tab's root tree.", style = MaterialTheme.typography.labelSmall)
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -743,6 +901,9 @@ private fun LibraryPane(
             itemsIndexed(visibleNodes, key = { _, node -> node.sourceId.value + node.id.value }) { index, node ->
                 var menu by remember(node.id) { mutableStateOf(false) }
                 val keyboardSelected = keyboardFocused && index == selectedIndex
+                val currentTrack = state.queue.current?.track
+                val isCurrentTrack = node is AudioTrack && currentTrack?.sourceId == node.sourceId && currentTrack.id == node.id
+                val progress = if (node is AudioTrack) state.progressByNodeId[node.id] else null
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth()
                         .semantics {
@@ -762,14 +923,20 @@ private fun LibraryPane(
                 ) {
                     Row(
                         Modifier.fillMaxWidth()
-                            .background(if (keyboardFocused && index == selectedIndex) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
+                            .background(
+                                when {
+                                    keyboardFocused && index == selectedIndex -> MaterialTheme.colorScheme.secondaryContainer
+                                    isCurrentTrack -> MaterialTheme.colorScheme.primaryContainer
+                                    else -> MaterialTheme.colorScheme.surface
+                                },
+                            )
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(
                             when (node) {
                                 is AudioFolder -> Icons.Default.Folder
-                                is AudioTrack -> Icons.Default.LibraryMusic
+                                is AudioTrack -> if (isCurrentTrack) Icons.Default.PlayArrow else Icons.Default.LibraryMusic
                                 is LibraryFile -> Icons.Default.Description
                             },
                             null,
@@ -778,7 +945,29 @@ private fun LibraryPane(
                         Column(Modifier.weight(1f)) {
                             Text(node.name, fontWeight = FontWeight.Medium)
                             if (node is AudioTrack) {
-                                Text(listOfNotNull(node.taggedTitle, node.durationMillis?.let(::formatDuration)).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    listOfNotNull(
+                                        node.taggedTitle,
+                                        node.durationMillis?.let(::formatDuration),
+                                        node.sizeBytes?.let(::formatBytes),
+                                        node.name.substringAfterLast('.', "audio").uppercase(),
+                                    ).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                progress?.let { saved ->
+                                    val percent = saved.durationMillis?.takeIf { it > 0 }
+                                        ?.let { ((saved.positionMillis * 100) / it).coerceIn(0, 100) }
+                                    Text(
+                                        buildString {
+                                            append("Last played ").append(formatLastPlayed(saved.observedAtEpochMillis))
+                                            if (percent != null) append(" · $percent%")
+                                            append(" · ").append(formatDuration(saved.positionMillis))
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                    )
+                                }
                             } else if (node is LibraryFile) {
                                 Text(if (node.kind == LibraryFileKind.PLAYLIST) "Playlist file" else "File", style = MaterialTheme.typography.bodySmall)
                             }
@@ -790,6 +979,12 @@ private fun LibraryPane(
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             when (node) {
                                 is AudioTrack -> {
+                                    if (progress != null && !progress.completed && progress.positionMillis > 0) {
+                                        DropdownMenuItem(
+                                            { Text("Resume at ${formatDuration(progress.positionMillis)}") },
+                                            onClick = { menu = false; controller.play(node) },
+                                        )
+                                    }
                                     DropdownMenuItem({ Text("Play now") }, onClick = { menu = false; controller.play(node) })
                                     DropdownMenuItem({ Text("Play next") }, onClick = { menu = false; controller.enqueue(node, QueueOperation.PLAY_NEXT) })
                                     DropdownMenuItem({ Text("Append") }, onClick = { menu = false; controller.enqueue(node) })
@@ -819,12 +1014,27 @@ private fun QueuePane(
     onSelected: (Int) -> Unit,
     modifier: Modifier,
 ) {
+    var saveDialogOpen by remember { mutableStateOf(false) }
+    var loadMenuOpen by remember { mutableStateOf(false) }
     Column(modifier.padding(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).semantics { heading() })
+            TextButton(onClick = { saveDialogOpen = true }, enabled = state.queue.entries.isNotEmpty()) { Text("Save") }
+            Box {
+                TextButton(onClick = { loadMenuOpen = true }, enabled = state.audioTabs.playlists.isNotEmpty()) { Text("Load") }
+                DropdownMenu(expanded = loadMenuOpen, onDismissRequest = { loadMenuOpen = false }) {
+                    state.audioTabs.playlists.forEach { playlist ->
+                        DropdownMenuItem(
+                            text = { Text("${playlist.name} · ${playlist.entries.size}") },
+                            onClick = { loadMenuOpen = false; controller.loadSavedPlaylist(playlist.name) },
+                        )
+                    }
+                }
+            }
             AssistChip(onClick = controller::revealContainingFolder, label = { Text("Show folder") })
         }
-        if (keyboardFocused) Text("Keyboard focus · ↑/↓ select · Enter play · Alt+↑/↓ move · Delete remove", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        if (keyboardFocused) Text("Keyboard focus · Ctrl+↑/↓ select · Enter play · Alt+↑/↓ move · Delete remove", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        Text("Long-press and drag to reorder; arrow buttons and Alt+↑/↓ remain available.", style = MaterialTheme.typography.labelSmall)
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             itemsIndexed(state.queue.entries, key = { _, entry -> entry.track.sourceId.value + entry.track.id.value }) { index, entry ->
@@ -834,6 +1044,26 @@ private fun QueuePane(
                     tonalElevation = if (currentTrack) 3.dp else 0.dp,
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.fillMaxWidth()
+                        .pointerInput(index, state.queue.entries.size) {
+                            var dragY = 0f
+                            detectDragGesturesAfterLongPress(
+                                onDragCancel = { dragY = 0f },
+                                onDragEnd = { dragY = 0f },
+                            ) { _, amount ->
+                                dragY += amount.y
+                                val threshold = 42.dp.toPx()
+                                when {
+                                    dragY > threshold && index < state.queue.entries.lastIndex -> {
+                                        controller.moveQueue(index, 1)
+                                        dragY = 0f
+                                    }
+                                    dragY < -threshold && index > 0 -> {
+                                        controller.moveQueue(index, -1)
+                                        dragY = 0f
+                                    }
+                                }
+                            }
+                        }
                         .semantics {
                             selected = keyboardSelected
                             stateDescription = when {
@@ -874,13 +1104,39 @@ private fun QueuePane(
             }
         }
     }
+    if (saveDialogOpen) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { saveDialogOpen = false },
+            title = { Text("Save playlist") },
+            text = {
+                OutlinedTextField(
+                    name,
+                    { name = it },
+                    label = { Text("Playlist name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { saveDialogOpen = false; controller.saveCurrentPlaylist(name) },
+                    enabled = name.isNotBlank(),
+                ) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { saveDialogOpen = false }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable
 private fun PlayerBar(state: DesktopUiState, controller: DesktopController) {
     val current = state.queue.current?.track
+    val tab = state.audioTabs.active
+    var sleepMenuOpen by remember { mutableStateOf(false) }
+    var volume by remember(tab.definition.id, tab.volume) { mutableStateOf(tab.volume) }
     Surface(shadowElevation = 8.dp) {
-        Row(
+        Column(
             Modifier.fillMaxWidth()
                 .semantics {
                     contentDescription = current?.let { "Player for ${it.name}" } ?: "Player with no selected track"
@@ -891,32 +1147,81 @@ private fun PlayerBar(state: DesktopUiState, controller: DesktopController) {
                         else -> "Playing"
                     }
                 }
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            Column(Modifier.width(260.dp)) {
-                Text(current?.taggedTitle ?: current?.filenameStem ?: "Nothing playing", fontWeight = FontWeight.SemiBold, maxLines = 1)
-                Text(current?.name ?: "Choose a track", style = MaterialTheme.typography.bodySmall, maxLines = 1)
-            }
-            IconButton(onClick = controller::previous) { Icon(Icons.Default.SkipPrevious, "Previous") }
-            IconButton(onClick = controller::playPause) { Icon(if (state.playback.paused) Icons.Default.PlayArrow else Icons.Default.Pause, "Play or pause") }
-            if (state.playback.restartAvailable) {
-                IconButton(onClick = controller::restartPlayer) {
-                    Icon(Icons.Default.Refresh, "Restart player and resume")
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.width(260.dp)) {
+                    Text(current?.taggedTitle ?: current?.filenameStem ?: "Nothing playing", fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text("${tab.definition.name} · ${current?.name ?: "Choose a track"}", style = MaterialTheme.typography.bodySmall, maxLines = 1)
                 }
+                IconButton(onClick = controller::previous) { Icon(Icons.Default.SkipPrevious, "Previous") }
+                IconButton(onClick = controller::playPause) { Icon(if (state.playback.paused) Icons.Default.PlayArrow else Icons.Default.Pause, "Play or pause") }
+                if (state.playback.restartAvailable) {
+                    IconButton(onClick = controller::restartPlayer) {
+                        Icon(Icons.Default.Refresh, "Restart player and resume")
+                    }
+                }
+                IconButton(onClick = controller::next) { Icon(Icons.Default.SkipNext, "Next") }
+                IconButton(onClick = { controller.seek(-30_000) }) { Icon(Icons.Default.KeyboardArrowLeft, "Back 30 seconds") }
+                IconButton(onClick = { controller.seek(30_000) }) { Icon(Icons.Default.KeyboardArrowRight, "Forward 30 seconds") }
+                val duration = state.playback.durationMillis ?: current?.durationMillis ?: 0
+                Slider(
+                    value = state.playback.positionMillis.coerceAtMost(duration).toFloat(),
+                    onValueChange = { controller.seekAbsolute(it.toLong()) },
+                    valueRange = 0f..duration.coerceAtLeast(1).toFloat(),
+                    enabled = current != null,
+                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                )
+                Text("${formatDuration(state.playback.positionMillis)} / ${formatDuration(duration)}", style = MaterialTheme.typography.labelMedium)
             }
-            IconButton(onClick = controller::next) { Icon(Icons.Default.SkipNext, "Next") }
-            IconButton(onClick = { controller.seek(-15_000) }) { Icon(Icons.Default.KeyboardArrowLeft, "Back 15 seconds") }
-            IconButton(onClick = { controller.seek(30_000) }) { Icon(Icons.Default.KeyboardArrowRight, "Forward 30 seconds") }
-            val duration = state.playback.durationMillis ?: current?.durationMillis ?: 0
-            Slider(
-                value = state.playback.positionMillis.coerceAtMost(duration).toFloat(),
-                onValueChange = { controller.seekAbsolute(it.toLong()) },
-                valueRange = 0f..duration.coerceAtLeast(1).toFloat(),
-                enabled = current != null,
-                modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-            )
-            Text("${formatDuration(state.playback.positionMillis)} / ${formatDuration(duration)}", style = MaterialTheme.typography.labelMedium)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Speed", style = MaterialTheme.typography.labelMedium)
+                listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f).forEach { speed ->
+                    FilterChip(
+                        selected = kotlin.math.abs(tab.playbackSpeed - speed) < 0.01f,
+                        onClick = { controller.setPlaybackSpeed(speed) },
+                        label = { Text(if (speed % 1f == 0f) "${speed.toInt()}×" else "$speed×") },
+                    )
+                }
+                Text("Vol ${(volume * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
+                Slider(
+                    value = volume,
+                    onValueChange = { volume = it },
+                    onValueChangeFinished = { controller.setVolume(volume) },
+                    valueRange = 0f..1f,
+                    modifier = Modifier.width(130.dp),
+                )
+                FilterChip(selected = tab.shuffle, onClick = controller::toggleShuffle, label = { Text("Shuffle") })
+                FilterChip(
+                    selected = tab.repeatMode != dev.properpcloud.core.model.PlayerRepeatMode.OFF,
+                    onClick = controller::cycleRepeatMode,
+                    label = { Text("Repeat ${tab.repeatMode.name.lowercase()}") },
+                )
+                Box {
+                    OutlinedButton(onClick = { sleepMenuOpen = true }) {
+                        Text(if (state.sleepTimerEndsAtEpochMillis == null) "Sleep" else "Sleep active")
+                    }
+                    DropdownMenu(expanded = sleepMenuOpen, onDismissRequest = { sleepMenuOpen = false }) {
+                        listOf(15, 30, 45, 60, 90, 120).forEach { minutes ->
+                            DropdownMenuItem(
+                                text = { Text("Stop after $minutes min") },
+                                onClick = { sleepMenuOpen = false; controller.setSleepTimer(minutes) },
+                            )
+                        }
+                        if (state.sleepTimerEndsAtEpochMillis != null) {
+                            DropdownMenuItem(
+                                text = { Text("Cancel timer") },
+                                onClick = { sleepMenuOpen = false; controller.setSleepTimer(null) },
+                            )
+                        }
+                    }
+                }
+                Text("Space play/pause · ←/→ seek · ↑/↓ volume", style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 }

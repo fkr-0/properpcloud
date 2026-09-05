@@ -776,7 +776,7 @@ class DesktopController(
 
     fun setSort(key: TrackSortKey) {
         mutableState.value = mutableState.value.copy(sortKey = key)
-        mutableState.value.currentFolder?.let { folder -> scope.launch { loadFolder(folder.id, resetBreadcrumbs = true) } }
+        mutableState.value.currentFolder?.let { folder -> scope.launch { loadFolder(folder.id) } }
     }
 
     fun switchAudioTab(tabId: AudioTabId) = scope.launch {
