@@ -1,6 +1,9 @@
 package dev.properpcloud.desktop.data
 
 import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.AudioTabDefaults
+import dev.properpcloud.core.model.AudioTabId
+import dev.properpcloud.core.model.AudioTabReducer
 import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.PlaybackProgress
 import dev.properpcloud.core.model.PlaybackQueue
@@ -27,6 +30,42 @@ class SqliteStateRepositoryTest {
                 assertEquals(track.id, repository.loadQueue().entries.single().nodeId)
                 assertEquals(42_500L, repository.loadProgress(track.sourceId, track.id)?.positionMillis)
                 assertNotNull(repository.loadProgress(track.sourceId, track.id))
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `round trips tab sessions and named playlists using stable media identities`() {
+        val root = Files.createTempDirectory("properpcloud-sqlite-tabs-")
+        try {
+            SqliteStateRepository(root.resolve("state.db")).use { repository ->
+                val track = AudioTrack(SourceId("pcloud"), NodeId("file:9001"), NodeId("folder:44"), "chapter.m4b")
+                var tabs = AudioTabDefaults.collection()
+                tabs = AudioTabReducer.updateActive(tabs) { tab ->
+                    tab.copy(
+                        queue = PlaybackQueue(entries = listOf(QueueEntry(track)), currentIndex = 0),
+                        currentFolderId = track.parentId,
+                        playbackPositionMillis = 88_000,
+                        playbackSpeed = 1.5f,
+                        volume = 0.7f,
+                    )
+                }
+                tabs = AudioTabReducer.savePlaylist(tabs, "Night book")
+                tabs = AudioTabReducer.switch(tabs, AudioTabId("music"), 88_000)
+
+                repository.saveAudioTabs(tabs)
+                val restored = requireNotNull(repository.loadAudioTabs())
+
+                assertEquals(AudioTabId("music"), restored.activeTabId)
+                val audiobook = restored.tabs.first { it.id == AudioTabId("audiobooks") }
+                assertEquals(NodeId("file:9001"), audiobook.queue.entries.single().nodeId)
+                assertEquals(88_000L, audiobook.playbackPositionMillis)
+                assertEquals(1.5f, audiobook.playbackSpeed)
+                assertEquals(0.7f, audiobook.volume)
+                assertEquals("Night book", restored.playlists.single().name)
+                assertEquals(NodeId("file:9001"), restored.playlists.single().entries.single().nodeId)
             }
         } finally {
             root.toFile().deleteRecursively()
@@ -80,6 +119,7 @@ class SqliteStateRepositoryTest {
                 assertEquals(NodeId("track:legacy"), repository.loadQueue().entries.single().nodeId)
                 assertEquals(12_000L, repository.loadProgress(SourceId("demo"), NodeId("track:legacy"))?.positionMillis)
                 assertTrue(repository.loadPlaybackHistory().isEmpty())
+                assertEquals(null, repository.loadAudioTabs())
 
                 repository.setSetting(SqliteStateRepository.HISTORY_ENABLED_KEY, "true")
                 repository.saveProgress(
