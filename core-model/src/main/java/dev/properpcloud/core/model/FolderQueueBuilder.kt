@@ -5,6 +5,7 @@ enum class TrackSortKey {
     DISC_THEN_TRACK,
     TAGGED_TITLE,
     MODIFIED_TIME,
+    SIZE,
 }
 
 data class TrackSortPolicy(
@@ -59,6 +60,10 @@ object FolderQueueBuilder {
         TrackSortKey.MODIFIED_TIME -> compareValues(
             left.modifiedAtEpochMillis ?: Long.MAX_VALUE,
             right.modifiedAtEpochMillis ?: Long.MAX_VALUE,
+        )
+        TrackSortKey.SIZE -> compareValues(
+            left.sizeBytes ?: Long.MAX_VALUE,
+            right.sizeBytes ?: Long.MAX_VALUE,
         )
     }
 }
