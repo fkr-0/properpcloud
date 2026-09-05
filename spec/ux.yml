@@ -28,10 +28,10 @@ ux:
       player: persistent bottom control surface
     linux_desktop:
       panes:
-        navigation: account, roots, folder tree
+        navigation: account, audio tabs, active-tab root, folder tree
         content: folder list, search, or inspector
         queue: reorderable queue and history
-      player: persistent bottom bar with optional expanded details panel
+      player: persistent bottom bar with per-tab speed, volume, shuffle, repeat, and sleep controls
   navigation_model:
     rules:
       - Folder identity, not path text, drives navigation.
@@ -152,6 +152,58 @@ ux:
         condition: queue build omitted one or more candidates
         content: counts by unsupported, inaccessible, failed, duplicate
         action: Open report
+    tabbed_audio_player:
+      defaults:
+        - {name: Hörbücher, root: hb}
+        - {name: Musik, root: musik}
+        - {name: DJ/Auflege, root: dj}
+        - {name: Sci-Fi, root: hb/Sci-Fi}
+        - {name: Krimi, root: hb/Krimi}
+        - {name: Fantasy, root: hb/Fantasy}
+      tab_strip:
+        presentation: horizontally scrollable named chips with optional icon/color and queue count
+        actions: [select, add, rename, change_root, remove]
+        switching:
+          - Checkpoint and pause the old tab before selection changes.
+          - Restore the new tab's browser, queue, position, and player preferences.
+          - Never autoplay merely because a tab became active.
+      browser:
+        scope: active tab root and descendants only
+        rows:
+          show: [current_track, duration, format, size, last_played, progress]
+          progress_action: offer explicit resume from the stored position
+        controls:
+          sort: [name, modified_date, size, tagged_title, disc_and_track]
+          search: recursive and bounded within the active pCloud tab tree
+          folder: play all direct children remains explicit
+      queue:
+        ownership: one independent queue per tab
+        reorder: long-press drag plus visible move controls and desktop keyboard alternative
+        named_playlists:
+          - Save the active queue under a user-provided name.
+          - Load into the active tab paused; loading never implies play.
+      player:
+        global_invariant: at most one platform player may be actively playing
+        controls:
+          - play_pause
+          - previous_next
+          - seek_back_30_seconds
+          - seek_forward_30_seconds
+          - playback_speed_0_5_to_3
+          - volume
+          - shuffle
+          - repeat_off_all_one
+          - sleep_timer
+        desktop_shortcuts:
+          Space: play_pause
+          Left_or_Right: seek_30_seconds
+          Up_or_Down: volume_5_percent
+          Ctrl_Left_or_Right: previous_or_next
+          Ctrl_Up_or_Down: move_keyboard_selection
+      durability:
+        persisted: [stable_source_id, stable_node_id, folder_id, queue_order, position, speed, volume, shuffle, repeat, tab_definition, named_playlist]
+        forbidden: [signed_stream_url, bearer_token, provider_password]
+        disconnect: preserve stable unresolved queue references for later reconnect
     now_playing:
       hierarchy:
         - artwork or folder-derived cover
