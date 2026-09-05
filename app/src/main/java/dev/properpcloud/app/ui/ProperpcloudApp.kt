@@ -1123,6 +1123,7 @@ private fun sortLabel(key: TrackSortKey): String = when (key) {
     TrackSortKey.DISC_THEN_TRACK -> "Disc and track"
     TrackSortKey.TAGGED_TITLE -> "Tagged title"
     TrackSortKey.MODIFIED_TIME -> "Modified time"
+    TrackSortKey.SIZE -> "Size"
 }
 
 private fun formatDuration(milliseconds: Long): String {

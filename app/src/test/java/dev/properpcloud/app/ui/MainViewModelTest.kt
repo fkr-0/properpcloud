@@ -309,11 +309,16 @@ class MainViewModelTest {
         }
         override fun select(index: Int, play: Boolean) = Unit
         override fun clearQueue() = Unit
+        override fun pause() = Unit
         override fun playPause() = Unit
         override fun skipNext() = Unit
         override fun skipPrevious() = Unit
         override fun seekBy(deltaMillis: Long) = Unit
         override fun seekTo(positionMillis: Long) = Unit
+        override fun setPlaybackSpeed(speed: Float) = Unit
+        override fun setVolume(volume: Float) = Unit
+        override fun setShuffle(enabled: Boolean) = Unit
+        override fun setRepeatMode(mode: dev.properpcloud.core.model.PlayerRepeatMode) = Unit
         override fun close() = Unit
     }
 }

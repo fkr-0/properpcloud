@@ -11,9 +11,12 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import dev.properpcloud.core.model.MediaIdentity
+import dev.properpcloud.core.model.MAX_PLAYBACK_SPEED
+import dev.properpcloud.core.model.MIN_PLAYBACK_SPEED
 import dev.properpcloud.core.model.PlaybackFailureRecovery
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.PlaybackRecoveryPolicy
+import dev.properpcloud.core.model.PlayerRepeatMode
 import dev.properpcloud.core.model.SignedLinkRetryGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +38,10 @@ data class PlaybackUiState(
     val isPlaying: Boolean = false,
     val positionMillis: Long = 0,
     val durationMillis: Long = 0,
+    val playbackSpeed: Float = 1f,
+    val volume: Float = 1f,
+    val shuffle: Boolean = false,
+    val repeatMode: PlayerRepeatMode = PlayerRepeatMode.OFF,
     val playbackState: Int = Player.STATE_IDLE,
     val error: String? = null,
 )
@@ -44,11 +51,16 @@ interface PlaybackController : AutoCloseable {
     fun setQueue(queue: PlaybackQueue, play: Boolean, startPositionMillis: Long = 0)
     fun clearQueue()
     fun select(index: Int, play: Boolean = true)
+    fun pause()
     fun playPause()
     fun skipNext()
     fun skipPrevious()
     fun seekTo(positionMillis: Long)
     fun seekBy(deltaMillis: Long)
+    fun setPlaybackSpeed(speed: Float)
+    fun setVolume(volume: Float)
+    fun setShuffle(enabled: Boolean)
+    fun setRepeatMode(mode: PlayerRepeatMode)
 }
 
 internal fun isRetriablePlaybackFailure(errorCode: Int, responseCode: Int?): Boolean = when {
@@ -121,6 +133,8 @@ class PlaybackConnection(context: Context) : PlaybackController, Player.Listener
         }
     }
 
+    override fun pause() = withController { it.pause() }
+
     override fun playPause() = withController { player ->
         if (player.isPlaying) {
             player.pause()
@@ -136,6 +150,22 @@ class PlaybackConnection(context: Context) : PlaybackController, Player.Listener
     override fun skipPrevious() = withController { it.seekToPreviousMediaItem() }
     override fun seekTo(positionMillis: Long) = withController { it.seekTo(positionMillis.coerceAtLeast(0)) }
     override fun seekBy(deltaMillis: Long) = withController { it.seekTo((it.currentPosition + deltaMillis).coerceAtLeast(0)) }
+    override fun setPlaybackSpeed(speed: Float) = withController { player ->
+        player.setPlaybackSpeed(speed.coerceIn(MIN_PLAYBACK_SPEED, MAX_PLAYBACK_SPEED))
+    }
+    override fun setVolume(volume: Float) = withController { player ->
+        player.volume = volume.coerceIn(0f, 1f)
+    }
+    override fun setShuffle(enabled: Boolean) = withController { player ->
+        player.shuffleModeEnabled = enabled
+    }
+    override fun setRepeatMode(mode: PlayerRepeatMode) = withController { player ->
+        player.repeatMode = when (mode) {
+            PlayerRepeatMode.OFF -> Player.REPEAT_MODE_OFF
+            PlayerRepeatMode.ONE -> Player.REPEAT_MODE_ONE
+            PlayerRepeatMode.ALL -> Player.REPEAT_MODE_ALL
+        }
+    }
 
     override fun onEvents(player: Player, events: Player.Events) = updateState(player)
 
@@ -174,6 +204,14 @@ class PlaybackConnection(context: Context) : PlaybackController, Player.Listener
             isPlaying = player.isPlaying,
             positionMillis = player.currentPosition.coerceAtLeast(0),
             durationMillis = player.duration.takeIf { it > 0 } ?: 0,
+            playbackSpeed = player.playbackParameters.speed,
+            volume = player.volume,
+            shuffle = player.shuffleModeEnabled,
+            repeatMode = when (player.repeatMode) {
+                Player.REPEAT_MODE_ONE -> PlayerRepeatMode.ONE
+                Player.REPEAT_MODE_ALL -> PlayerRepeatMode.ALL
+                else -> PlayerRepeatMode.OFF
+            },
             playbackState = player.playbackState,
             error = player.playerError?.errorCodeName,
         )
