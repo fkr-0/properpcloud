@@ -163,6 +163,7 @@ class ProcessResult:
     artwork_removed: int
     metadata: TrackMetadata
     quality: QualityInfo | None
+    duration_seconds: float | None
     size_bytes: int
 
 
@@ -260,9 +261,43 @@ def infer_from_path(path: Path) -> TrackMetadata:
             artist, title = left, right
 
     parents = [p.name for p in path.parents if p.name]
-    album = parents[0] if parents else ""
+    album = ""
+    parent_album = parents[0] if parents else ""
     parent_artist = parents[1] if len(parents) > 1 else ""
-    if not artist and meaningful(parent_artist):
+
+    generic_dirs = {
+        "audio",
+        "downloads",
+        "download",
+        "media",
+        "music",
+        "mnt",
+        "raw",
+        "run",
+        "source",
+        "tmp",
+        "unsorted",
+    }
+
+    def useful_dir(value: str) -> bool:
+        cleaned = clean_text(value)
+        if not meaningful(cleaned) or cleaned.casefold() in generic_dirs:
+            return False
+        if re.fullmatch(r"(?:sd[a-z]\d*|ext[-_]?sd[a-z]\d*|disk[-_]?\d+)", cleaned, re.IGNORECASE):
+            return False
+        if re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", cleaned, re.IGNORECASE):
+            return False
+        return True
+
+    # Directory inference is deliberately conservative.  A filename-level
+    # "Artist - Title" signal is strong enough to accept a useful album parent.
+    # Otherwise require a track-numbered album hierarchy or an explicit year
+    # album marker so mount roots such as /mnt/sda1/Music never become artists.
+    year_album = re.match(r"^\((\d{4})\)\s*(.+)$", parent_album)
+    if artist and useful_dir(parent_album):
+        album = parent_album
+    elif useful_dir(parent_album) and useful_dir(parent_artist) and (track_number or year_album):
+        album = parent_album
         artist = parent_artist
 
     year = ""
@@ -313,8 +348,8 @@ def read_metadata(path: Path) -> TrackMetadata:
         album=clean_text(album),
         album_artist=clean_text(album_artist),
         track=clean_text(track),
-        year=normalize_year(year),
-        genre=normalize_genre(genre),
+        year=clean_text(year),
+        genre=clean_text(genre),
         compilation=compilation,
     )
 
@@ -324,8 +359,10 @@ def _metadata_backup(meta: TrackMetadata) -> str:
 
 
 def _id3_set_text(tags: ID3, frame_type: type, frame_id: str, value: str) -> bool:
-    old = clean_text(tags.get(frame_id))
-    if old == value:
+    frame = tags.get(frame_id)
+    old = clean_text(frame)
+    encoding = getattr(frame, "encoding", None)
+    if old == value and (frame is None or encoding == 3):
         return False
     tags.delall(frame_id)
     if value:
@@ -333,22 +370,48 @@ def _id3_set_text(tags: ID3, frame_type: type, frame_id: str, value: str) -> boo
     return True
 
 
-def _write_id3_metadata(path: Path, meta: TrackMetadata, original: TrackMetadata) -> bool:
+def _has_id3v1(path: Path) -> bool:
+    if path.suffix.lower() != ".mp3":
+        return False
+    try:
+        if path.stat().st_size < 128:
+            return False
+        with path.open("rb") as fh:
+            fh.seek(-128, os.SEEK_END)
+            return fh.read(3) == b"TAG"
+    except OSError:
+        return False
+
+
+def _save_id3(tags: ID3, path: Path) -> None:
+    """Save ID3v2.4 using the container-specific ID3 implementation."""
+
+    try:
+        tags.save(path, v1=0, v2_version=4)
+    except TypeError:
+        # AIFF's IFF-ID3 writer has no ID3v1 concept/parameter.
+        tags.save(path, v2_version=4)
+
+
+def _write_id3_metadata(path: Path, meta: TrackMetadata, original: TrackMetadata) -> bool | None:
     try:
         audio = MutagenFile(path, easy=False)
     except Exception:
-        return False
+        return None
     if audio is None:
-        return False
+        return None
     if audio.tags is None:
         try:
             audio.add_tags()
         except Exception:
-            return False
+            return None
     tags = audio.tags
     if not isinstance(tags, ID3):
-        return False
+        return None
 
+    original_version = getattr(tags, "version", (2, 4, 0))
+    format_changed = len(original_version) > 1 and original_version[1] != 4
+    format_changed = format_changed or _has_id3v1(path)
     changed = False
     changed |= _id3_set_text(tags, TIT2, "TIT2", meta.title)
     changed |= _id3_set_text(tags, TPE1, "TPE1", meta.artist)
@@ -357,15 +420,12 @@ def _write_id3_metadata(path: Path, meta: TrackMetadata, original: TrackMetadata
     changed |= _id3_set_text(tags, TRCK, "TRCK", meta.track)
     changed |= _id3_set_text(tags, TDRC, "TDRC", meta.year)
     changed |= _id3_set_text(tags, TCON, "TCON", meta.genre)
-    if changed:
+    if changed or format_changed:
         tags.delall(f"TXXX:{BACKUP_KEY}")
         tags.add(TXXX(encoding=3, desc=BACKUP_KEY, text=[_metadata_backup(original)]))
     # v1=0 removes a legacy ID3v1 footer while preserving/rewriting v2.4.
-    try:
-        tags.save(path, v1=0, v2_version=4)
-    except TypeError:
-        audio.save()
-    return changed
+    _save_id3(tags, path)
+    return changed or format_changed
 
 
 def _easy_set(tags: Any, key: str, value: str) -> bool:
@@ -412,13 +472,22 @@ def _write_easy_metadata(path: Path, meta: TrackMetadata, original: TrackMetadat
         with contextlib.suppress(Exception):
             tags[BACKUP_KEY.lower()] = [_metadata_backup(original)]
         audio.save()
+        # Easy mappings intentionally expose only portable fields.  Re-open the
+        # real comment map to persist the provenance field for FLAC/Vorbis-like
+        # containers when that container supports arbitrary comments.
+        with contextlib.suppress(Exception):
+            raw = MutagenFile(path, easy=False)
+            if raw is not None and raw.tags is not None and not isinstance(raw.tags, ID3):
+                raw.tags[BACKUP_KEY] = [_metadata_backup(original)]
+                raw.save()
     return changed
 
 
 def write_metadata(path: Path, meta: TrackMetadata, original: TrackMetadata) -> bool:
     if path.suffix.lower() in {".mp3", ".wav", ".aiff", ".aif"}:
-        if _write_id3_metadata(path, meta, original):
-            return True
+        id3_result = _write_id3_metadata(path, meta, original)
+        if id3_result is not None:
+            return id3_result
     return _write_easy_metadata(path, meta, original)
 
 
@@ -438,7 +507,7 @@ def remove_oversized_artwork(path: Path, max_bytes: int = 500 * 1024) -> int:
                 tags.delall(frame.HashKey)
                 removed += 1
         if removed:
-            tags.save(path, v1=0, v2_version=4)
+            _save_id3(tags, path)
         return removed
 
     pictures = getattr(audio, "pictures", None)
@@ -485,12 +554,13 @@ def normalized_metadata(meta: TrackMetadata, source: Path) -> TrackMetadata:
     album = meta.album if meaningful(meta.album) else inferred.album
     album_artist = meta.album_artist if meaningful(meta.album_artist) else ""
     compilation = meta.compilation or album_artist.casefold() == "various artists"
-    if artist.casefold() == "various artists" and meaningful(inferred.artist):
-        # A common compilation failure mode places the album artist into TPE1.
-        # Prefer a real per-track artist encoded in a descriptive filename.
+    if artist.casefold() == "various artists":
         album_artist = album_artist or "Various Artists"
-        artist = inferred.artist
         compilation = True
+        if meaningful(inferred.artist):
+            # A common compilation failure mode places the album artist into
+            # TPE1. Prefer a real per-track artist encoded in the filename.
+            artist = inferred.artist
     track = str(parse_track_number(meta.track) or parse_track_number(inferred.track) or "")
     year = normalize_year(meta.year or inferred.year)
     genre = normalize_genre(meta.genre)
@@ -589,6 +659,37 @@ def probe_mp3_quality(path: Path) -> QualityInfo:
         duration_seconds=duration,
         source=source,
     )
+
+
+def probe_audio_duration(path: Path) -> float | None:
+    """Measure playable duration for any Mutagen/ffprobe-supported audio file."""
+
+    with contextlib.suppress(Exception):
+        audio = MutagenFile(path, easy=False)
+        length = getattr(getattr(audio, "info", None), "length", None)
+        if length is not None and float(length) >= 0:
+            return float(length)
+    try:
+        proc = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            check=True,
+            text=True,
+            capture_output=True,
+            timeout=30,
+        )
+        value = float(proc.stdout.strip())
+        return value if value >= 0 else None
+    except (FileNotFoundError, subprocess.SubprocessError, ValueError):
+        return None
 
 
 def mark_mp3_quality(path: Path, tier: str) -> None:
@@ -691,6 +792,14 @@ def iter_music_files(roots: Iterable[Path]) -> Iterator[Path]:
                 yield path
 
 
+def publish_file(stage: Path, destination: Path, source_sha256: str) -> None:
+    """Publish one staged object without exposing a partial final filename."""
+
+    partial = destination.with_name(f".{destination.name}.properpcloud-partial-{source_sha256[:12]}")
+    shutil.copy2(stage, partial)
+    os.replace(partial, destination)
+
+
 def _walk_block_devices(nodes: Sequence[dict[str, Any]], parent_external: bool = False) -> Iterator[str]:
     for node in nodes:
         name = str(node.get("name") or "")
@@ -746,19 +855,38 @@ def iter_catalog_files(db_path: Path) -> Iterator[Path]:
             )
         ]
         preferred = ("path", "file_path", "absolute_path", "source_path", "full_path", "filepath")
+        relative_preferred = ("relative_path", "relpath", "source_relative_path")
+        root_preferred = ("source_root", "mount_root", "mount_path", "root_path")
         emitted: set[str] = set()
         for table in tables:
             escaped_table = table.replace('"', '""')
             columns = [row[1] for row in connection.execute(f'PRAGMA table_info("{escaped_table}")')]
             path_column = next((name for name in preferred if name in columns), None)
-            if not path_column:
+            relative_column = next((name for name in relative_preferred if name in columns), None)
+            root_column = next((name for name in root_preferred if name in columns), None)
+            if not path_column and not (relative_column and root_column):
                 continue
-            escaped_col = path_column.replace('"', '""')
-            query = f'SELECT "{escaped_col}" FROM "{escaped_table}" WHERE "{escaped_col}" IS NOT NULL'
-            for (raw_path,) in connection.execute(query):
+            if path_column:
+                escaped_col = path_column.replace('"', '""')
+                escaped_root = root_column.replace('"', '""') if root_column else None
+                select = f'"{escaped_col}"' + (f', "{escaped_root}"' if escaped_root else '')
+                query = f'SELECT {select} FROM "{escaped_table}" WHERE "{escaped_col}" IS NOT NULL'
+            else:
+                assert relative_column is not None and root_column is not None
+                escaped_rel = relative_column.replace('"', '""')
+                escaped_root = root_column.replace('"', '""')
+                query = (
+                    f'SELECT "{escaped_rel}", "{escaped_root}" FROM "{escaped_table}" '
+                    f'WHERE "{escaped_rel}" IS NOT NULL AND "{escaped_root}" IS NOT NULL'
+                )
+            for row in connection.execute(query):
+                raw_path = row[0]
+                raw_root = row[1] if len(row) > 1 else None
                 if not isinstance(raw_path, str):
                     continue
                 path = Path(raw_path)
+                if not path.is_absolute() and isinstance(raw_root, str) and raw_root:
+                    path = Path(raw_root) / path
                 if path.suffix.lower() not in MUSIC_EXTENSIONS:
                     continue
                 normalized = str(path)
@@ -899,7 +1027,7 @@ def save_result(
             quality.tier if quality else None,
             quality.bitrate_kbps if quality else None,
             quality.bitrate_mode if quality else None,
-            quality.duration_seconds if quality else None,
+            result.duration_seconds,
             track_identity(result.metadata),
             utc_now(),
         ),
@@ -948,6 +1076,7 @@ def process_one(
             artwork_removed=0,
             metadata=normalized,
             quality=None,
+            duration_seconds=None,
             size_bytes=stat.st_size,
         )
         save_result(connection, result, stat, original)
@@ -959,6 +1088,7 @@ def process_one(
 
     if dry_run:
         quality = probe_mp3_quality(source) if source.suffix.lower() == ".mp3" else None
+        duration = quality.duration_seconds if quality else probe_audio_duration(source)
         return ProcessResult(
             source_path=str(source),
             destination_path=str(destination),
@@ -970,6 +1100,7 @@ def process_one(
             artwork_removed=0,
             metadata=normalized,
             quality=quality,
+            duration_seconds=duration,
             size_bytes=stat.st_size,
         )
 
@@ -983,11 +1114,13 @@ def process_one(
         tags_changed = write_metadata(stage, normalized, original)
         artwork_removed = remove_oversized_artwork(stage)
         quality = probe_mp3_quality(stage) if source.suffix.lower() == ".mp3" else None
+        duration = quality.duration_seconds if quality else probe_audio_duration(stage)
         if quality:
             mark_mp3_quality(stage, quality.tier)
 
-        # copy2 to the final FUSE path avoids metadata mutation through FUSE.
-        shutil.copy2(stage, destination)
+        # Publish through a deterministic temporary name so interruption does
+        # not leave an apparently valid final object on pCloud/FUSE.
+        publish_file(stage, destination, source_sha)
         copy_cover_if_available(source, destination.parent)
         result = ProcessResult(
             source_path=str(source),
@@ -1000,6 +1133,7 @@ def process_one(
             artwork_removed=artwork_removed,
             metadata=normalized,
             quality=quality,
+            duration_seconds=duration,
             size_bytes=stat.st_size,
         )
         save_result(connection, result, stat, original)
@@ -1026,6 +1160,7 @@ def record_failure(connection: sqlite3.Connection, source: Path, exc: Exception)
         artwork_removed=0,
         metadata=empty,
         quality=None,
+        duration_seconds=None,
         size_bytes=getattr(stat, "st_size", 0),
     )
     save_result(connection, result, stat, empty)
@@ -1162,6 +1297,7 @@ def write_reports(connection: sqlite3.Connection, metadata_root: Path) -> tuple[
         "",
         "## Processing summary",
         "",
+        f"- Total processed records: {len(rows)}",
         f"- Ingested: {status_counts['INGESTED']}",
         f"- Skipped as exact duplicates: {status_counts['DUPLICATE']}",
         f"- Failed: {status_counts['FAILED']}",
@@ -1170,7 +1306,7 @@ def write_reports(connection: sqlite3.Connection, metadata_root: Path) -> tuple[
         f"- Oversized embedded images removed: {artwork_removed}",
         f"- Unique artists: {len(artists)}",
         f"- Unique albums: {len(albums)}",
-        f"- Total measured MP3 duration: {duration / 3600:.2f} hours",
+        f"- Total measured audio duration: {duration / 3600:.2f} hours",
         "",
         "## MP3 quality",
         "",

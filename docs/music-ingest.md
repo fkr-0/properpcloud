@@ -11,7 +11,8 @@ The pipeline is deliberately split across two storage classes:
 1. source files are opened read-only for metadata, hashes, and audio probes;
 2. a local staging copy under `~/.cache/properpcloud/music-ingest-staging/` is
    modified with Mutagen;
-3. the completed staged file is copied once to the rclone FUSE library;
+3. the completed staged file is copied once to a deterministic hidden partial
+   name on rclone FUSE and renamed into place only after the copy succeeds;
 4. resumable state is committed to the local SQLite database at
    `~/.local/state/properpcloud/music-ingest.sqlite3`;
 5. final `quality-audit.json`, `unsorted-manifest.json`, and `ingest-report.md` snapshots are written under
@@ -39,8 +40,9 @@ The automatic detector reads `lsblk` JSON and follows mounted USB/removable,
 system root.
 
 When the companion file catalog already exists, pass it directly. The reader
-supports SQLite tables with common path-column names such as `path`,
-`file_path`, `absolute_path`, `source_path`, and `full_path`:
+supports SQLite tables with common absolute path-column names such as `path`,
+`file_path`, `absolute_path`, `source_path`, and `full_path`, plus catalogs that
+store `relative_path`/`source_relative_path` with a `source_root`/`mount_root`:
 
     python scripts/music_ingest.py ingest \
       --catalog-db /path/to/catalog.sqlite \
@@ -153,7 +155,8 @@ Final report paths:
 
 The Markdown report contains processed/duplicate/failure counts, filename/tag
 change counts, removed artwork count, unique artist and album counts, measured
-MP3 duration, the quality-tier breakdown, and low-quality replacement matches.
+audio duration, the MP3 quality-tier breakdown, and low-quality replacement
+matches.
 
 ## Operational caveats
 

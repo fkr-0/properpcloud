@@ -31,6 +31,8 @@ source_contract:
     explicit_roots: true
     catalog_sqlite:
       supported_path_columns: [path, file_path, absolute_path, source_path, full_path, filepath]
+      supported_relative_path_columns: [relative_path, relpath, source_relative_path]
+      supported_root_columns: [source_root, mount_root, mount_path, root_path]
 
 pipeline:
   stages:
@@ -46,11 +48,13 @@ pipeline:
     - bitrate_probe
     - quality_mark
     - pcloud_copy
+    - pcloud_atomic_rename
     - checkpoint_commit
     - report_snapshot
   source_mutation: forbidden
   pcloud_metadata_mutation: forbidden
   pcloud_copy_count_target: 1
+  partial_final_visibility: forbidden
   resume_key: source_path
   resume_guard: [source_size, source_mtime_ns, destination_exists]
   duplicate_key: sha256
