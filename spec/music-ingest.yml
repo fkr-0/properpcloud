@@ -1,0 +1,125 @@
+version: 1
+name: music-ingestion
+status: implemented
+
+paths:
+  library_root: /tmp/dib/media-library/audio/music
+  metadata_root: /tmp/dib/media-library/metadata
+  state_db: ~/.local/state/properpcloud/music-ingest.sqlite3
+  staging_root: ~/.cache/properpcloud/music-ingest-staging
+
+source_contract:
+  immutable: true
+  extensions:
+    - mp3
+    - flac
+    - wav
+    - ogg
+    - opus
+    - aac
+    - m4a
+    - wma
+    - alac
+    - aiff
+    - aif
+    - ape
+  discovery:
+    automatic:
+      command: lsblk -J
+      device_classes: [usb, removable, sd_disk, loop]
+      fallback_to_system_root: false
+    explicit_roots: true
+    catalog_sqlite:
+      supported_path_columns: [path, file_path, absolute_path, source_path, full_path, filepath]
+
+pipeline:
+  stages:
+    - discover
+    - checkpoint_lookup
+    - source_sha256
+    - metadata_read
+    - metadata_normalize
+    - destination_plan
+    - local_stage_copy
+    - staged_tag_write
+    - staged_artwork_trim
+    - bitrate_probe
+    - quality_mark
+    - pcloud_copy
+    - checkpoint_commit
+    - report_snapshot
+  source_mutation: forbidden
+  pcloud_metadata_mutation: forbidden
+  pcloud_copy_count_target: 1
+  resume_key: source_path
+  resume_guard: [source_size, source_mtime_ns, destination_exists]
+  duplicate_key: sha256
+
+filename_policy:
+  unicode: NFC
+  max_chars: 200
+  reserved_characters_removed: '<>:"/\\|?*'
+  whitespace_and_underscore_runs: collapse_to_space
+  trim: [leading_whitespace, trailing_whitespace, leading_dot, trailing_dot]
+  track_prefix: 'NN '
+  remove:
+    - url_artifacts
+    - common_download_site_tags
+    - standalone_hex_hashes_24_to_64_chars
+  preserve_parenthetical_semantics: true
+
+metadata_policy:
+  fields: [title, artist, album, album_artist, track, year, genre]
+  infer_missing_from_path: conservative
+  overwrite_meaningful_existing_with_inference: false
+  id3:
+    version: '2.4'
+    write_id3v1: false
+    backup_field: PROPERPCLOUD_ORIGINAL_TAGS
+  durable_original_tag_backup: state_db.original_tags_json
+  artwork_max_bytes: 512000
+  genre_unknown_policy: preserve
+
+layout:
+  album: 'Artist Name/(Year) Album Name/NN Track Title.ext'
+  single: 'Artist Name/Singles/Track Title.ext'
+  compilation: 'Compilations/(Year) Compilation Name/NN Track Title.ext'
+  unsorted: 'Unsorted/<sanitized original stem> [source-path-hash].ext'
+
+mp3_quality:
+  probes: [mutagen_mpeg_info, ffprobe]
+  tiers:
+    LOW_QUALITY: '<192 kbps'
+    ACCEPTABLE: '192-255 kbps'
+    GOOD: '>=256 kbps except HIGH'
+    HIGH: '320 kbps CBR'
+    UNKNOWN: 'no reliable bitrate measurement'
+  vbr_profile_override:
+    good_profiles: [V0, V1, V2]
+    condition: profile_is_explicitly_recoverable_from_encoder_metadata
+  embedded_tag: PROPERPCLOUD_QUALITY
+  delete_low_quality: false
+  replacement_match_identity: normalized_artist_and_title
+  replacement_preference: [lossless, HIGH, GOOD, ACCEPTABLE]
+
+reports:
+  quality_audit: /tmp/dib/media-library/metadata/quality-audit.json
+  unsorted_manifest: /tmp/dib/media-library/metadata/unsorted-manifest.json
+  ingest_report: /tmp/dib/media-library/metadata/ingest-report.md
+  required_summary:
+    - processed_status_counts
+    - filename_changes
+    - tag_changes
+    - artwork_removed
+    - quality_tiers
+    - unique_artists
+    - unique_albums
+    - measured_mp3_duration
+    - low_quality_replacement_candidates
+
+safety:
+  no_delete: true
+  dry_run: true
+  bounded_limit: true
+  failure_policy: persist_and_continue
+  sqlite_over_fuse: false
