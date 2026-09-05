@@ -2,6 +2,7 @@ package dev.properpcloud.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,6 +53,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.SubdirectoryArrowRight
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -66,6 +68,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
@@ -92,6 +95,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -101,6 +105,7 @@ import androidx.compose.ui.unit.dp
 import dev.properpcloud.app.BuildConfig
 import dev.properpcloud.app.data.SourceKind
 import dev.properpcloud.core.model.AudioFolder
+import dev.properpcloud.core.model.AudioTabId
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.LibraryFile
 import dev.properpcloud.core.model.LibraryFileKind
@@ -108,6 +113,8 @@ import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.SearchMatchType
 import dev.properpcloud.core.model.TrackSortKey
+import java.text.DateFormat
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -173,6 +180,200 @@ fun ProperpcloudApp(
             )
         }
     }
+}
+
+@Composable
+private fun SavedPlaylistBar(state: AppUiState, actions: AppActions) {
+    var saveDialogOpen by remember { mutableStateOf(false) }
+    var loadMenuOpen by remember { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedButton(
+            onClick = { saveDialogOpen = true },
+            enabled = state.queue.entries.isNotEmpty(),
+            modifier = Modifier.weight(1f),
+        ) { Text("Save playlist") }
+        Box(Modifier.weight(1f)) {
+            OutlinedButton(
+                onClick = { loadMenuOpen = true },
+                enabled = state.audioTabs.playlists.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Load playlist") }
+            DropdownMenu(expanded = loadMenuOpen, onDismissRequest = { loadMenuOpen = false }) {
+                state.audioTabs.playlists.forEach { playlist ->
+                    DropdownMenuItem(
+                        text = { Text("${playlist.name} · ${playlist.entries.size}") },
+                        onClick = {
+                            loadMenuOpen = false
+                            actions.loadSavedPlaylist(playlist.name)
+                        },
+                    )
+                }
+            }
+        }
+    }
+    if (saveDialogOpen) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { saveDialogOpen = false },
+            title = { Text("Save playlist") },
+            text = {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Playlist name") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = name.isNotBlank(),
+                    onClick = {
+                        saveDialogOpen = false
+                        actions.saveCurrentPlaylist(name)
+                    },
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { saveDialogOpen = false }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024L * 1024L -> "%.1f GB".format(bytes / (1024.0 * 1024.0 * 1024.0))
+    bytes >= 1024L * 1024L -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+    bytes >= 1024L -> "%.1f KB".format(bytes / 1024.0)
+    else -> "$bytes B"
+}
+
+private fun formatLastPlayed(epochMillis: Long): String =
+    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(epochMillis))
+
+@Composable
+private fun AudioTabStrip(state: AppUiState, actions: AppActions) {
+    var addDialogOpen by remember { mutableStateOf(false) }
+    var editDialogOpen by remember { mutableStateOf(false) }
+    val active = state.audioTabs.active
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        state.audioTabs.tabs.forEach { tab ->
+            FilterChip(
+                selected = tab.definition.id == state.audioTabs.activeTabId,
+                onClick = { actions.switchAudioTab(tab.definition.id) },
+                label = {
+                    Text(
+                        buildString {
+                            tab.definition.icon?.takeIf { it.isNotBlank() }?.let { append(it).append(' ') }
+                            append(tab.definition.name)
+                            if (tab.queue.entries.isNotEmpty()) append(" · ${tab.queue.entries.size}")
+                        },
+                        maxLines = 1,
+                    )
+                },
+            )
+        }
+        IconButton(onClick = { addDialogOpen = true }) {
+            Icon(Icons.Default.Add, contentDescription = "Add audio tab")
+        }
+        IconButton(onClick = { editDialogOpen = true }) {
+            Icon(Icons.Default.EditNote, contentDescription = "Edit ${active.definition.name} tab")
+        }
+    }
+
+    if (addDialogOpen) {
+        AudioTabEditorDialog(
+            title = "Add audio tab",
+            initialName = "",
+            initialRoot = "",
+            confirmLabel = "Add",
+            onDismiss = { addDialogOpen = false },
+            onConfirm = { name, root ->
+                addDialogOpen = false
+                actions.addAudioTab(name, root)
+            },
+        )
+    }
+    if (editDialogOpen) {
+        AudioTabEditorDialog(
+            title = "Edit ${active.definition.name}",
+            initialName = active.definition.name,
+            initialRoot = active.definition.rootPath,
+            confirmLabel = "Save",
+            canDelete = state.audioTabs.tabs.size > 1,
+            onDelete = {
+                editDialogOpen = false
+                actions.removeAudioTab(active.definition.id)
+            },
+            onDismiss = { editDialogOpen = false },
+            onConfirm = { name, root ->
+                editDialogOpen = false
+                actions.updateAudioTab(active.definition.id, name, root)
+            },
+        )
+    }
+}
+
+@Composable
+private fun AudioTabEditorDialog(
+    title: String,
+    initialName: String,
+    initialRoot: String,
+    confirmLabel: String,
+    canDelete: Boolean = false,
+    onDelete: () -> Unit = {},
+    onDismiss: () -> Unit,
+    onConfirm: (String, String) -> Unit,
+) {
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    var root by remember(initialRoot) { mutableStateOf(initialRoot) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = root,
+                    onValueChange = { root = it },
+                    label = { Text("pCloud root path") },
+                    supportingText = { Text("Relative path such as hb/Sci-Fi") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(name, root) },
+                enabled = name.isNotBlank(),
+            ) { Text(confirmLabel) }
+        },
+        dismissButton = {
+            Row {
+                if (canDelete) {
+                    TextButton(onClick = onDelete) { Text("Delete") }
+                }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
 }
 
 @Composable
@@ -325,6 +526,7 @@ private fun LibraryScreen(state: AppUiState, actions: AppActions, expanded: Bool
                 }
             },
         )
+        AudioTabStrip(state, actions)
         if (state.search.expanded) LibrarySearchControls(state, actions)
         if (state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth())
         SourceBanner(state, actions)
@@ -465,6 +667,10 @@ private fun FolderQuickActions(folder: AudioFolder?, actions: AppActions) {
 private fun MediaNodeRow(node: MediaNode, state: AppUiState, actions: AppActions) {
     var menuOpen by remember(node.id) { mutableStateOf(false) }
     val isFolder = node is AudioFolder
+    val currentTrack = state.queue.current?.track
+    val isCurrentTrack = node is AudioTrack &&
+        currentTrack?.sourceId == node.sourceId && currentTrack.id == node.id
+    val progress = if (node is AudioTrack) state.progressByNodeId[node.id] else null
     val selectedForMetadata = node is AudioTrack && state.metadataSelection.any {
         it.sourceId == node.sourceId && it.id == node.id
     }
@@ -479,6 +685,13 @@ private fun MediaNodeRow(node: MediaNode, state: AppUiState, actions: AppActions
                 }
             }
             .testTag("node-${node.id.value}"),
+        colors = ListItemDefaults.colors(
+            containerColor = if (isCurrentTrack) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
+        ),
         headlineContent = {
             Text(
                 if (node is AudioTrack) node.taggedTitle ?: node.filenameStem else node.name,
@@ -488,13 +701,33 @@ private fun MediaNodeRow(node: MediaNode, state: AppUiState, actions: AppActions
         },
         supportingContent = {
             when (node) {
-                is AudioTrack -> Text(
-                    buildString {
-                        if (node.taggedTitle != null) append(node.name).append(" · ")
-                        node.durationMillis?.let { append(formatDuration(it)) }
-                    }.trim().trimEnd('·').trim(),
-                    maxLines = 2,
-                )
+                is AudioTrack -> Column {
+                    Text(
+                        buildString {
+                            if (node.taggedTitle != null) append(node.name).append(" · ")
+                            node.durationMillis?.let { append(formatDuration(it)).append(" · ") }
+                            node.sizeBytes?.let { append(formatBytes(it)).append(" · ") }
+                            append(node.name.substringAfterLast('.', "audio").uppercase())
+                        }.trim().trimEnd('·').trim(),
+                        maxLines = 2,
+                    )
+                    progress?.let { saved ->
+                        val percent = saved.durationMillis
+                            ?.takeIf { it > 0 }
+                            ?.let { ((saved.positionMillis * 100) / it).coerceIn(0, 100) }
+                        Text(
+                            buildString {
+                                append("Last played ").append(formatLastPlayed(saved.observedAtEpochMillis))
+                                if (percent != null) append(" · $percent%")
+                                append(" · ").append(formatDuration(saved.positionMillis))
+                            },
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 is AudioFolder -> Text("Folder · stable source identity")
                 is LibraryFile -> Text(
                     if (node.kind == LibraryFileKind.PLAYLIST) "Playlist file · stable source identity" else "File · stable source identity",
@@ -505,13 +738,14 @@ private fun MediaNodeRow(node: MediaNode, state: AppUiState, actions: AppActions
             Icon(
                 when {
                     selectedForMetadata -> Icons.Default.CheckCircle
+                    isCurrentTrack -> Icons.Default.PlayArrow
                     isFolder -> Icons.Default.Folder
                     node is LibraryFile -> Icons.Default.Description
                     else -> Icons.Default.AudioFile
                 },
                 contentDescription = when (node) {
                     is AudioFolder -> "Folder"
-                    is AudioTrack -> "Audio file"
+                    is AudioTrack -> if (isCurrentTrack) "Current audio file" else "Audio file"
                     is LibraryFile -> if (node.kind == LibraryFileKind.PLAYLIST) "Playlist file" else "File"
                 },
                 tint = when {
@@ -561,6 +795,16 @@ private fun MediaNodeRow(node: MediaNode, state: AppUiState, actions: AppActions
                             },
                         )
                     } else if (node is AudioTrack) {
+                        if (progress != null && !progress.completed && progress.positionMillis > 0) {
+                            DropdownMenuItem(
+                                text = { Text("Resume at ${formatDuration(progress.positionMillis)}") },
+                                leadingIcon = { Icon(Icons.Default.PlayArrow, null) },
+                                onClick = {
+                                    menuOpen = false
+                                    actions.resumeTrack(node)
+                                },
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Edit tags") },
                             leadingIcon = { Icon(Icons.Default.EditNote, null) },
@@ -660,6 +904,7 @@ private fun QueueScreen(state: AppUiState, actions: AppActions) {
             },
         )
         NowPlayingCard(state, actions)
+        SavedPlaylistBar(state, actions)
         state.queueBuildReport?.takeIf { it.isPartial }?.let { report ->
             Surface(color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxWidth()) {
                 Text(
@@ -729,7 +974,7 @@ private fun NowPlayingCard(state: AppUiState, actions: AppActions) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = actions.skipPrevious) { Icon(Icons.Default.SkipPrevious, "Previous") }
-                IconButton(onClick = { actions.seekBy(-15_000) }) { Icon(Icons.Default.FastRewind, "Rewind 15 seconds") }
+                IconButton(onClick = { actions.seekBy(-30_000) }) { Icon(Icons.Default.FastRewind, "Rewind 30 seconds") }
                 FilledIconButton(onClick = actions.playPause, Modifier.size(58.dp)) {
                     Icon(if (state.playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (state.playback.isPlaying) "Pause" else "Play")
                 }
@@ -747,6 +992,26 @@ private fun QueueRow(index: Int, track: AudioTrack, state: AppUiState, actions: 
     ListItem(
         modifier = Modifier
             .fillMaxWidth()
+            .pointerInput(index, state.queue.entries.size) {
+                var dragY = 0f
+                detectDragGesturesAfterLongPress(
+                    onDragCancel = { dragY = 0f },
+                    onDragEnd = { dragY = 0f },
+                ) { _, amount ->
+                    dragY += amount.y
+                    val threshold = 48.dp.toPx()
+                    when {
+                        dragY > threshold && index < state.queue.entries.lastIndex -> {
+                            actions.moveQueueItem(index, index + 1)
+                            dragY = 0f
+                        }
+                        dragY < -threshold && index > 0 -> {
+                            actions.moveQueueItem(index, index - 1)
+                            dragY = 0f
+                        }
+                    }
+                }
+            }
             .clickable { actions.selectQueueItem(index) }
             .semantics { contentDescription = "Queue item ${index + 1} of ${state.queue.entries.size}: ${track.name}" }
             .testTag("queue-item-$index"),
@@ -1143,7 +1408,12 @@ data class AppActions(
     val updateLibrarySearchQuery: (String) -> Unit,
     val toggleSearchMatchType: (SearchMatchType) -> Unit,
     val setSort: (TrackSortKey) -> Unit,
+    val switchAudioTab: (AudioTabId) -> Unit,
+    val addAudioTab: (String, String) -> Unit,
+    val updateAudioTab: (AudioTabId, String, String) -> Unit,
+    val removeAudioTab: (AudioTabId) -> Unit,
     val playTrack: (AudioTrack) -> Unit,
+    val resumeTrack: (AudioTrack) -> Unit,
     val enqueueTrack: (AudioTrack, QueueOperation) -> Unit,
     val enqueueFolder: (AudioFolder, QueueOperation, Boolean) -> Unit,
     val cancelQueueBuild: () -> Unit,
@@ -1151,6 +1421,8 @@ data class AppActions(
     val removeQueueItem: (Int) -> Unit,
     val moveQueueItem: (Int, Int) -> Unit,
     val clearQueue: () -> Unit,
+    val saveCurrentPlaylist: (String) -> Unit,
+    val loadSavedPlaylist: (String) -> Unit,
     val openContainingFolder: (AudioTrack) -> Unit,
     val inspect: (MediaNode) -> Unit,
     val closeInspection: () -> Unit,
@@ -1189,4 +1461,9 @@ data class AppActions(
     val skipPrevious: () -> Unit,
     val seekBy: (Long) -> Unit,
     val seekTo: (Long) -> Unit,
+    val setPlaybackSpeed: (Float) -> Unit,
+    val setVolume: (Float) -> Unit,
+    val toggleShuffle: () -> Unit,
+    val cycleRepeatMode: () -> Unit,
+    val setSleepTimer: (Int?) -> Unit,
 )

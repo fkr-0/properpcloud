@@ -51,8 +51,9 @@ class ProperpcloudAppTest {
         }
         compose.onNodeWithText("properpcloud").assertIsDisplayed()
         compose.onNodeWithText("Audiobooks").assertIsDisplayed()
-        compose.onNodeWithText("A Door in the Rain").assertIsDisplayed()
         compose.onNodeWithTag("library-list").assertIsDisplayed()
+        compose.onNodeWithTag("library-list").performScrollToNode(hasText("A Door in the Rain"))
+        compose.onNodeWithText("A Door in the Rain").assertIsDisplayed()
     }
 
     @Test
@@ -468,7 +469,12 @@ class ProperpcloudAppTest {
         updateLibrarySearchQuery = {},
         toggleSearchMatchType = {},
         setSort = {},
+        switchAudioTab = {},
+        addAudioTab = { _, _ -> },
+        updateAudioTab = { _, _, _ -> },
+        removeAudioTab = {},
         playTrack = {},
+        resumeTrack = {},
         enqueueTrack = { _, _: QueueOperation -> },
         enqueueFolder = { _, _, _ -> },
         cancelQueueBuild = {},
@@ -476,6 +482,8 @@ class ProperpcloudAppTest {
         removeQueueItem = {},
         moveQueueItem = { _, _ -> },
         clearQueue = {},
+        saveCurrentPlaylist = {},
+        loadSavedPlaylist = {},
         openContainingFolder = {},
         inspect = {},
         closeInspection = {},
@@ -514,5 +522,10 @@ class ProperpcloudAppTest {
         skipPrevious = {},
         seekBy = {},
         seekTo = {},
+        setPlaybackSpeed = {},
+        setVolume = {},
+        toggleShuffle = {},
+        cycleRepeatMode = {},
+        setSleepTimer = {},
     )
 }

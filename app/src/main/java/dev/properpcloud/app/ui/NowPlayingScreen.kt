@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -33,11 +34,14 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -151,8 +155,8 @@ fun NowPlayingScreen(state: AppUiState, actions: AppActions) {
                 IconButton(onClick = actions.skipPrevious, modifier = Modifier.size(52.dp)) {
                     Icon(Icons.Default.SkipPrevious, contentDescription = "Previous")
                 }
-                IconButton(onClick = { actions.seekBy(-15_000) }, modifier = Modifier.size(52.dp)) {
-                    Icon(Icons.Default.FastRewind, contentDescription = "Rewind 15 seconds")
+                IconButton(onClick = { actions.seekBy(-30_000) }, modifier = Modifier.size(52.dp)) {
+                    Icon(Icons.Default.FastRewind, contentDescription = "Rewind 30 seconds")
                 }
                 FilledIconButton(onClick = actions.playPause, modifier = Modifier.size(72.dp)) {
                     Icon(
@@ -169,6 +173,8 @@ fun NowPlayingScreen(state: AppUiState, actions: AppActions) {
                 }
             }
             Spacer(Modifier.height(24.dp))
+            PlaybackOptionsCard(state, actions)
+            Spacer(Modifier.height(12.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -231,6 +237,95 @@ fun NowPlayingScreen(state: AppUiState, actions: AppActions) {
                 Text("Edit embedded tags")
             }
             Spacer(Modifier.height(32.dp))
+        }
+    }
+}
+
+private fun trimPlayerFloat(value: Float): String =
+    if (value % 1f == 0f) value.toInt().toString() else value.toString().trimEnd('0').trimEnd('.')
+
+@Composable
+private fun PlaybackOptionsCard(state: AppUiState, actions: AppActions) {
+    val tab = state.audioTabs.active
+    var sleepMenuOpen by remember { mutableStateOf(false) }
+    var volume by remember(tab.definition.id, tab.volume) { mutableStateOf(tab.volume) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text(tab.definition.name, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Playback settings are stored for this tab",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = tab.shuffle,
+                        onClick = actions.toggleShuffle,
+                        label = { Text("Shuffle") },
+                    )
+                    FilterChip(
+                        selected = tab.repeatMode != dev.properpcloud.core.model.PlayerRepeatMode.OFF,
+                        onClick = actions.cycleRepeatMode,
+                        label = { Text("Repeat ${tab.repeatMode.name.lowercase()}") },
+                    )
+                }
+            }
+            Text("Speed · ${trimPlayerFloat(tab.playbackSpeed)}×", style = MaterialTheme.typography.labelLarge)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f).forEach { speed ->
+                    FilterChip(
+                        selected = kotlin.math.abs(tab.playbackSpeed - speed) < 0.01f,
+                        onClick = { actions.setPlaybackSpeed(speed) },
+                        label = { Text("${trimPlayerFloat(speed)}×") },
+                    )
+                }
+            }
+            Text("Volume · ${(volume * 100).toInt()}%", style = MaterialTheme.typography.labelLarge)
+            Slider(
+                value = volume,
+                onValueChange = { volume = it },
+                onValueChangeFinished = { actions.setVolume(volume) },
+                valueRange = 0f..1f,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Box {
+                OutlinedButton(onClick = { sleepMenuOpen = true }) {
+                    Text(if (state.sleepTimerEndsAtEpochMillis == null) "Sleep timer" else "Sleep timer active")
+                }
+                DropdownMenu(expanded = sleepMenuOpen, onDismissRequest = { sleepMenuOpen = false }) {
+                    listOf(15, 30, 45, 60, 90, 120).forEach { minutes ->
+                        DropdownMenuItem(
+                            text = { Text("Stop after $minutes min") },
+                            onClick = {
+                                sleepMenuOpen = false
+                                actions.setSleepTimer(minutes)
+                            },
+                        )
+                    }
+                    if (state.sleepTimerEndsAtEpochMillis != null) {
+                        DropdownMenuItem(
+                            text = { Text("Cancel timer") },
+                            onClick = {
+                                sleepMenuOpen = false
+                                actions.setSleepTimer(null)
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 }
