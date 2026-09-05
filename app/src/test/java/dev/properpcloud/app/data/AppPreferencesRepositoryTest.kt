@@ -13,6 +13,7 @@ import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.SearchMatchType
 import dev.properpcloud.core.model.SourceId
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -29,6 +30,7 @@ class AppPreferencesRepositoryTest {
 
     @After
     fun cleanUp() {
+        runBlocking { repository.clearAudioTabsForTests() }
         context.filesDir.resolve("datastore/properpcloud.preferences_pb").delete()
     }
 

@@ -7,13 +7,22 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import dev.properpcloud.app.AppContainer
 import dev.properpcloud.app.data.SourceKind
+import dev.properpcloud.app.data.StoredAudioTab
+import dev.properpcloud.app.data.StoredAudioTabs
+import dev.properpcloud.app.data.StoredQueue
 import dev.properpcloud.app.metadata.BatchFieldDraft
 import dev.properpcloud.app.metadata.LoadedMetadataItem
 import dev.properpcloud.app.metadata.MetadataBundleItem
 import dev.properpcloud.app.metadata.MetadataDraftPlanner
 import dev.properpcloud.app.metadata.MetadataExportArtifact
 import dev.properpcloud.app.playback.PlaybackController
+import dev.properpcloud.core.model.AudioTabCollection
+import dev.properpcloud.core.model.AudioTabDefinition
+import dev.properpcloud.core.model.AudioTabId
+import dev.properpcloud.core.model.AudioTabReducer
+import dev.properpcloud.core.model.AudioTabSession
 import dev.properpcloud.core.model.AudioFolder
+import dev.properpcloud.core.model.AudioSource
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.FolderQueueAssembler
 import dev.properpcloud.core.model.FolderQueueBuilder
@@ -21,10 +30,12 @@ import dev.properpcloud.core.model.LibrarySearch
 import dev.properpcloud.core.model.LibrarySearchRequest
 import dev.properpcloud.core.model.MediaIdentity
 import dev.properpcloud.core.model.MediaNode
+import dev.properpcloud.core.model.NamedAudioPlaylist
 import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.PlaybackCheckpointCursor
 import dev.properpcloud.core.model.PlaybackCheckpointPolicy
 import dev.properpcloud.core.model.PlaybackObservation
+import dev.properpcloud.core.model.PlayerRepeatMode
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.QueueRestoration
@@ -32,9 +43,12 @@ import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.QueueReducer
 import dev.properpcloud.core.model.ResumePolicy
 import dev.properpcloud.core.model.SearchMatchType
+import dev.properpcloud.core.model.SourceId
 import dev.properpcloud.core.model.TagField
 import dev.properpcloud.core.model.TrackSortKey
 import dev.properpcloud.core.model.TrackSortPolicy
+import dev.properpcloud.core.model.normalizeAudioRootPath
+import dev.properpcloud.core.model.resolveFolderPath
 import dev.properpcloud.metadata.tags.FolderPlaylistOrder
 import dev.properpcloud.source.pcloud.PCloudSession
 import dev.properpcloud.source.pcloud.PCloudAccountRegion
@@ -45,7 +59,9 @@ import dev.properpcloud.source.server.ServerCatalogAudioSource
 import dev.properpcloud.source.server.ServerCatalogSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -64,6 +80,8 @@ class MainViewModel(
     private var queueJob: Job? = null
     private var searchJob: Job? = null
     private var queuePersistenceJob: Job? = null
+    private var tabPersistenceJob: Job? = null
+    private var sleepTimerJob: Job? = null
     private var queueMutationRevision: Long = 0
     private val checkpointPolicy = PlaybackCheckpointPolicy()
     private var checkpointCursor = PlaybackCheckpointCursor()
@@ -98,8 +116,8 @@ class MainViewModel(
                 serverConnected = container.sources.hasServerSession(),
                 serverBaseUrl = serverSession?.normalizedBaseUrl.orEmpty(),
             )
-            openRoot()
             restoreQueue(startupQueueMutationRevision)
+            openRoot()
         }
         viewModelScope.launch {
             playbackConnection.state.collect { playback ->
@@ -112,15 +130,45 @@ class MainViewModel(
                 val newError = playback.error?.takeIf { it != lastPlaybackError }
                 lastPlaybackError = playback.error
                 if (queueChanged) queueMutationRevision += 1
+                val tabs = if (queueChanged) {
+                    AudioTabReducer.updateActive(previous.audioTabs) { tab -> tab.copy(queue = queue) }
+                } else {
+                    previous.audioTabs
+                }
                 _state.value = previous.copy(
                     playback = playback,
                     queue = queue,
+                    audioTabs = tabs,
                     message = newError?.let { "Playback controller reported: $it" } ?: previous.message,
                 )
-                if (queueChanged) container.preferences.saveQueue(queue)
+                if (queueChanged) {
+                    container.preferences.saveQueue(queue)
+                    container.preferences.saveAudioTabs(tabs)
+                }
                 checkpointProgress(queue, playback)
             }
         }
+    }
+
+    private fun persistAudioTabs(tabs: AudioTabCollection) {
+        val previous = tabPersistenceJob
+        tabPersistenceJob = container.applicationScope.launch {
+            previous?.join()
+            container.preferences.saveAudioTabs(tabs)
+        }
+    }
+
+    private fun updateActiveTab(transform: (AudioTabSession) -> AudioTabSession) {
+        val tabs = AudioTabReducer.updateActive(_state.value.audioTabs, transform)
+        _state.value = _state.value.copy(audioTabs = tabs)
+        persistAudioTabs(tabs)
+    }
+
+    private fun applyActivePlaybackSettings(tab: AudioTabSession) {
+        playbackConnection.setPlaybackSpeed(tab.playbackSpeed)
+        playbackConnection.setVolume(tab.volume)
+        playbackConnection.setShuffle(tab.shuffle)
+        playbackConnection.setRepeatMode(tab.repeatMode)
     }
 
     fun useServerSource() {
@@ -737,7 +785,150 @@ class MainViewModel(
 
     fun currentMetadataArtifact(): MetadataExportArtifact? = metadataExportArtifact
 
-    fun openRoot() = loadFolder(container.sources.current.value.root, replaceHistory = true)
+    fun openRoot() {
+        val source = container.sources.current.value
+        if (source.id != SourceId(SourceKind.PCLOUD.id)) {
+            loadFolder(source.root, replaceHistory = true)
+            return
+        }
+        val tab = _state.value.audioTabs.active
+        viewModelScope.launch {
+            val target = tab.currentFolderId
+                ?.let { nodeId -> runCatching { source.load(nodeId) as? AudioFolder }.getOrNull() }
+                ?: runCatching { source.resolveFolderPath(tab.definition.rootPath) }.getOrElse { error ->
+                    _state.value = _state.value.copy(
+                        loading = false,
+                        errorMessage = error.userMessage("Tab root '${tab.definition.rootPath}' is unavailable"),
+                    )
+                    return@launch
+                }
+            loadFolder(target, replaceHistory = true)
+        }
+    }
+
+    fun switchAudioTab(tabId: AudioTabId) {
+        val current = _state.value
+        if (current.audioTabs.activeTabId == tabId) return
+        flushPlaybackProgress()
+        playbackConnection.pause()
+        val snapshot = AudioTabReducer.updateActive(current.audioTabs) { tab ->
+            tab.copy(queue = current.queue, playbackPositionMillis = current.playback.positionMillis.coerceAtLeast(0))
+        }
+        val tabs = AudioTabReducer.switch(snapshot, tabId, current.playback.positionMillis)
+        val next = tabs.active
+        queueMutationRevision += 1
+        _state.value = current.copy(
+            audioTabs = tabs,
+            queue = next.queue,
+            search = current.search.copy(query = "", results = emptyList(), searching = false),
+            errorMessage = null,
+        )
+        persistAudioTabs(tabs)
+        container.applicationScope.launch { container.preferences.saveQueue(next.queue) }
+        if (next.queue.entries.isEmpty()) {
+            playbackConnection.clearQueue()
+        } else {
+            playbackConnection.setQueue(next.queue, play = false, startPositionMillis = next.playbackPositionMillis)
+        }
+        applyActivePlaybackSettings(next)
+        if (container.sources.select(SourceKind.PCLOUD)) {
+            _state.value = _state.value.copy(sourceKind = SourceKind.PCLOUD, sourceName = "pCloud")
+            viewModelScope.launch { container.preferences.updateSource(SourceKind.PCLOUD) }
+            openRoot()
+        } else {
+            _state.value = _state.value.copy(
+                currentFolder = null,
+                breadcrumbs = emptyList(),
+                nodes = emptyList(),
+                loading = false,
+                errorMessage = "Connect pCloud in Settings to browse ${next.definition.name}.",
+            )
+        }
+    }
+
+    fun addAudioTab(name: String, rootPath: String) {
+        val normalizedName = name.trim()
+        val definition = runCatching {
+            AudioTabDefinition(
+                id = AudioTabId("tab-${System.currentTimeMillis().toString(36)}"),
+                name = normalizedName,
+                rootPath = normalizeAudioRootPath(rootPath),
+            )
+        }.getOrElse { error ->
+            _state.value = _state.value.copy(message = error.userMessage("Could not add tab"))
+            return
+        }
+        val tabs = AudioTabReducer.add(_state.value.audioTabs, definition)
+        _state.value = _state.value.copy(audioTabs = tabs)
+        persistAudioTabs(tabs)
+        switchAudioTab(definition.id)
+    }
+
+    fun updateAudioTab(tabId: AudioTabId, name: String, rootPath: String) {
+        val current = _state.value.audioTabs
+        val updated = runCatching {
+            AudioTabReducer.updateRoot(
+                AudioTabReducer.rename(current, tabId, name),
+                tabId,
+                rootPath,
+            )
+        }.getOrElse { error ->
+            _state.value = _state.value.copy(message = error.userMessage("Could not update tab"))
+            return
+        }
+        _state.value = _state.value.copy(audioTabs = updated)
+        persistAudioTabs(updated)
+        if (updated.activeTabId == tabId) {
+            val reset = AudioTabReducer.updateActive(updated) { it.copy(currentFolderId = null) }
+            _state.value = _state.value.copy(audioTabs = reset)
+            persistAudioTabs(reset)
+            openRoot()
+        }
+    }
+
+    fun removeAudioTab(tabId: AudioTabId) {
+        val before = _state.value
+        val wasActive = before.audioTabs.activeTabId == tabId
+        val updated = runCatching { AudioTabReducer.remove(before.audioTabs, tabId) }.getOrElse { error ->
+            _state.value = _state.value.copy(message = error.userMessage("Could not remove tab"))
+            return
+        }
+        _state.value = before.copy(audioTabs = updated, queue = updated.active.queue)
+        persistAudioTabs(updated)
+        if (wasActive) {
+            playbackConnection.pause()
+            val active = updated.active
+            if (active.queue.entries.isEmpty()) playbackConnection.clearQueue()
+            else playbackConnection.setQueue(active.queue, play = false, startPositionMillis = active.playbackPositionMillis)
+            applyActivePlaybackSettings(active)
+            openRoot()
+        }
+    }
+
+    fun saveCurrentPlaylist(name: String) {
+        val updated = runCatching {
+            val current = AudioTabReducer.updateActive(_state.value.audioTabs) { it.copy(queue = _state.value.queue) }
+            AudioTabReducer.savePlaylist(current, name)
+        }.getOrElse { error ->
+            _state.value = _state.value.copy(message = error.userMessage("Could not save playlist"))
+            return
+        }
+        _state.value = _state.value.copy(audioTabs = updated, message = "Saved playlist '${name.trim()}'.")
+        persistAudioTabs(updated)
+    }
+
+    fun loadSavedPlaylist(name: String) {
+        val updated = runCatching { AudioTabReducer.loadPlaylist(_state.value.audioTabs, name) }.getOrElse { error ->
+            _state.value = _state.value.copy(message = error.userMessage("Could not load playlist"))
+            return
+        }
+        val queue = updated.active.queue
+        _state.value = _state.value.copy(audioTabs = updated, queue = queue, message = "Loaded playlist '$name'.")
+        persistAudioTabs(updated)
+        persistQueue(queue)
+        if (queue.entries.isEmpty()) playbackConnection.clearQueue()
+        else playbackConnection.setQueue(queue, play = false)
+    }
 
     fun openFolder(folder: AudioFolder) = loadFolder(folder, replaceHistory = false)
 
@@ -767,6 +958,30 @@ class MainViewModel(
             listOf(QueueEntry(track)),
         )
         applyQueue(queue, play = true)
+    }
+
+    fun resumeTrack(track: AudioTrack) {
+        viewModelScope.launch {
+            val progress = _state.value.progressByNodeId[track.id]
+                ?: container.preferences.loadProgress(track.sourceId, track.id)
+            if (progress == null) {
+                playTrack(track)
+                return@launch
+            }
+            val queue = QueueReducer.apply(
+                _state.value.queue,
+                QueueOperation.REPLACE,
+                listOf(QueueEntry(track)),
+            )
+            val resumeAt = ResumePolicy().resumePositionMillis(
+                progress,
+                System.currentTimeMillis(),
+                track.durationMillis ?: progress.durationMillis,
+            )
+            flushPlaybackProgress()
+            commitQueue(queue)
+            playbackConnection.setQueue(queue, play = true, startPositionMillis = resumeAt)
+        }
     }
 
     fun enqueueTrack(track: AudioTrack, operation: QueueOperation) {
@@ -1047,6 +1262,54 @@ class MainViewModel(
     fun seekBy(deltaMillis: Long) = playbackConnection.seekBy(deltaMillis)
     fun seekTo(positionMillis: Long) = playbackConnection.seekTo(positionMillis)
 
+    fun setPlaybackSpeed(speed: Float) {
+        val normalized = speed.coerceIn(0.5f, 3f)
+        playbackConnection.setPlaybackSpeed(normalized)
+        updateActiveTab { it.copy(playbackSpeed = normalized) }
+    }
+
+    fun setVolume(volume: Float) {
+        val normalized = volume.coerceIn(0f, 1f)
+        playbackConnection.setVolume(normalized)
+        updateActiveTab { it.copy(volume = normalized) }
+    }
+
+    fun toggleShuffle() {
+        val enabled = !_state.value.audioTabs.active.shuffle
+        playbackConnection.setShuffle(enabled)
+        updateActiveTab { it.copy(shuffle = enabled) }
+    }
+
+    fun cycleRepeatMode() {
+        val mode = when (_state.value.audioTabs.active.repeatMode) {
+            PlayerRepeatMode.OFF -> PlayerRepeatMode.ALL
+            PlayerRepeatMode.ALL -> PlayerRepeatMode.ONE
+            PlayerRepeatMode.ONE -> PlayerRepeatMode.OFF
+        }
+        playbackConnection.setRepeatMode(mode)
+        updateActiveTab { it.copy(repeatMode = mode) }
+    }
+
+    fun setSleepTimer(minutes: Int?) {
+        sleepTimerJob?.cancel()
+        if (minutes == null) {
+            _state.value = _state.value.copy(sleepTimerEndsAtEpochMillis = null, message = "Sleep timer cancelled.")
+            return
+        }
+        if (minutes !in 1..720) {
+            _state.value = _state.value.copy(message = "Sleep timer must be between 1 and 720 minutes.")
+            return
+        }
+        val endsAt = System.currentTimeMillis() + minutes * 60_000L
+        _state.value = _state.value.copy(sleepTimerEndsAtEpochMillis = endsAt, message = "Sleep timer set for $minutes minutes.")
+        sleepTimerJob = viewModelScope.launch {
+            delay(minutes * 60_000L)
+            playbackConnection.pause()
+            flushPlaybackProgress()
+            _state.value = _state.value.copy(sleepTimerEndsAtEpochMillis = null, message = "Sleep timer paused playback.")
+        }
+    }
+
     private fun loadFolder(folder: AudioFolder, replaceHistory: Boolean, refreshing: Boolean = false) {
         folderJob?.cancel()
         _state.value = _state.value.copy(
@@ -1061,22 +1324,35 @@ class MainViewModel(
                     source.list(folder.id),
                     TrackSortPolicy(listOf(_state.value.sortKey, TrackSortKey.NATURAL_FILENAME)),
                 )
+                val progress = container.preferences.loadProgress(nodes.filterIsInstance<AudioTrack>())
                 val breadcrumbs = if (replaceHistory) buildBreadcrumb(source, folder) else {
                     val existing = _state.value.breadcrumbs
                     val currentIndex = existing.indexOfFirst { it.id == folder.id }
                     if (currentIndex >= 0) existing.take(currentIndex + 1) else existing + folder
                 }
-                Triple(nodes, breadcrumbs, source)
-            }.onSuccess { (nodes, breadcrumbs, source) ->
-                _state.value = _state.value.copy(
-                    sourceKind = SourceKind.entries.firstOrNull { it.id == source.id.value } ?: SourceKind.DEMO,
-                    sourceName = source.root.name,
+                FolderLoadResult(nodes, breadcrumbs, source, progress)
+            }.onSuccess { result ->
+                val current = _state.value
+                val tabs = if (
+                    result.source.id == SourceId(SourceKind.PCLOUD.id) &&
+                    current.audioTabs.tabs.any { it.definition.id == current.audioTabs.activeTabId }
+                ) {
+                    AudioTabReducer.updateActive(current.audioTabs) { it.copy(currentFolderId = folder.id) }
+                } else {
+                    current.audioTabs
+                }
+                _state.value = current.copy(
+                    sourceKind = SourceKind.entries.firstOrNull { it.id == result.source.id.value } ?: SourceKind.DEMO,
+                    sourceName = result.source.root.name,
                     currentFolder = folder,
-                    breadcrumbs = breadcrumbs,
-                    nodes = nodes,
+                    breadcrumbs = result.breadcrumbs,
+                    nodes = result.nodes,
+                    progressByNodeId = result.progress,
+                    audioTabs = tabs,
                     loading = false,
                     refreshing = false,
                 )
+                if (tabs !== current.audioTabs) persistAudioTabs(tabs)
                 scheduleLibrarySearch()
             }.onFailure { error ->
                 if (error is CancellationException) return@onFailure
@@ -1113,8 +1389,11 @@ class MainViewModel(
 
     private fun commitQueue(queue: PlaybackQueue) {
         queueMutationRevision += 1
-        _state.value = _state.value.copy(queue = queue)
+        val current = _state.value
+        val tabs = AudioTabReducer.updateActive(current.audioTabs) { it.copy(queue = queue) }
+        _state.value = current.copy(queue = queue, audioTabs = tabs)
         persistQueue(queue)
+        persistAudioTabs(tabs)
     }
 
     private fun persistQueue(queue: PlaybackQueue) {
@@ -1126,19 +1405,35 @@ class MainViewModel(
     }
 
     private suspend fun restoreQueue(expectedMutationRevision: Long) {
-        val stored = container.preferences.loadQueue()
-        val restoredEntries = stored.entries.map { reference ->
-            val source = container.sources.source(reference.sourceId)
-            if (source == null) {
-                return@map null
+        val storedTabs = container.preferences.loadAudioTabs()
+        if (storedTabs != null) {
+            val restoration = restoreAudioTabs(storedTabs)
+            if (queueMutationRevision != expectedMutationRevision) return
+            val active = restoration.collection.active
+            _state.value = _state.value.copy(
+                audioTabs = restoration.collection,
+                queue = active.queue,
+                message = when {
+                    restoration.unavailableSourceCount > 0 ->
+                        "Some saved tab queues are waiting for their source to reconnect; their stable references were preserved."
+                    restoration.omittedCount > 0 ->
+                        "Restored audio tabs with ${restoration.omittedCount} unavailable item(s) omitted."
+                    else -> _state.value.message
+                },
+            )
+            persistQueue(active.queue)
+            if (restoration.unavailableSourceCount == 0 && restoration.requiresRewrite) {
+                persistAudioTabs(restoration.collection)
             }
-            val track = runCatching { source.load(reference.nodeId) as? AudioTrack }.getOrNull()
-            if (track == null) {
-                return@map null
+            if (active.queue.entries.isNotEmpty()) {
+                playbackConnection.setQueue(active.queue, play = false, startPositionMillis = active.playbackPositionMillis)
             }
-            QueueEntry(track, reference.originFolderId)
+            applyActivePlaybackSettings(active)
+            return
         }
-        val restoration = QueueRestoration.repair(restoredEntries, stored.currentIndex)
+
+        val stored = container.preferences.loadQueue()
+        val restoration = restoreStoredQueue(stored)
         val queue = restoration.queue
         // Startup restoration must never overwrite a queue the user already mutated while
         // storage/source resolution was in flight.
@@ -1150,17 +1445,12 @@ class MainViewModel(
                     message = "The saved queue could not be restored and was cleared. Reconnect its source or build a new queue.",
                 )
             }
+            val migrated = AudioTabReducer.updateActive(_state.value.audioTabs) { it.copy(queue = queue) }
+            _state.value = _state.value.copy(audioTabs = migrated)
+            persistAudioTabs(migrated)
             return
         }
         if (restoration.requiresRewrite) container.preferences.saveQueue(queue)
-        _state.value = _state.value.copy(
-            queue = queue,
-            message = if (restoration.omittedCount > 0) {
-                "Restored ${queue.entries.size} queue item(s); ${restoration.omittedCount} unavailable item(s) were removed."
-            } else {
-                _state.value.message
-            },
-        )
         val startPositionMillis = queue.current?.track?.let { track ->
             container.preferences.loadProgress(track.sourceId, track.id)?.let { progress ->
                 ResumePolicy().resumePositionMillis(
@@ -1170,7 +1460,81 @@ class MainViewModel(
                 )
             }
         } ?: 0
+        val migrated = AudioTabReducer.updateActive(_state.value.audioTabs) {
+            it.copy(queue = queue, playbackPositionMillis = startPositionMillis)
+        }
+        _state.value = _state.value.copy(
+            queue = queue,
+            audioTabs = migrated,
+            message = if (restoration.omittedCount > 0) {
+                "Restored ${queue.entries.size} queue item(s); ${restoration.omittedCount} unavailable item(s) were removed."
+            } else {
+                _state.value.message
+            },
+        )
+        persistAudioTabs(migrated)
         playbackConnection.setQueue(queue, play = false, startPositionMillis = startPositionMillis)
+    }
+
+    private suspend fun restoreAudioTabs(stored: StoredAudioTabs): RestoredAudioTabs {
+        var omittedCount = 0
+        var unavailableSourceCount = 0
+        var requiresRewrite = false
+        val sessions = stored.tabs.map { tab ->
+            val restored = restoreStoredQueue(tab.queue)
+            omittedCount += restored.omittedCount
+            unavailableSourceCount += restored.unavailableSourceCount
+            requiresRewrite = requiresRewrite || restored.requiresRewrite
+            AudioTabSession(
+                definition = AudioTabDefinition(tab.id, tab.name, tab.rootPath, tab.icon, tab.color),
+                queue = restored.queue,
+                currentFolderId = tab.currentFolderId,
+                playbackPositionMillis = tab.playbackPositionMillis,
+                playbackSpeed = tab.playbackSpeed,
+                volume = tab.volume,
+                shuffle = tab.shuffle,
+                repeatMode = tab.repeatMode,
+            )
+        }
+        val playlists = stored.playlists.map { playlist ->
+            val restored = restoreStoredQueue(
+                StoredQueue(
+                    entries = playlist.entries,
+                    currentIndex = if (playlist.entries.isEmpty()) -1 else 0,
+                ),
+            )
+            omittedCount += restored.omittedCount
+            unavailableSourceCount += restored.unavailableSourceCount
+            requiresRewrite = requiresRewrite || restored.requiresRewrite
+            NamedAudioPlaylist(playlist.name, restored.queue.entries)
+        }
+        return RestoredAudioTabs(
+            collection = AudioTabCollection(sessions, stored.activeTabId, playlists),
+            omittedCount = omittedCount,
+            unavailableSourceCount = unavailableSourceCount,
+            requiresRewrite = requiresRewrite,
+        )
+    }
+
+    private suspend fun restoreStoredQueue(stored: StoredQueue): StoredQueueRestoration {
+        var unavailableSourceCount = 0
+        val restoredEntries = stored.entries.map { reference ->
+            val source = container.sources.source(reference.sourceId)
+            if (source == null) {
+                unavailableSourceCount += 1
+                return@map null
+            }
+            val track = runCatching { source.load(reference.nodeId) as? AudioTrack }.getOrNull()
+                ?: return@map null
+            QueueEntry(track, reference.originFolderId)
+        }
+        val result = QueueRestoration.repair(restoredEntries, stored.currentIndex)
+        return StoredQueueRestoration(
+            queue = result.queue,
+            omittedCount = result.omittedCount,
+            unavailableSourceCount = unavailableSourceCount,
+            requiresRewrite = result.requiresRewrite,
+        )
     }
 
     private fun scheduleLibrarySearch() {
@@ -1186,9 +1550,49 @@ class MainViewModel(
             delay(SEARCH_DEBOUNCE_MILLIS)
             val current = _state.value
             if (current.search.query != request.query || current.search.matchTypes != request.matchTypes) return@launch
-            val results = LibrarySearch.matches(current.nodes, request)
-            _state.value = current.copy(search = current.search.copy(results = results, searching = false))
+            try {
+                val candidates = if (current.sourceKind == SourceKind.PCLOUD) {
+                    val source = container.sources.source(SourceId(SourceKind.PCLOUD.id))
+                    if (source != null) {
+                        val root = source.resolveFolderPath(current.audioTabs.active.definition.rootPath)
+                        collectSearchNodes(source, root.id)
+                    } else {
+                        emptyList()
+                    }
+                } else {
+                    current.nodes
+                }
+                val latest = _state.value
+                if (latest.search.query != request.query || latest.search.matchTypes != request.matchTypes) return@launch
+                val results = LibrarySearch.matches(candidates, request)
+                _state.value = latest.copy(search = latest.search.copy(results = results, searching = false))
+            } catch (_: CancellationException) {
+                Unit
+            } catch (error: Throwable) {
+                val latest = _state.value
+                if (latest.search.query == request.query) {
+                    _state.value = latest.copy(
+                        search = latest.search.copy(results = emptyList(), searching = false),
+                        message = error.userMessage("Tab search failed"),
+                    )
+                }
+            }
         }
+    }
+
+    private suspend fun collectSearchNodes(source: AudioSource, rootId: NodeId): List<MediaNode> {
+        val pending = ArrayDeque<NodeId>().apply { add(rootId) }
+        val visited = mutableSetOf<NodeId>()
+        val nodes = mutableListOf<MediaNode>()
+        while (pending.isNotEmpty() && visited.size < MAX_SEARCH_FOLDERS) {
+            currentCoroutineContext().ensureActive()
+            val folderId = pending.removeFirst()
+            if (!visited.add(folderId)) continue
+            val children = source.list(folderId)
+            nodes += children
+            children.filterIsInstance<AudioFolder>().forEach { pending.addLast(it.id) }
+        }
+        return nodes
     }
 
     private fun synchronizeQueueSelection(queue: PlaybackQueue, mediaId: String?): PlaybackQueue {
@@ -1198,13 +1602,20 @@ class MainViewModel(
         return if (index >= 0 && index != queue.currentIndex) queue.copy(currentIndex = index) else queue
     }
 
-    fun flushPlaybackProgress(): Job? =
-        persistPlaybackProgress(
+    fun flushPlaybackProgress(): Job? {
+        val current = _state.value
+        val tabs = AudioTabReducer.updateActive(current.audioTabs) { tab ->
+            tab.copy(queue = current.queue, playbackPositionMillis = current.playback.positionMillis.coerceAtLeast(0))
+        }
+        _state.value = current.copy(audioTabs = tabs)
+        persistAudioTabs(tabs)
+        return persistPlaybackProgress(
             queue = _state.value.queue,
             playback = _state.value.playback,
             force = true,
             scope = container.applicationScope,
         )
+    }
 
     private fun checkpointProgress(queue: PlaybackQueue, playback: dev.properpcloud.app.playback.PlaybackUiState) {
         persistPlaybackProgress(queue, playback, force = false, scope = viewModelScope)
@@ -1230,6 +1641,15 @@ class MainViewModel(
         )
         checkpointCursor = decision.cursor
         return decision.progress?.let { progress ->
+            val current = _state.value
+            val tabs = AudioTabReducer.updateActive(current.audioTabs) { tab ->
+                tab.copy(playbackPositionMillis = progress.positionMillis, playbackSpeed = progress.playbackSpeed)
+            }
+            _state.value = current.copy(
+                audioTabs = tabs,
+                progressByNodeId = current.progressByNodeId + (progress.nodeId to progress),
+            )
+            persistAudioTabs(tabs)
             scope.launch { container.preferences.saveProgress(progress) }
         }
     }
@@ -1242,6 +1662,7 @@ class MainViewModel(
         metadataJob?.cancel()
         pCloudLoginJob?.cancel()
         serverConnectJob?.cancel()
+        sleepTimerJob?.cancel()
         discardMetadataSources()
     }
 
@@ -1258,8 +1679,30 @@ class MainViewModel(
     private companion object {
         const val MAX_METADATA_BATCH_ITEMS = 20
         const val SEARCH_DEBOUNCE_MILLIS = 200L
+        const val MAX_SEARCH_FOLDERS = 1_500
     }
 }
+
+private data class FolderLoadResult(
+    val nodes: List<MediaNode>,
+    val breadcrumbs: List<AudioFolder>,
+    val source: AudioSource,
+    val progress: Map<NodeId, dev.properpcloud.core.model.PlaybackProgress>,
+)
+
+private data class StoredQueueRestoration(
+    val queue: PlaybackQueue,
+    val omittedCount: Int,
+    val unavailableSourceCount: Int,
+    val requiresRewrite: Boolean,
+)
+
+private data class RestoredAudioTabs(
+    val collection: AudioTabCollection,
+    val omittedCount: Int,
+    val unavailableSourceCount: Int,
+    val requiresRewrite: Boolean,
+)
 
 private fun AudioTrack.metadataKey(): String = "${sourceId.value}:${id.value}"
 

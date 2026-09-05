@@ -11,6 +11,7 @@ import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.AudioTabCollection
 import dev.properpcloud.core.model.AudioTabColor
 import dev.properpcloud.core.model.AudioTabId
+import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.PlayerRepeatMode
 import dev.properpcloud.core.model.PlaybackHistoryEntry
 import dev.properpcloud.core.model.PlaybackHistoryPolicy
@@ -87,6 +88,10 @@ class AppPreferencesRepository(context: Context) {
     suspend fun loadAudioTabs(): StoredAudioTabs? =
         AppPersistenceCodec.decodeAudioTabs(dataStore.data.first()[AUDIO_TABS_JSON].orEmpty())
 
+    internal suspend fun clearAudioTabsForTests() {
+        dataStore.edit { it.remove(AUDIO_TABS_JSON) }
+    }
+
     suspend fun loadPlaybackHistory(): List<PlaybackHistoryEntry> =
         AppPersistenceCodec.decodeHistory(dataStore.data.first()[HISTORY_JSON].orEmpty())
 
@@ -147,6 +152,13 @@ class AppPreferencesRepository(context: Context) {
         return AppPersistenceCodec.decodeProgress(preferences[PROGRESS_JSON].orEmpty(), sourceId, nodeId)
     }
 
+    suspend fun loadProgress(tracks: Iterable<AudioTrack>): Map<NodeId, PlaybackProgress> {
+        val json = dataStore.data.first()[PROGRESS_JSON].orEmpty()
+        return tracks.associateNotNull { track ->
+            AppPersistenceCodec.decodeProgress(json, track.sourceId, track.id)?.let { track.id to it }
+        }
+    }
+
     private fun decodeSettings(preferences: Preferences): StoredSettings = StoredSettings(
         clientId = preferences[CLIENT_ID].orEmpty(),
         sourceKind = SourceKind.entries.firstOrNull { it.id == preferences[SOURCE_KIND] } ?: SourceKind.DEMO,
@@ -177,4 +189,10 @@ class AppPreferencesRepository(context: Context) {
         val HISTORY_JSON = stringPreferencesKey("playback_history_json")
         val AUDIO_TABS_JSON = stringPreferencesKey("audio_tabs_json_v1")
     }
+}
+
+private inline fun <T, K, V> Iterable<T>.associateNotNull(
+    transform: (T) -> Pair<K, V>?,
+): Map<K, V> = buildMap {
+    for (item in this@associateNotNull) transform(item)?.let { (key, value) -> put(key, value) }
 }

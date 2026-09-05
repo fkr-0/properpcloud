@@ -6,9 +6,13 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import dev.properpcloud.app.AppContainer
+import dev.properpcloud.app.data.AppPreferencesRepository
 import dev.properpcloud.app.playback.PlaybackController
 import dev.properpcloud.app.playback.PlaybackUiState
 import dev.properpcloud.core.model.AudioFolder
+import dev.properpcloud.core.model.AudioTabDefaults
+import dev.properpcloud.core.model.AudioTabId
+import dev.properpcloud.core.model.AudioTabReducer
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.MediaIdentity
 import dev.properpcloud.core.model.NodeId
@@ -20,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -40,7 +45,53 @@ class MainViewModelTest {
     @After
     fun cleanUp() {
         Dispatchers.resetMain()
+        runBlocking { AppPreferencesRepository(context).clearAudioTabsForTests() }
         context.filesDir.resolve("datastore/properpcloud.preferences_pb").delete()
+    }
+
+    @Test
+    fun switchingAudioTabsPausesAndRestoresNextQueueWithoutAutoplay() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val playback = FakePlaybackController()
+        val container = AppContainer(context.applicationContext as Application, applicationScope = this)
+        val source = container.sources.current.value
+        val folder = source.list(source.root.id)
+            .filterIsInstance<AudioFolder>()
+            .first { it.name == "Numbered tracks" }
+        val tracks = source.list(folder.id).filterIsInstance<AudioTrack>().take(2)
+        var tabs = AudioTabDefaults.collection()
+        tabs = AudioTabReducer.updateActive(tabs) { tab ->
+            tab.copy(queue = PlaybackQueue(entries = listOf(QueueEntry(tracks[0])), currentIndex = 0))
+        }
+        tabs = AudioTabReducer.switch(tabs, AudioTabId("music"), 23_000)
+        tabs = AudioTabReducer.updateActive(tabs) { tab ->
+            tab.copy(
+                queue = PlaybackQueue(entries = listOf(QueueEntry(tracks[1])), currentIndex = 0),
+                playbackPositionMillis = 9_000,
+            )
+        }
+        tabs = AudioTabReducer.switch(tabs, AudioTabId("audiobooks"), 9_000)
+        container.preferences.saveAudioTabs(tabs)
+
+        withViewModel(container, playback) { viewModel ->
+            for (attempt in 0 until 200) {
+                advanceUntilIdle()
+                if (viewModel.state.value.queue.current?.track?.id == tracks[0].id) break
+                Thread.sleep(10)
+            }
+            playback.pauseCalls = 0
+            playback.lastSetQueuePlay = null
+
+            viewModel.switchAudioTab(AudioTabId("music"))
+            advanceUntilIdle()
+
+            assertEquals(1, playback.pauseCalls)
+            assertEquals(false, playback.lastSetQueuePlay)
+            assertEquals(9_000L, playback.lastSetQueuePositionMillis)
+            assertEquals(tracks[1].id, playback.lastSetQueue?.current?.track?.id)
+            assertEquals(AudioTabId("music"), viewModel.state.value.audioTabs.activeTabId)
+            assertEquals(tracks[1].id, viewModel.state.value.queue.current?.track?.id)
+        }
     }
 
     @Test
@@ -302,14 +353,19 @@ class MainViewModelTest {
 
         var lastSetQueue: PlaybackQueue? = null
         var lastSetQueuePositionMillis: Long? = null
+        var lastSetQueuePlay: Boolean? = null
+        var pauseCalls: Int = 0
 
         override fun setQueue(queue: PlaybackQueue, play: Boolean, startPositionMillis: Long) {
             lastSetQueue = queue
             lastSetQueuePositionMillis = startPositionMillis
+            lastSetQueuePlay = play
         }
         override fun select(index: Int, play: Boolean) = Unit
         override fun clearQueue() = Unit
-        override fun pause() = Unit
+        override fun pause() {
+            pauseCalls += 1
+        }
         override fun playPause() = Unit
         override fun skipNext() = Unit
         override fun skipPrevious() = Unit
