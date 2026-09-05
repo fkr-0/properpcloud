@@ -9,6 +9,9 @@ ANDROID_BUILD_TOOLS ?= 37.0.0
 DESKTOP_JAVA_HOME ?= /opt/android-studio/jbr
 PREBUILT_DESKTOP_IMAGE ?= 0
 NPM ?= npm
+MEDIA_LIBRARY_ROOT ?= /tmp/dib/media-library
+MEDIA_LIBRARY_STATE_DB ?= $(HOME)/.local/state/properpcloud/media-library/catalog.db
+MEDIA_LIBRARY_SOURCE_DB ?=
 
 DOTENV_PCLOUD_CLIENT_ID := $(shell python3 scripts/read-dotenv-public.py)
 PCLOUD_CLIENT_ID ?= $(DOTENV_PCLOUD_CLIENT_ID)
@@ -16,7 +19,7 @@ PCLOUD_CLIENT_ID ?= $(DOTENV_PCLOUD_CLIENT_ID)
 export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
 export PCLOUD_CLIENT_ID
 
-.PHONY: help oauth-config-check oauth-config-test toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts release-020-readiness release-020-pretag release-020-readiness-strict dependencies fast-test local-check test desktop-test desktop-smoke desktop-crash-recovery-smoke desktop-local-tag-recovery-process-smoke desktop-resilience-soak desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit desktop-sleep-monitor-smoke desktop-session-audit desktop-run desktop-package desktop-appimage desktop-appimage-smoke desktop-flatpak desktop-flatpak-smoke arch-package-gate linux-packages linux-package-smoke linux-ci docs-install docs-build lint build check ci shell compose install clean
+.PHONY: help oauth-config-check oauth-config-test media-library-test media-library-init media-library-dry-run media-library-import media-library-verify media-library-space toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts release-020-readiness release-020-pretag release-020-readiness-strict dependencies fast-test local-check test desktop-test desktop-smoke desktop-crash-recovery-smoke desktop-local-tag-recovery-process-smoke desktop-resilience-soak desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit desktop-sleep-monitor-smoke desktop-session-audit desktop-run desktop-package desktop-appimage desktop-appimage-smoke desktop-flatpak desktop-flatpak-smoke arch-package-gate linux-packages linux-package-smoke linux-ci docs-install docs-build lint build check ci shell compose install clean
 .NOTPARALLEL: linux-ci linux-packages linux-package-smoke
 
 help: ## Show available targets.
@@ -28,6 +31,26 @@ oauth-config-check: ## Validate public OAuth configuration without reading or ex
 
 oauth-config-test: ## Run host-side configuration and packaging boundary regression tests.
 	@python3 -m unittest discover -s tests -p 'test_*.py'
+
+media-library-test: ## Run the catalog/import/media-library regression suite without touching pCloud.
+	@python3 -m unittest discover -s tests -p 'test_media_library.py'
+
+media-library-init: ## Create the extensive media-library directory contract on the configured mount.
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" init
+
+media-library-dry-run: ## Preview a catalog import; set MEDIA_LIBRARY_SOURCE_DB to the discovery SQLite database.
+	@test -n "$(MEDIA_LIBRARY_SOURCE_DB)" || { echo "MEDIA_LIBRARY_SOURCE_DB is required" >&2; exit 2; }
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" import --source-db "$(MEDIA_LIBRARY_SOURCE_DB)"
+
+media-library-import: ## Execute the reviewed catalog import and publish manifests/catalog snapshot.
+	@test -n "$(MEDIA_LIBRARY_SOURCE_DB)" || { echo "MEDIA_LIBRARY_SOURCE_DB is required" >&2; exit 2; }
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" import --source-db "$(MEDIA_LIBRARY_SOURCE_DB)" --execute
+
+media-library-verify: ## Verify every cataloged pCloud object exists with the expected size.
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" verify
+
+media-library-space: ## Report physical library bytes by type and provenance-referenced bytes by source disk.
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" space
 
 toolchain-archive: ## Fetch and checksum-verify the resumable Android tools archive.
 	@ANDROID_CMDLINE_TOOLS_VERSION=$(ANDROID_CMDLINE_TOOLS_VERSION) \

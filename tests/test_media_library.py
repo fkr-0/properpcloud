@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("properpcloud_media_library", ROOT / "scripts/media_library.py")
@@ -77,6 +79,24 @@ class MediaLibraryTest(unittest.TestCase):
         self.assertEqual(source.read_bytes(), target.read_bytes())
         self.assertTrue((self.library_root / "metadata/catalog.db").is_file())
         self.assertEqual(2, len(list((self.library_root / "metadata/manifests").glob("*.jsonl"))))
+
+    def test_normative_spec_docs_and_make_targets_are_wired(self):
+        manifest = yaml.safe_load((ROOT / "spec/manifest.yml").read_text())
+        files = [entry["file"] for entry in manifest["specification"]["source_of_truth"]]
+        self.assertIn("media-library.yml", files)
+        contract = yaml.safe_load((ROOT / "spec/media-library.yml").read_text())["media_library"]
+        self.assertEqual("/tmp/dib/media-library", contract["paths"]["default_root"])
+        self.assertEqual("dry_run", contract["ingestion"]["default_mode"])
+        self.assertFalse(contract["backup"]["pcloud_is_backup"])
+        self.assertIn("SHA-256 exact-content equality", contract["deduplication"]["modes"]["hash"])
+
+        docs = (ROOT / "docs/media-library.md").read_text()
+        self.assertIn("--extension flac --min-size 10MiB", docs)
+        self.assertIn("--media-type images --taken-year 2024", docs)
+        self.assertIn("report-only", docs.lower())
+        makefile = (ROOT / "Makefile").read_text()
+        for target in ("media-library-test:", "media-library-init:", "media-library-dry-run:", "media-library-import:", "media-library-verify:", "media-library-space:"):
+            self.assertIn(target, makefile)
 
     def test_hash_dedupe_preserves_two_source_provenance_rows(self):
         first = self.source_root / "a" / "same.wav"

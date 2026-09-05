@@ -1,0 +1,88 @@
+media_library:
+  status: implemented_foundation
+  purpose: >-
+    Build an extensive, filesystem-readable media library on pCloud from cataloged
+    external-disk sources while retaining source provenance and restartable import state.
+  paths:
+    default_root: /tmp/dib/media-library
+    authoritative_database: ~/.local/state/properpcloud/media-library/catalog.db
+    published_database_snapshot: metadata/catalog.db
+    manifests: metadata/manifests
+    logs: metadata/logs
+  layout:
+    audio: [music, samples, recordings, podcasts]
+    video: [projects, recordings, media]
+    images: [photos, screenshots, artwork, textures]
+    documents: [pdfs, ebooks, archives]
+    metadata: [manifests, logs]
+  source_catalog:
+    transport: SQLite opened read-only
+    table_selection: explicit table or deterministic schema autodetection
+    recognized_identity:
+      path: [path, absolute_path, source_path, file_path, full_path]
+      relative_path: [relative_path, relpath, source_relative_path]
+      source_disk: [source_disk, disk, disk_id, volume, volume_id, device]
+    recognized_evidence:
+      size: [size, size_bytes, bytes, file_size]
+      mtime: [mtime_ns, modified_ns, mtime, modified_at, modified_ms]
+      content_hash: [sha256, content_hash, hash]
+  ingestion:
+    default_mode: dry_run
+    explicit_write_flag: --execute
+    destination_rule: media_type/media_subtype/source_disk/source_relative_path
+    partial_visibility: >-
+      Copies use a hidden temporary sibling and rename only after the complete source
+      has been read and its size/mtime remain unchanged.
+    transient_storage_failures:
+      retry_attempts: 4
+      backoff_seconds: [0.5, 1, 2]
+    progress: byte progress, throughput, and ETA on interactive terminals
+    optional_bandwidth_limit: MiB per second
+    unsupported_files: retained in source catalog but skipped by this media importer
+  deduplication:
+    default: filename-size
+    modes:
+      filename-size: fast heuristic; never claimed as content equality
+      hash: SHA-256 exact-content equality
+      off: preserve every independently addressed source object
+    provenance_rule: >-
+      Deduplication may map multiple source_items to one library_file but must never
+      erase the source catalog, source disk, source path, or first/last-seen evidence.
+  database:
+    engine: SQLite with FTS5
+    writable_location: local filesystem, not the rclone FUSE mount
+    tables:
+      library_files: physical objects stored in the pCloud media-library tree
+      source_items: external source provenance mapped to physical library objects
+      import_runs: restart/audit summaries for imports
+    full_text_search: filename and library path
+    publish_rule: SQLite backup API creates one consistent snapshot before FUSE publication
+    reason: avoid depending on SQLite WAL and lock semantics through cloud FUSE
+  metadata:
+    audio:
+      optional_tool: ffprobe
+      fields: [title, artist, album, duration_seconds, bitrate]
+    images:
+      optional_tools: [ffprobe, exiftool]
+      fields: [width, height, captured_at]
+    absence_rule: missing extractors or unreadable optional metadata do not block byte import
+  maintenance:
+    verify: existence and size by default; SHA-256 when requested and available
+    space: physical bytes by media type plus provenance-referenced bytes by source disk
+    cleanup: report-only duplicate, empty-file, broken-symlink, and unreferenced candidates
+    cleanup_mutation: forbidden; deletion remains an explicit separate operator decision
+  backup:
+    pcloud_is_backup: false
+    requirements:
+      - Keep irreplaceable originals until an independent verified backup exists.
+      - Back up the local authoritative SQLite database separately from its pCloud snapshot.
+      - Retain import manifests so source-to-library provenance can be reconstructed.
+      - Periodically verify both pCloud objects and an independent backup copy.
+  invariants:
+    - A dry run is the default for catalog imports; bulk cloud writes require --execute.
+    - No hardlinks are created or required.
+    - Symbolic-link source objects are never followed or imported.
+    - A source changing while copied never becomes a visible completed destination.
+    - Filename-plus-size deduplication is explicitly heuristic; SHA-256 is the exact mode.
+    - The live writable SQLite database never resides on the pCloud/rclone FUSE mount.
+    - Cleanup reports candidates and never deletes library media automatically.

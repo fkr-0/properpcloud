@@ -40,6 +40,9 @@ Both clients share the same Kotlin/JVM source, folder, sorting, queue, progress,
 - shared preview-first relative `.m3u8` generation with five deterministic order modes including explicit numeric `title-number`, an exact target-and-content checkpoint before creation, stale-evidence guards, bounded playlist-only post-sync regeneration, native-desktop selected-root UI binding, and a preview-by-default `--generate-playlists` CLI that prints every prospective line; Android keeps verified ZIP export rather than inventing writable local-root authority;
 - deterministic generated-WAV demo media requiring no account or network;
 - Linux MPRIS media keys, Secret Service tokens, SQLite state, and XDG paths;
+- preview-first external-disk catalog import into an extensive pCloud media-library tree,
+  with provenance-preserving incremental sync, optional SHA-256 dedupe, FTS5 search,
+  manifests, verification, space accounting, and report-only cleanup;
 - a pre-rendered Markdown documentation site deployed through GitHub Pages.
 
 ## First run
@@ -129,6 +132,7 @@ make image                # build the pinned toolchain image
 make doctor               # validate wrapper, image, and prerequisites
 make release-check        # validate specifications and release metadata
 make local-check          # routine host contract/config gate; no Android image required
+make media-library-test   # host-only catalog/import regression suite; does not touch pCloud
 make fast-test            # optional portable JVM tests when the build image is already local
 make test                 # Android and portable JVM tests
 make desktop-test         # Linux adapter tests
@@ -172,7 +176,9 @@ properpcloud/
 - [`spec/architecture.yml`](spec/architecture.yml) — layers, data flows, and trust boundaries
 - [`spec/contracts.yml`](spec/contracts.yml) — ports, records, persistence, events, and errors
 - [`spec/testing.yml`](spec/testing.yml) — fixtures, fault injection, and release gates
+- [`spec/media-library.yml`](spec/media-library.yml) — external catalog import, pCloud layout, provenance, dedupe, and maintenance
 - [`spec/linux-client.yml`](spec/linux-client.yml) — native Linux architecture and acceptance
+- [`docs/media-library.md`](docs/media-library.md) — media-library setup, import/query/verification runbook
 - [`docs/api/`](docs/api/README.md) — human-readable public contract reference
 
 ## Release line

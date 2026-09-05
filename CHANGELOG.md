@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   browse the server-generated folder tree, restore stable server queue identities, and resolve
   fresh server playback tickets through the existing Media3 path instead of scanning pCloud on
   the device.
+- Added an extensive `/tmp/dib/media-library` organization/import layer for external-disk
+  discovery catalogs. Imports are dry-run by default, preserve source-disk/path provenance,
+  support filename+size or exact SHA-256 dedupe, stage copies before atomic visibility, retry
+  bounded transient FUSE errors, and publish per-run manifests plus a consistent SQLite snapshot.
+- Added FTS5 filename/path search, optional ffprobe/exiftool audio/image enrichment, FLAC/photo
+  query filters, verification, by-type/source space reports, report-only cleanup candidates, and
+  a documented independent-backup strategy; the live writable SQLite state stays local rather
+  than relying on WAL/locking semantics through the pCloud/rclone mount.
 
 ### Security
 
