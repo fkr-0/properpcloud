@@ -350,7 +350,7 @@ use_cases:
         - Fantasy -> hb/Fantasy
       switch_flow:
         - app: Force a progress checkpoint for the current stable media identity.
-        - app: Pause active playback before changing the selected tab.
+        - app: Invalidate pending stream/recovery work and stop the old platform-player load before changing the selected tab.
         - app: Persist the old tab's queue, selected item, position, folder, speed, volume, shuffle, and repeat settings.
         - app: Restore the destination tab's browser root/current folder and queue from stable source and node identities.
         - app: Prepare the destination current item at its saved position in a paused state.
@@ -365,6 +365,11 @@ use_cases:
         - Each tab owns an independent queue and current index.
         - Reorder by drag or explicit move actions and remove individual entries.
         - Save the current stable queue as a named playlist and later load it into the active tab without autoplay.
+      tab_management:
+        - Reorder named tabs without changing which session is active.
+        - Bound one collection to 32 tabs so repeated creation cannot grow player/session state without limit.
+        - Closing the active tab checkpoints and stops its player load before the successor session is restored.
+        - Show loading, playing, paused, or stopped as text in the tab strip; state is never color-only.
       long_form:
         - Remember playback speed and volume per tab.
         - Support 30-second backward/forward seeking, shuffle, repeat off/all/one, and a bounded sleep timer.

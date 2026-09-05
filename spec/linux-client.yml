@@ -271,8 +271,10 @@ linux_client:
         - Explicit retry after stream failure resets only the bounded per-identity retry state and never changes stable media identity.
       process_failure:
         - Detect process exit and preserve shared queue.
-        - Offer restart player and resume.
-        - Perform zero automatic process restart attempts.
+        - Perform one application-orchestrated automatic restart for an unexpected process exit, re-resolving the current stable media identity instead of reusing a persisted capability.
+        - Preserve the last confirmed position and whether playback was active; a player that crashed while paused is prepared paused after recovery.
+        - Keep an explicit restart player action when automatic recovery fails or the user asks to retry.
+        - Cancel stale recovery/load work when tab, current queue identity, stop intent, or application lifetime changes.
         - Distinguish unexpected stream idle from normal EOF and explicit stop.
         - Re-resolve one fresh capability per stable media identity and cooldown window, resuming from durable progress.
         - Expose only fixed diagnostics; URLs and provider response data never enter UI state or evidence.

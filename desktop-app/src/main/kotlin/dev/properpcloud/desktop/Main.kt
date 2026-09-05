@@ -112,9 +112,10 @@ private fun runCrashRecoverySmoke() = runBlocking {
             mpv.state.value.unexpectedExit
         }
         check(mpv.state.value.unexpectedExit && mpv.state.value.restartAvailable) { "unexpected mpv exit was not detected" }
+        check(mpv.state.value.resumeAfterRestart) { "active playback did not retain automatic-resume intent" }
         val persisted = requireNotNull(repository.loadProgress(track.sourceId, track.id))
         mpv.load(source.resolveStream(track.id), persisted.positionMillis)
-        awaitSmokeCondition("manual mpv restart", attempts = 80, delayMillis = 25) {
+        awaitSmokeCondition("automatic mpv restart primitives", attempts = 80, delayMillis = 25) {
             mpv.state.value.running && !mpv.state.value.unexpectedExit
         }
         check(mpv.state.value.running) { "mpv did not restart" }
@@ -124,7 +125,7 @@ private fun runCrashRecoverySmoke() = runBlocking {
         check(kotlin.math.abs(mpv.state.value.positionMillis - persisted.positionMillis) <= 5_000) {
             "restarted playback exceeded the five-second recovery bound"
         }
-        println("properpcloud crash recovery smoke: OK (detected exit, zero automatic restarts, stable queue identity, bounded resume)")
+        println("properpcloud crash recovery smoke: OK (detected exit, automatic-resume intent, stable queue identity, bounded resume)")
     } finally {
         mpv.close()
         repository.close()

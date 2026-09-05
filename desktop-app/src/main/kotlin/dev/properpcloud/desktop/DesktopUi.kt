@@ -101,6 +101,7 @@ import dev.properpcloud.core.model.AudioTabId
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.LibraryFile
 import dev.properpcloud.core.model.LibraryFileKind
+import dev.properpcloud.core.model.MAX_AUDIO_TABS
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.SearchMatchType
@@ -298,6 +299,14 @@ private fun AudioTabStrip(state: DesktopUiState, controller: DesktopController) 
             verticalAlignment = Alignment.CenterVertically,
         ) {
             state.audioTabs.tabs.forEach { tab ->
+                val playbackLabel = when {
+                    tab.definition.id != state.audioTabs.activeTabId -> "stopped"
+                    state.playbackLoading -> "loading"
+                    state.playback.restartAvailable -> "stopped"
+                    state.playback.running && !state.playback.idle && !state.playback.paused -> "playing"
+                    state.playback.running && !state.playback.idle -> "paused"
+                    else -> "stopped"
+                }
                 FilterChip(
                     selected = tab.definition.id == state.audioTabs.activeTabId,
                     onClick = { controller.switchAudioTab(tab.definition.id) },
@@ -306,6 +315,7 @@ private fun AudioTabStrip(state: DesktopUiState, controller: DesktopController) 
                             buildString {
                                 tab.definition.icon?.takeIf(String::isNotBlank)?.let { append(it).append(' ') }
                                 append(tab.definition.name)
+                                append(" · ").append(playbackLabel)
                                 if (tab.queue.entries.isNotEmpty()) append(" · ${tab.queue.entries.size}")
                             },
                             maxLines = 1,
@@ -313,8 +323,19 @@ private fun AudioTabStrip(state: DesktopUiState, controller: DesktopController) 
                     },
                 )
             }
-            IconButton(onClick = { addDialogOpen = true }) { Icon(Icons.Default.Add, "Add audio tab") }
+            IconButton(onClick = { addDialogOpen = true }, enabled = state.audioTabs.tabs.size < MAX_AUDIO_TABS) {
+                Icon(Icons.Default.Add, "Add audio tab")
+            }
             IconButton(onClick = { editDialogOpen = true }) { Icon(Icons.Default.Edit, "Edit ${active.definition.name} tab") }
+            val activeIndex = state.audioTabs.tabs.indexOfFirst { it.definition.id == active.definition.id }
+            IconButton(
+                onClick = { controller.moveAudioTab(active.definition.id, -1) },
+                enabled = activeIndex > 0,
+            ) { Icon(Icons.Default.KeyboardArrowLeft, "Move ${active.definition.name} tab left") }
+            IconButton(
+                onClick = { controller.moveAudioTab(active.definition.id, 1) },
+                enabled = activeIndex in 0 until state.audioTabs.tabs.lastIndex,
+            ) { Icon(Icons.Default.KeyboardArrowRight, "Move ${active.definition.name} tab right") }
         }
     }
     if (addDialogOpen) {

@@ -161,12 +161,16 @@ ux:
         - {name: Krimi, root: hb/Krimi}
         - {name: Fantasy, root: hb/Fantasy}
       tab_strip:
-        presentation: horizontally scrollable named chips with optional icon/color and queue count
-        actions: [select, add, rename, change_root, remove]
+        presentation: horizontally scrollable named chips with optional icon/color, queue count, and textual loading/playing/paused/stopped state
+        actions: [select, add, rename, change_root, reorder, remove]
+        maximum_tabs: 32
         switching:
-          - Checkpoint and pause the old tab before selection changes.
+          - Checkpoint the old tab and stop its platform-player load before selection changes while preserving paused resume state in the tab session.
           - Restore the new tab's browser, queue, position, and player preferences.
           - Never autoplay merely because a tab became active.
+        closing_active:
+          - Invalidate pending stream resolutions before changing tab ownership.
+          - Stop the old platform-player load even when the successor tab has an empty queue.
       browser:
         scope: active tab root and descendants only
         rows:
@@ -184,6 +188,7 @@ ux:
           - Load into the active tab paused; loading never implies play.
       player:
         global_invariant: at most one platform player may be actively playing
+        asynchronous_load_invariant: resolve streams outside the player lock, prepare the winning request paused, and never make a superseded tab or queue request audible
         controls:
           - play_pause
           - previous_next

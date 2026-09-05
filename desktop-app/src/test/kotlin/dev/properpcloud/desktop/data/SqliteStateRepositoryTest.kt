@@ -152,4 +152,27 @@ class SqliteStateRepositoryTest {
             root.toFile().deleteRecursively()
         }
     }
+
+    @Test
+    fun `corrupt database is quarantined and replaced with clean state`() {
+        val root = Files.createTempDirectory("properpcloud-sqlite-corrupt-")
+        val database = root.resolve("state.db")
+        try {
+            Files.write(database, byteArrayOf(0x13, 0x37, 0x42, 0x55))
+
+            SqliteStateRepository.openResilient(database).use { repository ->
+                assertTrue(repository.loadQueue().entries.isEmpty())
+                repository.setSetting("recovered", "true")
+                assertEquals("true", repository.setting("recovered"))
+            }
+
+            assertTrue(
+                Files.list(root).use { entries ->
+                    entries.anyMatch { it.fileName.toString().startsWith("state.db.corrupt-") }
+                },
+            )
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
 }

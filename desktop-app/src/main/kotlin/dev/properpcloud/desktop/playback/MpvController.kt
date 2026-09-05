@@ -37,6 +37,7 @@ data class MpvState(
     val unexpectedExit: Boolean = false,
     val restartAvailable: Boolean = false,
     val streamFailure: Boolean = false,
+    val resumeAfterRestart: Boolean = false,
 )
 
 class MpvController(
@@ -63,10 +64,10 @@ class MpvController(
         closing.set(false)
         val generation = processGeneration.incrementAndGet()
         polling?.cancel()
-        current?.destroyForcibly()
+        terminate(current)
         Files.createDirectories(runtimeDirectory)
         runCatching { Files.deleteIfExists(socketPath) }
-        process = ProcessBuilder(buildList {
+        val started = ProcessBuilder(buildList {
             add(executable)
             add("--no-config")
             add("--idle=yes")
@@ -80,6 +81,10 @@ class MpvController(
             .redirectOutput(ProcessBuilder.Redirect.DISCARD)
             .redirectError(ProcessBuilder.Redirect.DISCARD)
             .start()
+        // mpv is controlled exclusively through JSON IPC. Closing the inherited stdin pipe here
+        // avoids retaining one parent-side file descriptor for every process generation.
+        runCatching { started.outputStream.close() }
+        process = started
         for (attempt in 0 until 100) {
             if (Files.exists(socketPath)) break
             if (process?.isAlive != true) error("mpv exited before its IPC socket became ready")
@@ -89,6 +94,11 @@ class MpvController(
         mutableState.value = MpvState(running = true)
         val monitoredProcess = requireNotNull(process)
         polling = scope.launch(Dispatchers.IO) { pollState(monitoredProcess, generation) }
+    }
+
+    suspend fun reloadAudioOutput() {
+        ensureStarted()
+        command(listOf("ao-reload"))
     }
 
     suspend fun load(handle: StreamHandle, resumeMillis: Long = 0, play: Boolean = true) {
@@ -110,6 +120,7 @@ class MpvController(
             unexpectedExit = false,
             restartAvailable = false,
             streamFailure = false,
+            resumeAfterRestart = false,
         )
     }
 
@@ -245,11 +256,22 @@ class MpvController(
         closing.set(true)
         processGeneration.incrementAndGet()
         polling?.cancel()
-        process?.let { running ->
-            runCatching { if (running.isAlive) running.destroy() }
-            runCatching { if (!running.waitFor(2, TimeUnit.SECONDS)) running.destroyForcibly() }
-        }
+        terminate(process)
+        process = null
+        polling = null
         Files.deleteIfExists(socketPath)
+    }
+
+    private fun terminate(running: Process?) {
+        if (running == null) return
+        runCatching { running.outputStream.close() }
+        runCatching { if (running.isAlive) running.destroy() }
+        runCatching {
+            if (!running.waitFor(2, TimeUnit.SECONDS)) {
+                running.destroyForcibly()
+                running.waitFor(2, TimeUnit.SECONDS)
+            }
+        }
     }
 }
 
@@ -261,6 +283,7 @@ internal fun mpvExitState(previous: MpvState, expected: Boolean): MpvState =
         unexpectedExit = !expected,
         restartAvailable = !expected,
         streamFailure = false,
+        resumeAfterRestart = !expected && previous.running && !previous.paused && !previous.idle,
     )
 
 internal fun mpvPlaybackState(
@@ -290,6 +313,7 @@ internal fun mpvPlaybackState(
         unexpectedExit = false,
         restartAvailable = failureVisible,
         streamFailure = failed,
+        resumeAfterRestart = false,
     )
 }
 

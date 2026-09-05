@@ -15,6 +15,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
 import java.sql.DriverManager
+import java.sql.SQLException
+import java.nio.file.StandardCopyOption
 
 data class StoredQueueReference(val sourceId: SourceId, val nodeId: NodeId, val originFolderId: NodeId)
 data class StoredQueue(val entries: List<StoredQueueReference>, val currentIndex: Int)
@@ -44,19 +46,25 @@ class SqliteStateRepository(database: Path) : AutoCloseable {
 
     init {
         Files.createDirectories(database.parent)
-        connection = DriverManager.getConnection("jdbc:sqlite:${database.toAbsolutePath()}")
-        connection.createStatement().use { statement ->
-            statement.execute("PRAGMA foreign_keys = ON")
-            statement.execute("PRAGMA journal_mode = WAL")
-            statement.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-            statement.execute("CREATE TABLE IF NOT EXISTS queue_entries (position INTEGER PRIMARY KEY, source_id TEXT NOT NULL, node_id TEXT NOT NULL, origin_id TEXT NOT NULL)")
-            statement.execute("CREATE TABLE IF NOT EXISTS progress (source_id TEXT NOT NULL, node_id TEXT NOT NULL, position_ms INTEGER NOT NULL, duration_ms INTEGER, speed REAL NOT NULL, observed_ms INTEGER NOT NULL, completed INTEGER NOT NULL, PRIMARY KEY(source_id,node_id))")
-            statement.execute("CREATE TABLE IF NOT EXISTS playback_history (source_id TEXT NOT NULL, node_id TEXT NOT NULL, position_ms INTEGER NOT NULL, duration_ms INTEGER, observed_ms INTEGER NOT NULL, completed INTEGER NOT NULL, PRIMARY KEY(source_id,node_id))")
-            statement.execute("CREATE TABLE IF NOT EXISTS audio_tabs (position INTEGER PRIMARY KEY, tab_id TEXT NOT NULL UNIQUE, name TEXT NOT NULL, root_path TEXT NOT NULL, icon TEXT, color TEXT, current_folder_id TEXT, playback_position_ms INTEGER NOT NULL, playback_speed REAL NOT NULL, volume REAL NOT NULL, shuffle INTEGER NOT NULL, repeat_mode TEXT NOT NULL)")
-            statement.execute("CREATE TABLE IF NOT EXISTS audio_tab_queue_entries (tab_id TEXT NOT NULL, position INTEGER NOT NULL, source_id TEXT NOT NULL, node_id TEXT NOT NULL, origin_id TEXT NOT NULL, PRIMARY KEY(tab_id,position))")
-            statement.execute("CREATE TABLE IF NOT EXISTS saved_playlists (position INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)")
-            statement.execute("CREATE TABLE IF NOT EXISTS saved_playlist_entries (playlist_name TEXT NOT NULL, position INTEGER NOT NULL, source_id TEXT NOT NULL, node_id TEXT NOT NULL, origin_id TEXT NOT NULL, PRIMARY KEY(playlist_name,position))")
+        val opened = DriverManager.getConnection("jdbc:sqlite:${database.toAbsolutePath()}")
+        try {
+            opened.createStatement().use { statement ->
+                statement.execute("PRAGMA foreign_keys = ON")
+                statement.execute("PRAGMA journal_mode = WAL")
+                statement.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+                statement.execute("CREATE TABLE IF NOT EXISTS queue_entries (position INTEGER PRIMARY KEY, source_id TEXT NOT NULL, node_id TEXT NOT NULL, origin_id TEXT NOT NULL)")
+                statement.execute("CREATE TABLE IF NOT EXISTS progress (source_id TEXT NOT NULL, node_id TEXT NOT NULL, position_ms INTEGER NOT NULL, duration_ms INTEGER, speed REAL NOT NULL, observed_ms INTEGER NOT NULL, completed INTEGER NOT NULL, PRIMARY KEY(source_id,node_id))")
+                statement.execute("CREATE TABLE IF NOT EXISTS playback_history (source_id TEXT NOT NULL, node_id TEXT NOT NULL, position_ms INTEGER NOT NULL, duration_ms INTEGER, observed_ms INTEGER NOT NULL, completed INTEGER NOT NULL, PRIMARY KEY(source_id,node_id))")
+                statement.execute("CREATE TABLE IF NOT EXISTS audio_tabs (position INTEGER PRIMARY KEY, tab_id TEXT NOT NULL UNIQUE, name TEXT NOT NULL, root_path TEXT NOT NULL, icon TEXT, color TEXT, current_folder_id TEXT, playback_position_ms INTEGER NOT NULL, playback_speed REAL NOT NULL, volume REAL NOT NULL, shuffle INTEGER NOT NULL, repeat_mode TEXT NOT NULL)")
+                statement.execute("CREATE TABLE IF NOT EXISTS audio_tab_queue_entries (tab_id TEXT NOT NULL, position INTEGER NOT NULL, source_id TEXT NOT NULL, node_id TEXT NOT NULL, origin_id TEXT NOT NULL, PRIMARY KEY(tab_id,position))")
+                statement.execute("CREATE TABLE IF NOT EXISTS saved_playlists (position INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)")
+                statement.execute("CREATE TABLE IF NOT EXISTS saved_playlist_entries (playlist_name TEXT NOT NULL, position INTEGER NOT NULL, source_id TEXT NOT NULL, node_id TEXT NOT NULL, origin_id TEXT NOT NULL, PRIMARY KEY(playlist_name,position))")
+            }
+        } catch (error: Throwable) {
+            runCatching { opened.close() }
+            throw error
         }
+        connection = opened
     }
 
     @Synchronized
@@ -346,5 +354,27 @@ class SqliteStateRepository(database: Path) : AutoCloseable {
         const val SEARCH_MATCH_TYPES_KEY = "search.matchTypes"
         const val AUDIO_TABS_VERSION_KEY = "audioTabs.version"
         const val AUDIO_TABS_ACTIVE_KEY = "audioTabs.active"
+
+        fun openResilient(database: Path): SqliteStateRepository = try {
+            SqliteStateRepository(database)
+        } catch (error: SQLException) {
+            if (!error.isCorruptDatabase()) throw error
+            quarantineCorruptDatabase(database)
+            SqliteStateRepository(database)
+        }
+
+        private fun SQLException.isCorruptDatabase(): Boolean =
+            errorCode == 11 || errorCode == 26 || message.orEmpty().lowercase().let { message ->
+                "database disk image is malformed" in message || "file is not a database" in message
+            }
+
+        private fun quarantineCorruptDatabase(database: Path) {
+            val marker = "corrupt-${System.currentTimeMillis()}"
+            listOf(database, Path.of("${database}-wal"), Path.of("${database}-shm")).forEach { path ->
+                if (!Files.exists(path)) return@forEach
+                val target = path.resolveSibling("${path.fileName}.$marker")
+                Files.move(path, target, StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
     }
 }

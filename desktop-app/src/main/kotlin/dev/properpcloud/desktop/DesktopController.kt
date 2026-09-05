@@ -90,6 +90,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.awt.Desktop
 import java.io.File
@@ -155,6 +157,7 @@ data class DesktopUiState(
     val audioTabs: AudioTabCollection = AudioTabDefaults.collection(),
     val progressByNodeId: Map<NodeId, PlaybackProgress> = emptyMap(),
     val playback: MpvState = MpvState(),
+    val playbackLoading: Boolean = false,
     val sleepTimerEndsAtEpochMillis: Long? = null,
     val status: String = "Starting…",
     val busy: Boolean = false,
@@ -173,7 +176,7 @@ class DesktopController(
 ) : AutoCloseable {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val gson = Gson()
-    private val repository = SqliteStateRepository(paths.data.resolve("properpcloud.db"))
+    private val repository = SqliteStateRepository.openResilient(paths.data.resolve("properpcloud.db"))
     private val vault = SecretServiceVault()
     private val mpv = MpvController(paths.runtime, scope)
     private val demoSource = DesktopDemoAudioSource(paths.cache.resolve("demo-media"))
@@ -202,6 +205,10 @@ class DesktopController(
     private var sleepTimerJob: Job? = null
     private var completionHandledFor: String? = null
     private var streamRefreshGeneration = 0L
+    private var playbackRequestGeneration = 0L
+    private var playerRecoveryJob: Job? = null
+    private var playerRecoveryGeneration = 0L
+    private val playbackLoadMutex = Mutex()
     private var pCloudConnectJob: Job? = null
     private var pCloudConnectGeneration = 0L
     private var pCloudRestoreJob: Job? = null
@@ -234,6 +241,7 @@ class DesktopController(
                 mutableState.value = current.copy(playback = playback, audioTabs = tabs)
                 updateMpris()
                 checkpoint(playback)
+                if (playback.unexpectedExit) schedulePlayerCrashRecovery(playback)
                 if (playback.streamFailure) refreshStreamAfterFailure(playback)
                 if (playback.eofReached && playback.idle) handlePlaybackCompletion()
             }
@@ -783,7 +791,8 @@ class DesktopController(
         val current = mutableState.value
         if (current.audioTabs.activeTabId == tabId) return@launch
         checkpoint(current.playback, force = true)
-        if (current.playback.running) runCatching { mpv.pause(true) }
+        invalidatePlaybackRequests()
+        if (current.playback.running) runCatching { mpv.stop() }
         val snapshot = AudioTabReducer.updateActive(current.audioTabs) { tab ->
             tab.copy(
                 queue = current.queue,
@@ -821,9 +830,18 @@ class DesktopController(
         loadActiveTabFolder()
         if (next.queue.entries.isNotEmpty()) {
             playCurrent(play = false, resumeOverrideMillis = next.playbackPositionMillis)
-        } else if (current.playback.running) {
-            runCatching { mpv.stop() }
         }
+    }
+
+    fun moveAudioTab(tabId: AudioTabId, delta: Int) {
+        val current = mutableState.value
+        val sourceIndex = current.audioTabs.tabs.indexOfFirst { it.definition.id == tabId }
+        if (sourceIndex < 0) return
+        val targetIndex = (sourceIndex + delta).coerceIn(0, current.audioTabs.tabs.lastIndex)
+        if (targetIndex == sourceIndex) return
+        val tabs = AudioTabReducer.move(current.audioTabs, tabId, targetIndex)
+        mutableState.value = current.copy(audioTabs = tabs)
+        persistTabs(tabs)
     }
 
     fun addAudioTab(name: String, rootPath: String) {
@@ -864,14 +882,19 @@ class DesktopController(
             mutableState.value = current.copy(status = "Could not remove tab: ${it.message ?: "invalid tab"}")
             return@launch
         }
+        if (wasActive) {
+            checkpoint(current.playback, force = true)
+            invalidatePlaybackRequests()
+            if (current.playback.running) runCatching { mpv.stop() }
+        }
         val queue = if (wasActive) tabs.active.queue else current.queue
         mutableState.value = current.copy(audioTabs = tabs, queue = queue)
         persistTabs(tabs)
         if (wasActive) {
-            if (current.playback.running) runCatching { mpv.pause(true) }
             repository.saveQueue(queue)
             if (source.id.value == "pcloud") loadActiveTabFolder()
             if (queue.entries.isNotEmpty()) playCurrent(play = false, resumeOverrideMillis = tabs.active.playbackPositionMillis)
+            else mutableState.value = mutableState.value.copy(status = "Closed the active tab and stopped playback.")
         }
     }
 
@@ -898,7 +921,8 @@ class DesktopController(
         }
         val queue = tabs.active.queue
         checkpoint(current.playback, force = true)
-        if (current.playback.running) runCatching { mpv.pause(true) }
+        invalidatePlaybackRequests()
+        if (current.playback.running) runCatching { mpv.stop() }
         mutableState.value = current.copy(audioTabs = tabs, queue = queue, status = "Loaded playlist '$name'; press play to start.")
         persistTabs(tabs)
         repository.saveQueue(queue)
@@ -954,21 +978,51 @@ class DesktopController(
         playCurrent()
     }
 
-    fun removeQueue(index: Int) = scope.launch { updateQueue(QueueReducer.remove(mutableState.value.queue, index)) }
+    fun removeQueue(index: Int) = scope.launch {
+        val before = mutableState.value
+        if (index !in before.queue.entries.indices) return@launch
+        val removedCurrent = index == before.queue.currentIndex
+        val wasPlaying = before.playback.running && !before.playback.paused && !before.playback.idle
+        val queue = QueueReducer.remove(before.queue, index)
+        updateQueue(queue)
+        if (removedCurrent) {
+            invalidatePlaybackRequests()
+            if (before.playback.running) runCatching { mpv.stop() }
+            if (queue.current != null) playCurrent(play = wasPlaying, resumeOverrideMillis = 0)
+        }
+    }
     fun moveQueue(index: Int, delta: Int) = scope.launch { updateQueue(QueueReducer.move(mutableState.value.queue, index, index + delta)) }
     fun playPause() = scope.launch {
         val playback = mutableState.value.playback
-        if (playback.streamFailure) {
+        if (playback.unexpectedExit || playback.restartAvailable && !playback.streamFailure) {
+            val track = mutableState.value.queue.current?.track ?: return@launch
+            val resumeMillis = playback.positionMillis.coerceAtLeast(0)
+            invalidatePlaybackRequests()
+            mutableState.value = mutableState.value.copy(status = "Restarting the player for ${track.name}…")
+            playCurrent(resetRetryBudget = false, play = true, resumeOverrideMillis = resumeMillis)
+        } else if (playback.streamFailure) {
             val track = mutableState.value.queue.current?.track
             if (track != null) streamRetryGate.reset(MediaIdentity.encode(track.sourceId, track.id))
             refreshStreamAfterFailure(playback)
         } else {
-            runCatching { mpv.togglePause() }.onFailure(::playbackFailure)
+            runCatching {
+                if (playback.paused) mpv.reloadAudioOutput()
+                mpv.togglePause()
+            }.onFailure(::playbackFailure)
         }
     }
     fun pause() = scope.launch { runCatching { mpv.pause(true) }.onFailure(::playbackFailure) }
-    fun resume() = scope.launch { runCatching { mpv.pause(false) }.onFailure(::playbackFailure) }
-    fun stop() = scope.launch { runCatching { mpv.stop() }.onFailure(::playbackFailure) }
+    fun resume() = scope.launch {
+        runCatching {
+            mpv.reloadAudioOutput()
+            mpv.pause(false)
+        }.onFailure(::playbackFailure)
+    }
+    fun stop() = scope.launch {
+        checkpoint(mutableState.value.playback, force = true)
+        invalidatePlaybackRequests()
+        runCatching { mpv.stop() }.onFailure(::playbackFailure)
+    }
     fun seek(offsetMillis: Long) = scope.launch { runCatching { mpv.seekRelative(offsetMillis) }.onFailure(::playbackFailure) }
     fun seekAbsolute(positionMillis: Long) = scope.launch { runCatching { mpv.seekAbsolute(positionMillis) }.onFailure(::playbackFailure) }
     fun setPlaybackSpeed(speed: Float) {
@@ -1031,9 +1085,12 @@ class DesktopController(
             mutableState.value = mutableState.value.copy(status = "Choose a track before restarting the player")
             return@launch
         }
-        checkpoint(mutableState.value.playback, force = true)
+        val playback = mutableState.value.playback
+        checkpoint(playback, force = true)
+        val resumeMillis = playback.positionMillis.coerceAtLeast(0)
+        invalidatePlaybackRequests()
         mutableState.value = mutableState.value.copy(status = "Restarting mpv and restoring ${current.name}…")
-        playCurrent()
+        playCurrent(resetRetryBudget = false, play = true, resumeOverrideMillis = resumeMillis)
     }
 
     fun next() = scope.launch {
@@ -1107,6 +1164,7 @@ class DesktopController(
         val track = mutableState.value.queue.current?.track ?: return
         val sourceForTrack = sourceFor(track)
         val mediaId = MediaIdentity.encode(track.sourceId, track.id)
+        val requestGeneration = ++playbackRequestGeneration
         if (resetRetryBudget) {
             streamRefreshGeneration += 1
             streamRefreshJob?.cancel()
@@ -1116,19 +1174,44 @@ class DesktopController(
             ResumePolicy().resumePositionMillis(it, System.currentTimeMillis(), track.durationMillis ?: it.durationMillis)
         } ?: 0
         val tabSettings = mutableState.value.audioTabs.active
-        mutableState.value = mutableState.value.copy(status = "Resolving ${track.name}…")
+        mutableState.value = mutableState.value.copy(status = "Resolving ${track.name}…", playbackLoading = true)
         completionHandledFor = null
-        runCatching {
-            mpv.load(sourceForTrack.resolveStream(track.id), progress, play = play)
-            mpv.setSpeed(tabSettings.playbackSpeed)
-            mpv.setVolume(tabSettings.volume)
-        }
+        runCatching { sourceForTrack.resolveStream(track.id) }
+            .mapCatching { handle ->
+                playbackLoadMutex.withLock {
+                    if (!isCurrentPlaybackRequest(requestGeneration, mediaId)) return@withLock false
+                    // Preparing paused first prevents a stale request from becoming audible if a
+                    // newer tab/queue intent arrives while mpv is accepting the load commands.
+                    mpv.load(handle, progress, play = false)
+                    mpv.setSpeed(tabSettings.playbackSpeed)
+                    mpv.setVolume(tabSettings.volume)
+                    if (!isCurrentPlaybackRequest(requestGeneration, mediaId)) {
+                        mpv.stop()
+                        return@withLock false
+                    }
+                    if (play) {
+                        mpv.reloadAudioOutput()
+                        mpv.pause(false)
+                    }
+                    true
+                }
+            }
             .onSuccess {
+                if (!it) return@onSuccess
                 mutableState.value = mutableState.value.copy(
                     status = if (play) "Playing ${track.name}" else "Ready to resume ${track.name}",
+                    playbackLoading = false,
                 )
             }
-            .onFailure(::playbackFailure)
+            .onFailure { failure ->
+                if (requestGeneration == playbackRequestGeneration) {
+                    mutableState.value = mutableState.value.copy(playbackLoading = false)
+                    playbackFailure(failure)
+                }
+            }
+        if (requestGeneration == playbackRequestGeneration && mutableState.value.playbackLoading) {
+            mutableState.value = mutableState.value.copy(playbackLoading = false)
+        }
         updateMpris()
     }
 
@@ -1153,6 +1236,7 @@ class DesktopController(
             return
         }
         val generation = ++streamRefreshGeneration
+        val requestGeneration = ++playbackRequestGeneration
         streamRefreshJob?.cancel()
         checkpoint(playback, force = true)
         val resumeMillis = playback.positionMillis.coerceAtLeast(0)
@@ -1165,8 +1249,24 @@ class DesktopController(
                     val currentIdentity = mutableState.value.queue.current?.track?.let { current ->
                         MediaIdentity.encode(current.sourceId, current.id)
                     }
-                    if (generation != streamRefreshGeneration || currentIdentity != mediaId) return@onSuccess
-                    runCatching { mpv.load(refreshed, resumeMillis) }
+                    if (generation != streamRefreshGeneration || currentIdentity != mediaId ||
+                        requestGeneration != playbackRequestGeneration
+                    ) return@onSuccess
+                    runCatching {
+                        playbackLoadMutex.withLock {
+                            if (!isCurrentPlaybackRequest(requestGeneration, mediaId)) return@withLock
+                            mpv.load(refreshed, resumeMillis, play = false)
+                            val tab = mutableState.value.audioTabs.active
+                            mpv.setSpeed(tab.playbackSpeed)
+                            mpv.setVolume(tab.volume)
+                            if (!isCurrentPlaybackRequest(requestGeneration, mediaId)) {
+                                mpv.stop()
+                                return@withLock
+                            }
+                            mpv.reloadAudioOutput()
+                            mpv.pause(false)
+                        }
+                    }
                         .onSuccess {
                             if (generation == streamRefreshGeneration) {
                                 mutableState.value = mutableState.value.copy(
@@ -1186,6 +1286,53 @@ class DesktopController(
                     }
                 }
         }
+    }
+
+    private fun schedulePlayerCrashRecovery(playback: MpvState) {
+        if (closing.get() || playerRecoveryJob?.isActive == true) return
+        val track = mutableState.value.queue.current?.track ?: return
+        val mediaId = MediaIdentity.encode(track.sourceId, track.id)
+        val generation = ++playerRecoveryGeneration
+        checkpoint(playback, force = true)
+        val resumeMillis = playback.positionMillis.coerceAtLeast(0)
+        val shouldResume = playback.resumeAfterRestart
+        mutableState.value = mutableState.value.copy(
+            playbackLoading = true,
+            status = "mpv exited unexpectedly; restarting the player…",
+        )
+        playerRecoveryJob = scope.launch {
+            delay(PLAYER_CRASH_RESTART_DELAY_MILLIS)
+            val currentIdentity = mutableState.value.queue.current?.track?.let { current ->
+                MediaIdentity.encode(current.sourceId, current.id)
+            }
+            if (closing.get() || generation != playerRecoveryGeneration || currentIdentity != mediaId) return@launch
+            playCurrent(
+                resetRetryBudget = false,
+                play = shouldResume,
+                resumeOverrideMillis = resumeMillis,
+            )
+            if (generation == playerRecoveryGeneration && mpv.state.value.restartAvailable) {
+                mutableState.value = mutableState.value.copy(
+                    playbackLoading = false,
+                    status = "Automatic player restart failed; use Restart player to retry.",
+                )
+            }
+        }
+    }
+
+    private fun invalidatePlaybackRequests() {
+        playbackRequestGeneration += 1
+        streamRefreshGeneration += 1
+        streamRefreshJob?.cancel()
+        playerRecoveryGeneration += 1
+        playerRecoveryJob?.cancel()
+        mutableState.value = mutableState.value.copy(playbackLoading = false)
+    }
+
+    private fun isCurrentPlaybackRequest(generation: Long, mediaId: String): Boolean {
+        if (closing.get() || generation != playbackRequestGeneration) return false
+        val current = mutableState.value.queue.current?.track ?: return false
+        return MediaIdentity.encode(current.sourceId, current.id) == mediaId
     }
 
     private suspend fun restorePlaybackState() {
@@ -1296,6 +1443,10 @@ class DesktopController(
 
     private fun updateQueue(queue: PlaybackQueue) {
         checkpoint(mutableState.value.playback, force = true)
+        val before = mutableState.value
+        val previousIdentity = before.queue.current?.track?.let { MediaIdentity.encode(it.sourceId, it.id) }
+        val nextIdentity = queue.current?.track?.let { MediaIdentity.encode(it.sourceId, it.id) }
+        if (previousIdentity != nextIdentity) invalidatePlaybackRequests()
         val current = mutableState.value
         val tabs = AudioTabReducer.updateActive(current.audioTabs) { it.copy(queue = queue) }
         mutableState.value = current.copy(queue = queue, audioTabs = tabs)
@@ -1751,6 +1902,8 @@ class DesktopController(
         runCatching { repository.close() }
         streamRefreshGeneration += 1
         streamRefreshJob?.cancel()
+        playerRecoveryGeneration += 1
+        playerRecoveryJob?.cancel()
         searchJob?.cancel()
         sleepTimerJob?.cancel()
         scope.cancel()
@@ -1761,6 +1914,7 @@ class DesktopController(
         const val SEARCH_DEBOUNCE_MILLIS = 200L
         const val MAX_SEARCH_FOLDERS = 1_500
         const val MAX_FOLDER_ANCESTORS = 128
+        const val PLAYER_CRASH_RESTART_DELAY_MILLIS = 250L
     }
 }
 
