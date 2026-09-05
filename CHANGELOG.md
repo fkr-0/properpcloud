@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   query filters, verification, by-type/source space reports, report-only cleanup candidates, and
   a documented independent-backup strategy; the live writable SQLite state stays local rather
   than relying on WAL/locking semantics through the pCloud/rclone mount.
+- Added resumable music ingestion from external-disk catalogs into `audio/music` with full-ancestry
+  exclusion of sample/podcast/recording trees, NFC/pCloud-safe filenames, staged Mutagen metadata
+  normalization with original-tag provenance, exact SHA-256 duplicate suppression, MP3 bitrate
+  quality tiers and replacement auditing, and portable ingest/quality/unsorted reports under
+  `media-library/metadata`.
 
 ### Security
 
