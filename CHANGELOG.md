@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added capability-gated Linux system-tray playback controls with Show, Play/Pause, Previous,
+  Next, and Quit actions plus one now-playing notification per newly audible stable track. The
+  desktop window hides on close only when a tray recovery surface is actually available.
 - Added an optional self-hosted pCloud library server with pooled REST access, owner-only
   reloadable session files, live connectivity health, recursive provider metadata caching,
   folder creation, metadata lookup, and signed-link generation while retaining pCloud IDs as
@@ -44,6 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Hardened tabbed desktop playback for long-running sessions: tab count is bounded and reorderable,
+  closing/switching the active tab stops its old mpv load, stale asynchronous stream resolutions
+  cannot become audible, unexpected mpv exits re-resolve the stable track and restore position/
+  play-pause intent, audio output is reloaded on resume for device changes, process descriptors are
+  reaped deterministically, stale per-tab settings are removed, and corrupt SQLite state is
+  quarantined before starting from clean user state.
 - Hardened local-library mount loss so production scans verify the configured path is still an
   actual mount point rather than merely a readable backing directory. A dropped rclone/FUSE mount
   now fails the scan closed and retains the last-good SQLite catalog instead of pruning it as an
