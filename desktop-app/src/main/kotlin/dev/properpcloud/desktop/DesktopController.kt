@@ -4,6 +4,12 @@ import com.google.gson.Gson
 import dev.properpcloud.core.model.ApplyResultStatus
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioSource
+import dev.properpcloud.core.model.AudioTabCollection
+import dev.properpcloud.core.model.AudioTabDefinition
+import dev.properpcloud.core.model.AudioTabDefaults
+import dev.properpcloud.core.model.AudioTabId
+import dev.properpcloud.core.model.AudioTabReducer
+import dev.properpcloud.core.model.AudioTabSession
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.FileApplyResult
 import dev.properpcloud.core.model.FolderQueueAssembler
@@ -13,11 +19,14 @@ import dev.properpcloud.core.model.LibrarySearch
 import dev.properpcloud.core.model.LibrarySearchRequest
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.MediaIdentity
+import dev.properpcloud.core.model.NamedAudioPlaylist
 import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.PlaybackCheckpointCursor
 import dev.properpcloud.core.model.PlaybackCheckpointPolicy
 import dev.properpcloud.core.model.PlaybackObservation
+import dev.properpcloud.core.model.PlaybackProgress
 import dev.properpcloud.core.model.PlaybackQueue
+import dev.properpcloud.core.model.PlayerRepeatMode
 import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.QueueReducer
@@ -26,9 +35,15 @@ import dev.properpcloud.core.model.ResumePolicy
 import dev.properpcloud.core.model.SearchMatchType
 import dev.properpcloud.core.model.SignedLinkRetryGate
 import dev.properpcloud.core.model.TagField
+import dev.properpcloud.core.model.TrackSortKey
+import dev.properpcloud.core.model.TrackSortPolicy
+import dev.properpcloud.core.model.normalizeAudioRootPath
+import dev.properpcloud.core.model.resolveFolderPath
 import dev.properpcloud.desktop.data.DesktopDemoAudioSource
 import dev.properpcloud.desktop.data.DesktopLocalFolderAudioSource
 import dev.properpcloud.desktop.data.SqliteStateRepository
+import dev.properpcloud.desktop.data.StoredAudioTabs
+import dev.properpcloud.desktop.data.StoredQueue
 import dev.properpcloud.desktop.metadata.DesktopLocalFolderBinding
 import dev.properpcloud.desktop.mpris.MprisActions
 import dev.properpcloud.desktop.mpris.MprisService
@@ -63,11 +78,13 @@ import dev.properpcloud.metadata.tags.ReviewedFolderPlaylistBatch
 import dev.properpcloud.metadata.tags.ReviewedFolderTagBatch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,6 +95,7 @@ import java.awt.Desktop
 import java.io.File
 import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.random.Random
 
 data class DesktopLocalTagProposal(
     val nodeId: NodeId,
@@ -130,10 +148,14 @@ data class DesktopUiState(
     val searchMatchTypes: Set<SearchMatchType> = SearchMatchType.entries.toSet(),
     val searchResults: List<MediaNode> = emptyList(),
     val searchBusy: Boolean = false,
+    val sortKey: TrackSortKey = TrackSortKey.NATURAL_FILENAME,
     val playbackHistoryEnabled: Boolean = false,
     val playbackHistoryRetention: Int = dev.properpcloud.core.model.PlaybackHistoryPolicy.DEFAULT_RETENTION,
     val queue: PlaybackQueue = PlaybackQueue(),
+    val audioTabs: AudioTabCollection = AudioTabDefaults.collection(),
+    val progressByNodeId: Map<NodeId, PlaybackProgress> = emptyMap(),
     val playback: MpvState = MpvState(),
+    val sleepTimerEndsAtEpochMillis: Long? = null,
     val status: String = "Starting…",
     val busy: Boolean = false,
     val inspection: Map<String, String> = emptyMap(),
@@ -177,6 +199,8 @@ class DesktopController(
     private var checkpointCursor = PlaybackCheckpointCursor()
     private var streamRefreshJob: Job? = null
     private var searchJob: Job? = null
+    private var sleepTimerJob: Job? = null
+    private var completionHandledFor: String? = null
     private var streamRefreshGeneration = 0L
     private var pCloudConnectJob: Job? = null
     private var pCloudConnectGeneration = 0L
@@ -198,13 +222,26 @@ class DesktopController(
         sleepMonitor = runCatching { LogindSleepMonitor(::onPrepareForSleep) }.getOrNull()
         scope.launch {
             mpv.state.collect { playback ->
-                mutableState.value = mutableState.value.copy(playback = playback)
+                val current = mutableState.value
+                val tabs = AudioTabReducer.updateActive(current.audioTabs) { tab ->
+                    tab.copy(
+                        queue = current.queue,
+                        playbackPositionMillis = playback.positionMillis.coerceAtLeast(0),
+                        playbackSpeed = playback.speed,
+                        volume = playback.volume,
+                    )
+                }
+                mutableState.value = current.copy(playback = playback, audioTabs = tabs)
                 updateMpris()
                 checkpoint(playback)
                 if (playback.streamFailure) refreshStreamAfterFailure(playback)
+                if (playback.eofReached && playback.idle) handlePlaybackCompletion()
             }
         }
-        scope.launch { loadFolder(source.root.id, resetBreadcrumbs = true); restoreQueue() }
+        scope.launch {
+            restorePlaybackState()
+            if (source.id.value == "pcloud") loadActiveTabFolder() else loadFolder(source.root.id, resetBreadcrumbs = true)
+        }
     }
 
     private fun scheduleSearch() {
@@ -220,11 +257,43 @@ class DesktopController(
             delay(SEARCH_DEBOUNCE_MILLIS)
             val current = mutableState.value
             if (current.searchQuery != request.query || current.searchMatchTypes != request.matchTypes) return@launch
-            mutableState.value = current.copy(
-                searchResults = LibrarySearch.matches(current.nodes, request),
-                searchBusy = false,
-            )
+            try {
+                val candidates = if (source.id.value == "pcloud") {
+                    val root = source.resolveFolderPath(current.audioTabs.active.definition.rootPath)
+                    collectSearchNodes(source, root.id)
+                } else {
+                    current.nodes
+                }
+                val latest = mutableState.value
+                if (latest.searchQuery != request.query || latest.searchMatchTypes != request.matchTypes) return@launch
+                mutableState.value = latest.copy(
+                    searchResults = LibrarySearch.matches(candidates, request),
+                    searchBusy = false,
+                )
+            } catch (_: CancellationException) {
+                Unit
+            } catch (_: Throwable) {
+                val latest = mutableState.value
+                if (latest.searchQuery == request.query) {
+                    mutableState.value = latest.copy(searchResults = emptyList(), searchBusy = false, status = "Tab search failed")
+                }
+            }
         }
+    }
+
+    private suspend fun collectSearchNodes(source: AudioSource, rootId: NodeId): List<MediaNode> {
+        val pending = ArrayDeque<NodeId>().apply { add(rootId) }
+        val visited = mutableSetOf<NodeId>()
+        val nodes = mutableListOf<MediaNode>()
+        while (pending.isNotEmpty() && visited.size < MAX_SEARCH_FOLDERS) {
+            currentCoroutineContext().ensureActive()
+            val folderId = pending.removeFirst()
+            if (!visited.add(folderId)) continue
+            val children = source.list(folderId)
+            nodes += children
+            children.filterIsInstance<AudioFolder>().forEach { pending.addLast(it.id) }
+        }
+        return nodes
     }
 
     fun useDemo() {
@@ -247,7 +316,8 @@ class DesktopController(
                 detachLocalBinding()
                 source = pcloud
                 repository.setSetting("source", "pcloud")
-                loadFolder(source.root.id, resetBreadcrumbs = true)
+                restorePlaybackState()
+                loadActiveTabFolder()
             }
         }
     }
@@ -586,7 +656,8 @@ class DesktopController(
                     detachLocalBinding()
                     source = sources.getValue(result.session.let { dev.properpcloud.core.model.SourceId("pcloud") })
                     repository.setSetting("source", "pcloud")
-                    loadFolder(source.root.id, resetBreadcrumbs = true)
+                    restorePlaybackState()
+                    loadActiveTabFolder()
                     updatePCloudConnectState(generation) {
                         it.copy(busy = false, connectedToPCloud = true, status = "Connected to pCloud")
                     }
@@ -635,9 +706,6 @@ class DesktopController(
             checkpoint(mutableState.value.playback, force = true)
             repository.setSetting("source", "demo")
             repository.setSetting(PCloudSessionRestorePolicy.SETTING_KEY, PCloudSessionRestorePolicy.DISCONNECTED)
-            if (mutableState.value.queue.entries.any { it.track.sourceId.value == "pcloud" }) {
-                updateQueue(PlaybackQueue(generation = mutableState.value.queue.generation + 1))
-            }
         }
         mutableState.value = mutableState.value.copy(
             connectedToPCloud = false,
@@ -706,6 +774,137 @@ class DesktopController(
         scheduleSearch()
     }
 
+    fun setSort(key: TrackSortKey) {
+        mutableState.value = mutableState.value.copy(sortKey = key)
+        mutableState.value.currentFolder?.let { folder -> scope.launch { loadFolder(folder.id, resetBreadcrumbs = true) } }
+    }
+
+    fun switchAudioTab(tabId: AudioTabId) = scope.launch {
+        val current = mutableState.value
+        if (current.audioTabs.activeTabId == tabId) return@launch
+        checkpoint(current.playback, force = true)
+        if (current.playback.running) runCatching { mpv.pause(true) }
+        val snapshot = AudioTabReducer.updateActive(current.audioTabs) { tab ->
+            tab.copy(
+                queue = current.queue,
+                playbackPositionMillis = current.playback.positionMillis.coerceAtLeast(0),
+                playbackSpeed = current.playback.speed,
+                volume = current.playback.volume,
+            )
+        }
+        val tabs = AudioTabReducer.switch(snapshot, tabId, current.playback.positionMillis)
+        val next = tabs.active
+        completionHandledFor = null
+        mutableState.value = current.copy(
+            audioTabs = tabs,
+            queue = next.queue,
+            searchQuery = "",
+            searchResults = emptyList(),
+            searchBusy = false,
+            status = "Switched to ${next.definition.name}; press play to resume.",
+        )
+        persistTabs(tabs)
+        repository.saveQueue(next.queue)
+        val pcloud = sources.values.firstOrNull { it.id.value == "pcloud" }
+        if (pcloud == null) {
+            mutableState.value = mutableState.value.copy(
+                currentFolder = null,
+                breadcrumbs = emptyList(),
+                nodes = emptyList(),
+                status = "Connect pCloud to browse ${next.definition.name}.",
+            )
+            return@launch
+        }
+        detachLocalBinding()
+        source = pcloud
+        repository.setSetting("source", "pcloud")
+        loadActiveTabFolder()
+        if (next.queue.entries.isNotEmpty()) {
+            playCurrent(play = false, resumeOverrideMillis = next.playbackPositionMillis)
+        } else if (current.playback.running) {
+            runCatching { mpv.stop() }
+        }
+    }
+
+    fun addAudioTab(name: String, rootPath: String) {
+        val definition = runCatching {
+            AudioTabDefinition(
+                id = AudioTabId("tab-${System.currentTimeMillis().toString(36)}"),
+                name = name.trim(),
+                rootPath = normalizeAudioRootPath(rootPath),
+            )
+        }.getOrElse {
+            mutableState.value = mutableState.value.copy(status = "Could not add tab: ${it.message ?: "invalid tab"}")
+            return
+        }
+        val tabs = AudioTabReducer.add(mutableState.value.audioTabs, definition)
+        mutableState.value = mutableState.value.copy(audioTabs = tabs)
+        persistTabs(tabs)
+        switchAudioTab(definition.id)
+    }
+
+    fun updateAudioTab(tabId: AudioTabId, name: String, rootPath: String) {
+        val current = mutableState.value
+        val tabs = runCatching {
+            AudioTabReducer.updateRoot(AudioTabReducer.rename(current.audioTabs, tabId, name), tabId, rootPath)
+        }.getOrElse {
+            mutableState.value = current.copy(status = "Could not update tab: ${it.message ?: "invalid tab"}")
+            return
+        }
+        val reset = if (tabs.activeTabId == tabId) AudioTabReducer.updateActive(tabs) { it.copy(currentFolderId = null) } else tabs
+        mutableState.value = current.copy(audioTabs = reset)
+        persistTabs(reset)
+        if (reset.activeTabId == tabId && source.id.value == "pcloud") scope.launch { loadActiveTabFolder() }
+    }
+
+    fun removeAudioTab(tabId: AudioTabId) = scope.launch {
+        val current = mutableState.value
+        val wasActive = current.audioTabs.activeTabId == tabId
+        val tabs = runCatching { AudioTabReducer.remove(current.audioTabs, tabId) }.getOrElse {
+            mutableState.value = current.copy(status = "Could not remove tab: ${it.message ?: "invalid tab"}")
+            return@launch
+        }
+        val queue = if (wasActive) tabs.active.queue else current.queue
+        mutableState.value = current.copy(audioTabs = tabs, queue = queue)
+        persistTabs(tabs)
+        if (wasActive) {
+            if (current.playback.running) runCatching { mpv.pause(true) }
+            repository.saveQueue(queue)
+            if (source.id.value == "pcloud") loadActiveTabFolder()
+            if (queue.entries.isNotEmpty()) playCurrent(play = false, resumeOverrideMillis = tabs.active.playbackPositionMillis)
+        }
+    }
+
+    fun saveCurrentPlaylist(name: String) {
+        val current = mutableState.value
+        val tabs = runCatching {
+            AudioTabReducer.savePlaylist(
+                AudioTabReducer.updateActive(current.audioTabs) { it.copy(queue = current.queue) },
+                name,
+            )
+        }.getOrElse {
+            mutableState.value = current.copy(status = "Could not save playlist: ${it.message ?: "invalid playlist"}")
+            return
+        }
+        mutableState.value = current.copy(audioTabs = tabs, status = "Saved playlist '${name.trim()}'.")
+        persistTabs(tabs)
+    }
+
+    fun loadSavedPlaylist(name: String) = scope.launch {
+        val current = mutableState.value
+        val tabs = runCatching { AudioTabReducer.loadPlaylist(current.audioTabs, name) }.getOrElse {
+            mutableState.value = current.copy(status = "Could not load playlist: ${it.message ?: "playlist unavailable"}")
+            return@launch
+        }
+        val queue = tabs.active.queue
+        checkpoint(current.playback, force = true)
+        if (current.playback.running) runCatching { mpv.pause(true) }
+        mutableState.value = current.copy(audioTabs = tabs, queue = queue, status = "Loaded playlist '$name'; press play to start.")
+        persistTabs(tabs)
+        repository.saveQueue(queue)
+        if (queue.entries.isNotEmpty()) playCurrent(play = false, resumeOverrideMillis = 0)
+    }
+
     fun setPlaybackHistoryEnabled(enabled: Boolean) {
         repository.setSetting(SqliteStateRepository.HISTORY_ENABLED_KEY, enabled.toString())
         mutableState.value = mutableState.value.copy(playbackHistoryEnabled = enabled)
@@ -772,6 +971,59 @@ class DesktopController(
     fun stop() = scope.launch { runCatching { mpv.stop() }.onFailure(::playbackFailure) }
     fun seek(offsetMillis: Long) = scope.launch { runCatching { mpv.seekRelative(offsetMillis) }.onFailure(::playbackFailure) }
     fun seekAbsolute(positionMillis: Long) = scope.launch { runCatching { mpv.seekAbsolute(positionMillis) }.onFailure(::playbackFailure) }
+    fun setPlaybackSpeed(speed: Float) {
+        val normalized = speed.coerceIn(0.5f, 3f)
+        updateActiveTab { it.copy(playbackSpeed = normalized) }
+        if (mutableState.value.playback.running) {
+            scope.launch { runCatching { mpv.setSpeed(normalized) }.onFailure(::playbackFailure) }
+        }
+    }
+
+    fun setVolume(volume: Float) {
+        val normalized = volume.coerceIn(0f, 1f)
+        updateActiveTab { it.copy(volume = normalized) }
+        if (mutableState.value.playback.running) {
+            scope.launch { runCatching { mpv.setVolume(normalized) }.onFailure(::playbackFailure) }
+        }
+    }
+
+    fun adjustVolume(delta: Float) = setVolume(mutableState.value.audioTabs.active.volume + delta)
+
+    fun toggleShuffle() {
+        val enabled = !mutableState.value.audioTabs.active.shuffle
+        updateActiveTab { it.copy(shuffle = enabled) }
+        mutableState.value = mutableState.value.copy(status = "Shuffle ${if (enabled) "on" else "off"} for ${mutableState.value.audioTabs.active.definition.name}.")
+    }
+
+    fun cycleRepeatMode() {
+        val next = when (mutableState.value.audioTabs.active.repeatMode) {
+            PlayerRepeatMode.OFF -> PlayerRepeatMode.ALL
+            PlayerRepeatMode.ALL -> PlayerRepeatMode.ONE
+            PlayerRepeatMode.ONE -> PlayerRepeatMode.OFF
+        }
+        updateActiveTab { it.copy(repeatMode = next) }
+        mutableState.value = mutableState.value.copy(status = "Repeat ${next.name.lowercase()} for ${mutableState.value.audioTabs.active.definition.name}.")
+    }
+
+    fun setSleepTimer(minutes: Int?) {
+        sleepTimerJob?.cancel()
+        if (minutes == null) {
+            mutableState.value = mutableState.value.copy(sleepTimerEndsAtEpochMillis = null, status = "Sleep timer cancelled.")
+            return
+        }
+        if (minutes !in 1..720) {
+            mutableState.value = mutableState.value.copy(status = "Sleep timer must be between 1 and 720 minutes.")
+            return
+        }
+        val endsAt = System.currentTimeMillis() + minutes * 60_000L
+        mutableState.value = mutableState.value.copy(sleepTimerEndsAtEpochMillis = endsAt, status = "Sleep timer set for $minutes minutes.")
+        sleepTimerJob = scope.launch {
+            delay(minutes * 60_000L)
+            checkpoint(mutableState.value.playback, force = true)
+            if (mutableState.value.playback.running) runCatching { mpv.pause(true) }
+            mutableState.value = mutableState.value.copy(sleepTimerEndsAtEpochMillis = null, status = "Sleep timer paused playback.")
+        }
+    }
 
     fun restartPlayer() = scope.launch {
         val current = mutableState.value.queue.current?.track
@@ -805,7 +1057,14 @@ class DesktopController(
         mutableState.value = mutableState.value.copy(busy = true)
         runCatching {
             val folder = source.load(folderId) as AudioFolder
-            val nodes = FolderQueueBuilder.sortNodes(source.list(folderId))
+            val sortKey = mutableState.value.sortKey
+            val nodes = FolderQueueBuilder.sortNodes(
+                source.list(folderId),
+                TrackSortPolicy(listOf(sortKey, TrackSortKey.NATURAL_FILENAME)),
+            )
+            val progress = nodes.filterIsInstance<AudioTrack>().mapNotNull { track ->
+                repository.loadProgress(track.sourceId, track.id)?.let { track.id to it }
+            }.toMap()
             val previous = mutableState.value.breadcrumbs
             val breadcrumbs = when {
                 resetBreadcrumbs -> listOf(folder)
@@ -813,15 +1072,24 @@ class DesktopController(
                 previous.lastOrNull()?.id == folder.id -> previous
                 else -> previous + folder
             }
-            mutableState.value = mutableState.value.copy(
+            val current = mutableState.value
+            val tabs = if (source.id.value == "pcloud") {
+                AudioTabReducer.updateActive(current.audioTabs) { it.copy(currentFolderId = folder.id) }
+            } else {
+                current.audioTabs
+            }
+            mutableState.value = current.copy(
                 sourceName = source.root.name,
                 connectedToPCloud = sources.keys.any { it.value == "pcloud" },
                 currentFolder = folder,
                 breadcrumbs = breadcrumbs,
                 nodes = nodes,
+                progressByNodeId = progress,
+                audioTabs = tabs,
                 busy = false,
                 status = "${nodes.size} items in ${folder.name}",
             )
+            if (source.id.value == "pcloud") persistTabs(tabs)
             scheduleSearch()
         }.onFailure {
             mutableState.value = mutableState.value.copy(
@@ -831,7 +1099,11 @@ class DesktopController(
         }
     }
 
-    private suspend fun playCurrent(resetRetryBudget: Boolean = true) {
+    private suspend fun playCurrent(
+        resetRetryBudget: Boolean = true,
+        play: Boolean = true,
+        resumeOverrideMillis: Long? = null,
+    ) {
         val track = mutableState.value.queue.current?.track ?: return
         val sourceForTrack = sourceFor(track)
         val mediaId = MediaIdentity.encode(track.sourceId, track.id)
@@ -840,12 +1112,22 @@ class DesktopController(
             streamRefreshJob?.cancel()
             streamRetryGate.reset(mediaId)
         }
-        val progress = repository.loadProgress(track.sourceId, track.id)?.let {
+        val progress = resumeOverrideMillis ?: repository.loadProgress(track.sourceId, track.id)?.let {
             ResumePolicy().resumePositionMillis(it, System.currentTimeMillis(), track.durationMillis ?: it.durationMillis)
-        }
+        } ?: 0
+        val tabSettings = mutableState.value.audioTabs.active
         mutableState.value = mutableState.value.copy(status = "Resolving ${track.name}…")
-        runCatching { mpv.load(sourceForTrack.resolveStream(track.id), progress ?: 0) }
-            .onSuccess { mutableState.value = mutableState.value.copy(status = "Playing ${track.name}") }
+        completionHandledFor = null
+        runCatching {
+            mpv.load(sourceForTrack.resolveStream(track.id), progress, play = play)
+            mpv.setSpeed(tabSettings.playbackSpeed)
+            mpv.setVolume(tabSettings.volume)
+        }
+            .onSuccess {
+                mutableState.value = mutableState.value.copy(
+                    status = if (play) "Playing ${track.name}" else "Ready to resume ${track.name}",
+                )
+            }
             .onFailure(::playbackFailure)
         updateMpris()
     }
@@ -906,34 +1188,188 @@ class DesktopController(
         }
     }
 
-    private suspend fun restoreQueue() {
-        val stored = repository.loadQueue()
-        val restoredEntries = stored.entries.map { reference ->
-            val selectedSource = sources.entries.firstOrNull { it.key == reference.sourceId }?.value ?: return@map null
-            runCatching { selectedSource.load(reference.nodeId) as? AudioTrack }.getOrNull()?.let { QueueEntry(it, reference.originFolderId) }
-        }
-        val restoration = QueueRestoration.repair(restoredEntries, stored.currentIndex)
-        if (restoration.requiresRewrite) repository.saveQueue(restoration.queue)
-        if (restoration.queue.entries.isNotEmpty()) {
+    private suspend fun restorePlaybackState() {
+        val storedTabs = repository.loadAudioTabs()
+        if (storedTabs != null) {
+            val restoration = restoreAudioTabs(storedTabs)
+            val active = restoration.collection.active
             mutableState.value = mutableState.value.copy(
-                queue = restoration.queue,
-                status = if (restoration.omittedCount > 0) {
-                    "Restored ${restoration.queue.entries.size} queued tracks; ${restoration.omittedCount} unavailable item(s) were removed"
-                } else {
-                    "Restored ${restoration.queue.entries.size} queued tracks"
+                audioTabs = restoration.collection,
+                queue = active.queue,
+                status = when {
+                    restoration.unavailableSourceCount > 0 ->
+                        "Saved tab queues are waiting for a disconnected source; their stable references are preserved."
+                    restoration.omittedCount > 0 ->
+                        "Restored tabs with ${restoration.omittedCount} unavailable item(s) omitted."
+                    else -> "Restored ${restoration.collection.tabs.size} audio tabs."
                 },
             )
-        } else if (stored.entries.isNotEmpty()) {
-            mutableState.value = mutableState.value.copy(status = "The saved queue was unavailable and has been cleared")
+            repository.saveQueue(active.queue)
+            if (restoration.unavailableSourceCount == 0 && restoration.requiresRewrite) persistTabs(restoration.collection)
+            if (active.queue.entries.isNotEmpty()) {
+                playCurrent(play = false, resumeOverrideMillis = active.playbackPositionMillis)
+            }
+            updateMpris()
+            return
         }
+
+        val stored = repository.loadQueue()
+        val restoration = restoreStoredQueue(stored)
+        val queue = restoration.queue
+        if (restoration.requiresRewrite && restoration.unavailableSourceCount == 0) repository.saveQueue(queue)
+        val migrated = AudioTabReducer.updateActive(mutableState.value.audioTabs) { tab ->
+            tab.copy(queue = queue)
+        }
+        mutableState.value = mutableState.value.copy(
+            queue = queue,
+            audioTabs = migrated,
+            status = when {
+                restoration.unavailableSourceCount > 0 ->
+                    "The saved queue is waiting for its source to reconnect."
+                restoration.omittedCount > 0 ->
+                    "Restored ${queue.entries.size} queued tracks; ${restoration.omittedCount} unavailable item(s) were removed."
+                queue.entries.isNotEmpty() -> "Restored ${queue.entries.size} queued tracks."
+                else -> mutableState.value.status
+            },
+        )
+        if (restoration.unavailableSourceCount == 0) persistTabs(migrated)
+        if (queue.entries.isNotEmpty()) playCurrent(play = false)
         updateMpris()
+    }
+
+    private suspend fun restoreAudioTabs(stored: StoredAudioTabs): RestoredDesktopAudioTabs {
+        var omittedCount = 0
+        var unavailableSourceCount = 0
+        var requiresRewrite = false
+        val sessions = stored.tabs.map { tab ->
+            val restored = restoreStoredQueue(tab.queue)
+            omittedCount += restored.omittedCount
+            unavailableSourceCount += restored.unavailableSourceCount
+            requiresRewrite = requiresRewrite || restored.requiresRewrite
+            AudioTabSession(
+                definition = AudioTabDefinition(tab.id, tab.name, tab.rootPath, tab.icon, tab.color),
+                queue = restored.queue,
+                currentFolderId = tab.currentFolderId,
+                playbackPositionMillis = tab.playbackPositionMillis,
+                playbackSpeed = tab.playbackSpeed,
+                volume = tab.volume,
+                shuffle = tab.shuffle,
+                repeatMode = tab.repeatMode,
+            )
+        }
+        val playlists = stored.playlists.map { playlist ->
+            val restored = restoreStoredQueue(
+                StoredQueue(playlist.entries, if (playlist.entries.isEmpty()) -1 else 0),
+            )
+            omittedCount += restored.omittedCount
+            unavailableSourceCount += restored.unavailableSourceCount
+            requiresRewrite = requiresRewrite || restored.requiresRewrite
+            NamedAudioPlaylist(playlist.name, restored.queue.entries)
+        }
+        return RestoredDesktopAudioTabs(
+            collection = AudioTabCollection(sessions, stored.activeTabId, playlists),
+            omittedCount = omittedCount,
+            unavailableSourceCount = unavailableSourceCount,
+            requiresRewrite = requiresRewrite,
+        )
+    }
+
+    private suspend fun restoreStoredQueue(stored: StoredQueue): DesktopStoredQueueRestoration {
+        var unavailableSourceCount = 0
+        val restoredEntries = stored.entries.map { reference ->
+            val selectedSource = sources[reference.sourceId]
+            if (selectedSource == null) {
+                unavailableSourceCount += 1
+                return@map null
+            }
+            runCatching { selectedSource.load(reference.nodeId) as? AudioTrack }.getOrNull()
+                ?.let { QueueEntry(it, reference.originFolderId) }
+        }
+        val restoration = QueueRestoration.repair(restoredEntries, stored.currentIndex)
+        return DesktopStoredQueueRestoration(
+            queue = restoration.queue,
+            omittedCount = restoration.omittedCount,
+            unavailableSourceCount = unavailableSourceCount,
+            requiresRewrite = restoration.requiresRewrite,
+        )
     }
 
     private fun updateQueue(queue: PlaybackQueue) {
         checkpoint(mutableState.value.playback, force = true)
-        mutableState.value = mutableState.value.copy(queue = queue)
+        val current = mutableState.value
+        val tabs = AudioTabReducer.updateActive(current.audioTabs) { it.copy(queue = queue) }
+        mutableState.value = current.copy(queue = queue, audioTabs = tabs)
         repository.saveQueue(queue)
+        persistTabs(tabs)
         updateMpris()
+    }
+
+    private fun persistTabs(tabs: AudioTabCollection = mutableState.value.audioTabs) {
+        repository.saveAudioTabs(tabs)
+    }
+
+    private fun updateActiveTab(transform: (AudioTabSession) -> AudioTabSession) {
+        val tabs = AudioTabReducer.updateActive(mutableState.value.audioTabs, transform)
+        mutableState.value = mutableState.value.copy(audioTabs = tabs)
+        persistTabs(tabs)
+    }
+
+    private suspend fun loadActiveTabFolder() {
+        if (source.id.value != "pcloud") return
+        val tab = mutableState.value.audioTabs.active
+        val root = runCatching { source.resolveFolderPath(tab.definition.rootPath) }.getOrElse {
+            mutableState.value = mutableState.value.copy(
+                busy = false,
+                currentFolder = null,
+                breadcrumbs = emptyList(),
+                nodes = emptyList(),
+                status = "Tab root '${tab.definition.rootPath}' is unavailable.",
+            )
+            return
+        }
+        val requested = tab.currentFolderId?.takeIf { folderWithinRoot(source, it, root.id) }
+        loadFolder(requested ?: root.id, resetBreadcrumbs = true)
+    }
+
+    private suspend fun folderWithinRoot(source: AudioSource, candidateId: NodeId, rootId: NodeId): Boolean {
+        var currentId: NodeId? = candidateId
+        repeat(MAX_FOLDER_ANCESTORS) {
+            val id = currentId ?: return false
+            if (id == rootId) return true
+            val folder = runCatching { source.load(id) as? AudioFolder }.getOrNull() ?: return false
+            currentId = folder.parentId
+        }
+        return false
+    }
+
+    private fun handlePlaybackCompletion() {
+        val state = mutableState.value
+        val track = state.queue.current?.track ?: return
+        val mediaId = MediaIdentity.encode(track.sourceId, track.id)
+        if (completionHandledFor == mediaId) return
+        completionHandledFor = mediaId
+        scope.launch {
+            checkpoint(mutableState.value.playback, force = true)
+            val current = mutableState.value
+            val queue = current.queue
+            val tab = current.audioTabs.active
+            val nextIndex = when {
+                tab.repeatMode == PlayerRepeatMode.ONE -> queue.currentIndex
+                tab.shuffle && queue.entries.size > 1 -> {
+                    val alternatives = queue.entries.indices.filter { it != queue.currentIndex }
+                    alternatives[Random.nextInt(alternatives.size)]
+                }
+                queue.currentIndex < queue.entries.lastIndex -> queue.currentIndex + 1
+                tab.repeatMode == PlayerRepeatMode.ALL && queue.entries.isNotEmpty() -> 0
+                else -> -1
+            }
+            if (nextIndex < 0) {
+                mutableState.value = current.copy(status = "Queue finished.")
+                return@launch
+            }
+            updateQueue(QueueReducer.select(queue, nextIndex))
+            playCurrent(resumeOverrideMillis = 0)
+        }
     }
 
     private fun onPrepareForSleep(preparingForSleep: Boolean) {
@@ -975,7 +1411,7 @@ class DesktopController(
                 mediaId = MediaIdentity.encode(track.sourceId, track.id),
                 positionMillis = playback.positionMillis,
                 durationMillis = playback.durationMillis ?: track.durationMillis,
-                playbackSpeed = 1f,
+                playbackSpeed = playback.speed,
                 isPlaying = playback.running && !playback.paused && !playback.idle,
             ),
             cursor = checkpointCursor,
@@ -983,7 +1419,23 @@ class DesktopController(
             force = force,
         )
         checkpointCursor = decision.cursor
-        decision.progress?.let(repository::saveProgress)
+        decision.progress?.let { progress ->
+            repository.saveProgress(progress)
+            val current = mutableState.value
+            val tabs = AudioTabReducer.updateActive(current.audioTabs) { tab ->
+                tab.copy(
+                    queue = current.queue,
+                    playbackPositionMillis = progress.positionMillis,
+                    playbackSpeed = progress.playbackSpeed,
+                    volume = playback.volume,
+                )
+            }
+            mutableState.value = current.copy(
+                audioTabs = tabs,
+                progressByNodeId = current.progressByNodeId + (progress.nodeId to progress),
+            )
+            persistTabs(tabs)
+        }
     }
 
     private fun canRollbackLocalTagResult(result: FileApplyResult): Boolean =
@@ -1210,7 +1662,8 @@ class DesktopController(
                     mutableState.value = mutableState.value.copy(connectedToPCloud = true)
                     if (selectedSource == "pcloud") {
                         source = sources.getValue(dev.properpcloud.core.model.SourceId("pcloud"))
-                        loadFolder(source.root.id, resetBreadcrumbs = true)
+                        restorePlaybackState()
+                        loadActiveTabFolder()
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -1299,14 +1752,31 @@ class DesktopController(
         streamRefreshGeneration += 1
         streamRefreshJob?.cancel()
         searchJob?.cancel()
+        sleepTimerJob?.cancel()
         scope.cancel()
     }
 
     private companion object {
         const val PCLOUD_SESSION_KEY = "pcloud-session"
         const val SEARCH_DEBOUNCE_MILLIS = 200L
+        const val MAX_SEARCH_FOLDERS = 1_500
+        const val MAX_FOLDER_ANCESTORS = 128
     }
 }
+
+private data class DesktopStoredQueueRestoration(
+    val queue: PlaybackQueue,
+    val omittedCount: Int,
+    val unavailableSourceCount: Int,
+    val requiresRewrite: Boolean,
+)
+
+private data class RestoredDesktopAudioTabs(
+    val collection: AudioTabCollection,
+    val omittedCount: Int,
+    val unavailableSourceCount: Int,
+    val requiresRewrite: Boolean,
+)
 
 private fun decodeDesktopSearchTypes(encoded: String?): Set<SearchMatchType> =
     encoded?.split(',')
