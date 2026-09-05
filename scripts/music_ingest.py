@@ -14,6 +14,7 @@ import argparse
 import base64
 import contextlib
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
@@ -985,6 +986,32 @@ def initialize_state(db_path: Path) -> sqlite3.Connection:
     return connection
 
 
+def acquire_state_lock(db_path: Path) -> Any:
+    """Take a non-blocking process lock for one writable ingest state DB."""
+
+    lock_path = Path(f"{db_path}.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+", encoding="utf-8")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as exc:
+        handle.seek(0)
+        holder = handle.read().strip() or "unknown"
+        handle.close()
+        raise RuntimeError(f"music ingest is already running for this state DB (holder {holder})") from exc
+    handle.seek(0)
+    handle.truncate()
+    handle.write(f"pid={os.getpid()} started={utc_now()}\n")
+    handle.flush()
+    return handle
+
+
+def release_state_lock(handle: Any) -> None:
+    with contextlib.suppress(OSError):
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    handle.close()
+
+
 def is_resumable_skip(connection: sqlite3.Connection, source: Path) -> bool:
     try:
         stat = source.stat()
@@ -1458,7 +1485,16 @@ def command_ingest(args: argparse.Namespace) -> int:
             print(str(exc), file=sys.stderr)
             return 2
 
-    connection = initialize_state(state_db)
+    try:
+        state_lock = acquire_state_lock(state_db)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 3
+    try:
+        connection = initialize_state(state_db)
+    except Exception:
+        release_state_lock(state_lock)
+        raise
     run_id = connection.execute(
         "INSERT INTO ingest_runs(started_at, dry_run) VALUES (?, ?)",
         (utc_now(), int(args.dry_run)),
@@ -1516,6 +1552,7 @@ def command_ingest(args: argparse.Namespace) -> int:
         return 1 if counts["FAILED"] else 0
     finally:
         connection.close()
+        release_state_lock(state_lock)
 
 
 def command_report(args: argparse.Namespace) -> int:

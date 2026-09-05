@@ -260,6 +260,18 @@ def test_record_failure_survives_source_disappearing_before_stat(tmp_path: Path)
     assert "vanished" in row[3]
 
 
+def test_state_lock_rejects_parallel_ingest_and_releases_cleanly(tmp_path: Path) -> None:
+    state = tmp_path / "state.sqlite"
+    first = music_ingest.acquire_state_lock(state)
+    try:
+        with pytest.raises(RuntimeError, match="already running"):
+            music_ingest.acquire_state_lock(state)
+    finally:
+        music_ingest.release_state_lock(first)
+    second = music_ingest.acquire_state_lock(state)
+    music_ingest.release_state_lock(second)
+
+
 def test_reports_include_replacement_candidate(tmp_path: Path) -> None:
     state = tmp_path / "state.sqlite"
     con = music_ingest.initialize_state(state)

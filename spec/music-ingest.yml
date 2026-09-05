@@ -62,6 +62,7 @@ pipeline:
   resume_key: source_path
   resume_guard: [source_size, source_mtime_ns, destination_exists]
   duplicate_key: sha256
+  concurrent_writer_policy: single_process_advisory_lock
 
 filename_policy:
   unicode: NFC

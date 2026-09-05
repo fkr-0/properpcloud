@@ -150,6 +150,11 @@ Each completed source records size and `mtime_ns`. A later run skips unchanged
 completed inputs whose destination still exists. Exact content duplicates are
 identified by SHA-256 and reference the already ingested destination.
 
+Only one ingest process may use a state database at a time. A local advisory
+lock (`music-ingest.sqlite3.lock`) fails a second writer immediately instead of
+allowing two processes to race on pCloud destinations. The lock is kernel-held;
+a stale lock file after a crash does not keep the database locked.
+
 Use `--no-resume` to deliberately re-evaluate completed sources. To rebuild
 portable reports without re-reading the source collection:
 
