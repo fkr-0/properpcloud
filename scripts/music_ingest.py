@@ -998,9 +998,9 @@ def is_resumable_skip(connection: sqlite3.Connection, source: Path) -> bool:
         return False
     if row["source_size"] != stat.st_size or row["source_mtime_ns"] != stat.st_mtime_ns:
         return False
-    if row["status"] == "INGESTED" and row["destination_path"]:
+    if row["destination_path"]:
         return Path(row["destination_path"]).exists()
-    return True
+    return False
 
 
 def duplicate_destination(connection: sqlite3.Connection, source_sha256: str) -> str | None:
@@ -1189,7 +1189,13 @@ def record_failure(connection: sqlite3.Connection, source: Path, exc: Exception)
     try:
         stat = source.stat()
     except OSError:
-        stat = os.stat_result((0,) * 10)
+        # A source can disappear between discovery and processing.  Avoid
+        # letting the failure recorder itself violate SQLite NOT NULL columns.
+        class MissingStat:
+            st_size = 0
+            st_mtime_ns = 0
+
+        stat = MissingStat()
     empty = TrackMetadata()
     result = ProcessResult(
         source_path=str(source),

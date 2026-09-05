@@ -228,6 +228,38 @@ def test_wav_ingest_uses_staging_and_is_resumable(tmp_path: Path) -> None:
     assert list(library.rglob("*.wav")) == [destination]
 
 
+def test_duplicate_resume_reprocesses_when_referenced_destination_is_missing(tmp_path: Path) -> None:
+    source = tmp_path / "source.wav"
+    make_wav(source)
+    state = music_ingest.initialize_state(tmp_path / "state.sqlite")
+    stat = source.stat()
+    state.execute(
+        """
+        INSERT INTO ingest_files(
+          source_path, source_size, source_mtime_ns, status, destination_path, updated_at
+        ) VALUES (?, ?, ?, 'DUPLICATE', ?, ?)
+        """,
+        (str(source), stat.st_size, stat.st_mtime_ns, str(tmp_path / "missing.wav"), music_ingest.utc_now()),
+    )
+    state.commit()
+    assert music_ingest.is_resumable_skip(state, source) is False
+    state.close()
+
+
+def test_record_failure_survives_source_disappearing_before_stat(tmp_path: Path) -> None:
+    state = music_ingest.initialize_state(tmp_path / "state.sqlite")
+    missing = tmp_path / "gone.mp3"
+    result = music_ingest.record_failure(state, missing, OSError("vanished"))
+    assert result.status == "FAILED"
+    row = state.execute(
+        "SELECT source_size, source_mtime_ns, status, error FROM ingest_files WHERE source_path=?",
+        (str(missing),),
+    ).fetchone()
+    state.close()
+    assert tuple(row)[:3] == (0, 0, "FAILED")
+    assert "vanished" in row[3]
+
+
 def test_reports_include_replacement_candidate(tmp_path: Path) -> None:
     state = tmp_path / "state.sqlite"
     con = music_ingest.initialize_state(state)
