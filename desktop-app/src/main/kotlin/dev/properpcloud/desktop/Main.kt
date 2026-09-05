@@ -1,9 +1,21 @@
 package dev.properpcloud.desktop
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Notification
+import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
@@ -30,6 +42,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import java.awt.SystemTray
 import java.nio.file.Files
 import kotlin.system.exitProcess
 
@@ -182,17 +195,81 @@ private fun runMprisSmoke() = runBlocking {
 }
 
 private fun launchDesktop() = application {
-    val controller = DesktopController()
-    Window(
-        onCloseRequest = {
-            controller.close()
-            exitApplication()
-        },
-        title = "properpcloud",
-        state = rememberWindowState(width = 1280.dp, height = 820.dp),
-    ) {
-        DisposableEffect(Unit) { onDispose(controller::close) }
-        DesktopApp(controller)
+    val controller = remember { DesktopController() }
+    val uiState by controller.state.collectAsState()
+    val windowState = rememberWindowState(width = 1280.dp, height = 820.dp)
+    val traySupported = remember { SystemTray.isSupported() }
+    val trayState = rememberTrayState()
+    var windowVisible by remember { mutableStateOf(true) }
+    var lastNotifiedTrack by remember { mutableStateOf<String?>(null) }
+    val trayIcon = rememberVectorPainter(Icons.Default.LibraryMusic)
+
+    DisposableEffect(controller) { onDispose(controller::close) }
+
+    if (traySupported) {
+        Tray(
+            state = trayState,
+            icon = trayIcon,
+            tooltip = "properpcloud",
+            onAction = { windowVisible = true },
+            menu = {
+                Item("Show player", onClick = { windowVisible = true })
+                Separator()
+                Item(
+                    if (uiState.playback.paused || uiState.playback.idle) "Play" else "Pause",
+                    onClick = controller::playPause,
+                    enabled = uiState.queue.current != null,
+                )
+                Item("Previous", onClick = controller::previous, enabled = uiState.queue.current != null)
+                Item("Next", onClick = controller::next, enabled = uiState.queue.current != null)
+                Separator()
+                Item("Quit", onClick = {
+                    controller.close()
+                    exitApplication()
+                })
+            },
+        )
+
+        val currentTrack = uiState.queue.current?.track
+        LaunchedEffect(
+            currentTrack?.sourceId?.value,
+            currentTrack?.id?.value,
+            uiState.playback.running,
+            uiState.playback.paused,
+            uiState.playback.idle,
+        ) {
+            val track = currentTrack ?: return@LaunchedEffect
+            val identity = "${track.sourceId.value}:${track.id.value}"
+            if (
+                uiState.playback.running && !uiState.playback.paused && !uiState.playback.idle &&
+                identity != lastNotifiedTrack
+            ) {
+                trayState.sendNotification(
+                    Notification(
+                        title = "properpcloud",
+                        message = "Now playing: ${track.taggedTitle ?: track.filenameStem}",
+                    ),
+                )
+                lastNotifiedTrack = identity
+            }
+        }
+    }
+
+    if (windowVisible) {
+        Window(
+            onCloseRequest = {
+                if (traySupported) {
+                    windowVisible = false
+                } else {
+                    controller.close()
+                    exitApplication()
+                }
+            },
+            title = "properpcloud",
+            state = windowState,
+        ) {
+            DesktopApp(controller)
+        }
     }
 }
 

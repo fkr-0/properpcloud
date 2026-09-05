@@ -59,7 +59,7 @@ linux_client:
     playback: mpv child process with private Unix JSON IPC and no-config
     persistence: SQLite JDBC with WAL settings, queue/progress tables, persisted search preferences, and optional bounded playback history
     secrets: bounded asynchronous freedesktop Secret Service lookup through secret-tool with no plaintext fallback
-    media_integration: MPRIS root/player interfaces over session D-Bus plus logind PrepareForSleep over the system bus
+    media_integration: MPRIS root/player interfaces over session D-Bus, capability-gated system tray controls/track-change notifications, plus logind PrepareForSleep over the system bus
     paths: XDG config, data, cache, and runtime roots
     local_source:
       selection: explicit native directory picker before LocalFolderRootCapability construction

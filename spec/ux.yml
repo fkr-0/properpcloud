@@ -205,6 +205,11 @@ ux:
           Up_or_Down: volume_5_percent
           Ctrl_Left_or_Right: previous_or_next
           Ctrl_Up_or_Down: move_keyboard_selection
+        desktop_tray:
+          availability: only when the host reports system-tray support
+          controls: [show_player, play_pause, previous, next, quit]
+          close_behavior: hide the window while the supported tray remains available; otherwise close exits normally
+          notification: announce a newly audible stable track identity once, never merely because it was preloaded paused
       durability:
         persisted: [stable_source_id, stable_node_id, folder_id, queue_order, position, speed, volume, shuffle, repeat, tab_definition, named_playlist]
         forbidden: [signed_stream_url, bearer_token, provider_password]

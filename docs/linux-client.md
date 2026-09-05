@@ -129,7 +129,9 @@ Browser OAuth remains the preferred long-term route. Implementing it requires a 
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-The current UI provides pointer and keyboard equivalents for every queue operation. `Ctrl+L` and `Ctrl+Q` select visible library or queue focus; arrow keys select, Enter opens or plays, Shift/Ctrl/Alt+Enter expose append/replace/inspect, and Alt+Up/Down plus Delete reorder or remove queue items. F1 documents the full map, selected rows remain visible, and account dialogs suppress global playback shortcuts. Drag-and-drop, desktop notifications, saved roots, and a detachable mini-player remain post-parity refinements rather than prerequisites for the implemented playback path.
+The current UI provides pointer and keyboard equivalents for every queue operation. `Ctrl+L` and `Ctrl+Q` select visible library or queue focus; arrow keys select, Enter opens or plays, Shift/Ctrl/Alt+Enter expose append/replace/inspect, and Alt+Up/Down plus Delete reorder or remove queue items. F1 documents the full map, selected rows remain visible, and account dialogs suppress global playback shortcuts. Drag-and-drop, saved roots, and a detachable mini-player remain post-parity refinements rather than prerequisites for the implemented playback path.
+
+On hosts with a supported desktop system tray, properpcloud keeps one remembered controller/player instance while the main window is hidden and exposes Show, Play/Pause, Previous, Next, and Quit actions from the tray. Closing the window hides it only when that recovery surface exists; otherwise close retains normal process-exit behavior. A desktop notification is emitted once when a new stable track identity actually becomes audible. Preparing a destination tab or restored queue in the required paused state does not generate a false track-change notification.
 
 ## Verification
 
