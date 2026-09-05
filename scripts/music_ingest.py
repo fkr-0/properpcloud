@@ -28,14 +28,12 @@ import unicodedata
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Sequence
+from typing import Any, Iterable, Iterator, Protocol, Sequence
 
 try:
-    import mutagen
     from mutagen import File as MutagenFile
     from mutagen.flac import Picture
     from mutagen.id3 import (
-        APIC,
         TALB,
         TCON,
         TDRC,
@@ -170,6 +168,14 @@ class ProcessResult:
     quality: QualityInfo | None
     duration_seconds: float | None
     size_bytes: int
+
+
+class StatLike(Protocol):
+    @property
+    def st_size(self) -> int: ...
+
+    @property
+    def st_mtime_ns(self) -> int: ...
 
 
 def utc_now() -> str:
@@ -1047,7 +1053,7 @@ def duplicate_destination(connection: sqlite3.Connection, source_sha256: str) ->
 def save_result(
     connection: sqlite3.Connection,
     result: ProcessResult,
-    stat: os.stat_result,
+    stat: StatLike,
     original: TrackMetadata,
 ) -> None:
     quality = result.quality
@@ -1213,6 +1219,7 @@ def process_one(
 
 
 def record_failure(connection: sqlite3.Connection, source: Path, exc: Exception) -> ProcessResult:
+    stat: StatLike
     try:
         stat = source.stat()
     except OSError:

@@ -10,6 +10,7 @@ import wave
 from pathlib import Path
 
 import pytest
+from mutagen.id3 import APIC
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -372,7 +373,7 @@ def test_mp3_ingest_normalizes_id3_artwork_quality_and_preserves_source(tmp_path
     tags.add(music_ingest.TDRC(encoding=0, text=["2020-01-01"]))
     tags.add(music_ingest.TCON(encoding=0, text=["hiphop"]))
     tags.add(
-        music_ingest.APIC(
+        APIC(
             encoding=0,
             mime="image/jpeg",
             type=3,
