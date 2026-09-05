@@ -70,6 +70,7 @@ data class AudioTabCollection(
 ) {
     init {
         require(tabs.isNotEmpty()) { "at least one audio tab is required" }
+        require(tabs.size <= MAX_AUDIO_TABS) { "too many audio tabs" }
         require(tabs.map { it.definition.id }.distinct().size == tabs.size) { "audio tab ids must be unique" }
         require(tabs.any { it.definition.id == activeTabId }) { "active audio tab must exist" }
         require(playlists.map { it.name.lowercase() }.distinct().size == playlists.size) { "playlist names must be unique" }
@@ -128,8 +129,20 @@ object AudioTabReducer {
         collection: AudioTabCollection,
         definition: AudioTabDefinition,
     ): AudioTabCollection {
+        require(collection.tabs.size < MAX_AUDIO_TABS) { "audio tab limit reached" }
         require(collection.tabs.none { it.definition.id == definition.id }) { "audio tab id already exists" }
         return collection.copy(tabs = collection.tabs + AudioTabSession(definition))
+    }
+
+    fun move(collection: AudioTabCollection, tabId: AudioTabId, targetIndex: Int): AudioTabCollection {
+        val sourceIndex = collection.tabs.indexOfFirst { it.definition.id == tabId }
+        require(sourceIndex >= 0) { "audio tab does not exist" }
+        require(targetIndex in collection.tabs.indices) { "audio tab target index out of range" }
+        if (sourceIndex == targetIndex) return collection
+        val reordered = collection.tabs.toMutableList()
+        val tab = reordered.removeAt(sourceIndex)
+        reordered.add(targetIndex, tab)
+        return collection.copy(tabs = reordered)
     }
 
     fun remove(collection: AudioTabCollection, tabId: AudioTabId): AudioTabCollection {
@@ -211,3 +224,4 @@ fun normalizeAudioRootPath(path: String): String {
 
 const val MIN_PLAYBACK_SPEED = 0.5f
 const val MAX_PLAYBACK_SPEED = 3f
+const val MAX_AUDIO_TABS = 32

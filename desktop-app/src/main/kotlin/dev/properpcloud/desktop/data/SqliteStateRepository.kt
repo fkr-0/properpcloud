@@ -107,6 +107,7 @@ class SqliteStateRepository(database: Path) : AutoCloseable {
             it.executeUpdate("DELETE FROM audio_tabs")
             it.executeUpdate("DELETE FROM saved_playlist_entries")
             it.executeUpdate("DELETE FROM saved_playlists")
+            it.executeUpdate("DELETE FROM settings WHERE key LIKE 'audioTab.queueIndex.%'")
         }
         connection.prepareStatement(
             "INSERT INTO audio_tabs(position,tab_id,name,root_path,icon,color,current_folder_id,playback_position_ms,playback_speed,volume,shuffle,repeat_mode) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",

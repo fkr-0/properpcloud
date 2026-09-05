@@ -37,6 +37,21 @@ class SqliteStateRepositoryTest {
     }
 
     @Test
+    fun `saving tab sessions removes stale queue index settings`() {
+        val root = Files.createTempDirectory("properpcloud-sqlite-tab-cleanup-")
+        try {
+            SqliteStateRepository(root.resolve("state.db")).use { repository ->
+                repository.setSetting("audioTab.queueIndex.removed-tab", "17")
+                repository.saveAudioTabs(AudioTabDefaults.collection())
+
+                assertEquals(null, repository.setting("audioTab.queueIndex.removed-tab"))
+            }
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test
     fun `round trips tab sessions and named playlists using stable media identities`() {
         val root = Files.createTempDirectory("properpcloud-sqlite-tabs-")
         try {

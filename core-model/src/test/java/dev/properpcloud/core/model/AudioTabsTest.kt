@@ -4,6 +4,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class AudioTabsTest {
@@ -22,6 +23,32 @@ class AudioTabsTest {
         )
         assertEquals("hb/Sci-Fi", defaults.tabs.first { it.definition.id.value == "sci-fi" }.definition.rootPath)
         assertEquals(AudioTabId("audiobooks"), defaults.activeTabId)
+    }
+
+    @Test
+    fun `tabs can be reordered without changing the active session`() {
+        val initial = AudioTabDefaults.collection()
+        val moved = AudioTabReducer.move(initial, AudioTabId("music"), 0)
+
+        assertEquals(AudioTabId("music"), moved.tabs.first().definition.id)
+        assertEquals(initial.activeTabId, moved.activeTabId)
+        assertEquals(initial.active.queue, moved.active.queue)
+    }
+
+    @Test
+    fun `tab collection has a bounded session count`() {
+        var collection = AudioTabDefaults.collection()
+        while (collection.tabs.size < MAX_AUDIO_TABS) {
+            val index = collection.tabs.size
+            collection = AudioTabReducer.add(
+                collection,
+                AudioTabDefinition(AudioTabId("extra-$index"), "Extra $index", "extra/$index"),
+            )
+        }
+
+        assertThrows(IllegalArgumentException::class.java) {
+            AudioTabReducer.add(collection, AudioTabDefinition(AudioTabId("one-too-many"), "Too many", "overflow"))
+        }
     }
 
     @Test
