@@ -8,6 +8,10 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dev.properpcloud.core.model.NodeId
+import dev.properpcloud.core.model.AudioTabCollection
+import dev.properpcloud.core.model.AudioTabColor
+import dev.properpcloud.core.model.AudioTabId
+import dev.properpcloud.core.model.PlayerRepeatMode
 import dev.properpcloud.core.model.PlaybackHistoryEntry
 import dev.properpcloud.core.model.PlaybackHistoryPolicy
 import dev.properpcloud.core.model.PlaybackProgress
@@ -30,6 +34,32 @@ data class StoredSettings(
     val playbackHistoryRetention: Int = PlaybackHistoryPolicy.DEFAULT_RETENTION,
 )
 
+data class StoredAudioTab(
+    val id: AudioTabId,
+    val name: String,
+    val rootPath: String,
+    val icon: String?,
+    val color: AudioTabColor?,
+    val queue: StoredQueue,
+    val currentFolderId: NodeId?,
+    val playbackPositionMillis: Long,
+    val playbackSpeed: Float,
+    val volume: Float,
+    val shuffle: Boolean,
+    val repeatMode: PlayerRepeatMode,
+)
+
+data class StoredNamedPlaylist(
+    val name: String,
+    val entries: List<StoredQueueReference>,
+)
+
+data class StoredAudioTabs(
+    val tabs: List<StoredAudioTab>,
+    val activeTabId: AudioTabId,
+    val playlists: List<StoredNamedPlaylist>,
+)
+
 data class StoredQueueReference(
     val sourceId: SourceId,
     val nodeId: NodeId,
@@ -49,6 +79,13 @@ class AppPreferencesRepository(context: Context) {
     suspend fun updateClientId(value: String) {
         dataStore.edit { it[CLIENT_ID] = value.trim() }
     }
+
+    suspend fun saveAudioTabs(tabs: AudioTabCollection) {
+        dataStore.edit { it[AUDIO_TABS_JSON] = AppPersistenceCodec.encodeAudioTabs(tabs) }
+    }
+
+    suspend fun loadAudioTabs(): StoredAudioTabs? =
+        AppPersistenceCodec.decodeAudioTabs(dataStore.data.first()[AUDIO_TABS_JSON].orEmpty())
 
     suspend fun loadPlaybackHistory(): List<PlaybackHistoryEntry> =
         AppPersistenceCodec.decodeHistory(dataStore.data.first()[HISTORY_JSON].orEmpty())
@@ -138,5 +175,6 @@ class AppPreferencesRepository(context: Context) {
         val HISTORY_ENABLED = booleanPreferencesKey("playback_history_enabled")
         val HISTORY_RETENTION = intPreferencesKey("playback_history_retention")
         val HISTORY_JSON = stringPreferencesKey("playback_history_json")
+        val AUDIO_TABS_JSON = stringPreferencesKey("audio_tabs_json_v1")
     }
 }

@@ -3,6 +3,9 @@ package dev.properpcloud.app.data
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.AudioTabDefaults
+import dev.properpcloud.core.model.AudioTabReducer
+import dev.properpcloud.core.model.AudioTabId
 import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.PlaybackProgress
 import dev.properpcloud.core.model.PlaybackQueue
@@ -27,6 +30,37 @@ class AppPreferencesRepositoryTest {
     @After
     fun cleanUp() {
         context.filesDir.resolve("datastore/properpcloud.preferences_pb").delete()
+    }
+
+    @Test
+    fun audioTabsRoundTripWithoutPersistingStreamLocations() = runTest {
+        val track = AudioTrack(
+            sourceId = SourceId("pcloud"),
+            id = NodeId("file:9001"),
+            parentId = NodeId("folder:44"),
+            name = "chapter.m4b",
+        )
+        var tabs = AudioTabDefaults.collection()
+        tabs = AudioTabReducer.updateActive(tabs) { tab ->
+            tab.copy(
+                queue = PlaybackQueue(entries = listOf(QueueEntry(track, track.parentId)), currentIndex = 0),
+                currentFolderId = track.parentId,
+                playbackPositionMillis = 73_000,
+                playbackSpeed = 1.5f,
+                volume = 0.65f,
+            )
+        }
+        tabs = AudioTabReducer.savePlaylist(tabs, "Commute")
+        tabs = AudioTabReducer.switch(tabs, AudioTabId("music"), 73_000)
+
+        repository.saveAudioTabs(tabs)
+        val restored = requireNotNull(repository.loadAudioTabs())
+
+        assertEquals(AudioTabId("music"), restored.activeTabId)
+        val audiobook = restored.tabs.first { it.id == AudioTabId("audiobooks") }
+        assertEquals(73_000, audiobook.playbackPositionMillis)
+        assertEquals(NodeId("file:9001"), audiobook.queue.entries.single().nodeId)
+        assertEquals("Commute", restored.playlists.single().name)
     }
 
     @Test
