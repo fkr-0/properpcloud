@@ -53,6 +53,13 @@ store `relative_path`/`source_relative_path` with a `source_root`/`mount_root`:
 
 Direct roots and catalog databases can be combined and repeated.
 
+Music selection is structural rather than extension-only: audio beneath any
+ancestor directory matching samples, loops, one-shots, stems, drum kits,
+podcasts/episodes, recordings, voice memos, or field recordings is excluded
+from this music pipeline. The entire ancestry is checked (not only the last few
+path components), while the filename itself is deliberately ignored so a real
+track title containing words such as “Sample” or “Recording” remains eligible.
+
 When neither is supplied, the utility automatically prefers the companion
 `disk-catalog` database at `~/.local/share/disk-catalog/catalog.db` when it
 exists; otherwise it scans automatically discovered mounted external/loop

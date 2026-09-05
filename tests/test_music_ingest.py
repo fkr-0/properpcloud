@@ -551,6 +551,18 @@ def test_path_inference_does_not_promote_mount_or_music_directories() -> None:
     assert inferred.album == ""
 
 
+def test_music_candidate_filter_uses_full_ancestry_but_not_track_title() -> None:
+    assert not music_ingest.is_music_candidate_path(
+        Path("/mnt/ext/audio/Samples/Breaks/deep/pack/hit.wav")
+    )
+    assert not music_ingest.is_music_candidate_path(
+        Path("/mnt/ext/audio/field-recordings/forest.wav")
+    )
+    assert music_ingest.is_music_candidate_path(
+        Path("/mnt/ext/Music/Artist/(2024) Album/01 Sample Recording.mp3")
+    )
+
+
 def test_unsorted_manifest_preserves_source_context(tmp_path: Path) -> None:
     source = tmp_path / "raw" / "mystery.mp3"
     source.parent.mkdir(parents=True)

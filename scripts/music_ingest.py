@@ -82,6 +82,11 @@ BARE_SITE_TAG = re.compile(
     re.IGNORECASE,
 )
 YEAR_RE = re.compile(r"(?:19|20)\d{2}")
+NON_MUSIC_ANCESTOR_RE = re.compile(
+    r"(?:^|[\s_.-])(?:samples?|loops?|one[- ]?shots?|stems?|drum[\s_-]*kits?|"
+    r"podcasts?|episodes?|recordings?|voice[\s_-]*memos?|field[- ]?recordings?)(?:$|[\s_.-])",
+    re.IGNORECASE,
+)
 
 CANONICAL_GENRES = {
     "ambient": "Ambient",
@@ -774,6 +779,16 @@ def collision_safe_destination(destination: Path, source_sha256: str) -> Path:
     return destination.with_name(f"{destination.stem} [{suffix}]{destination.suffix}")
 
 
+def is_music_candidate_path(path: Path) -> bool:
+    """Reject audio that is structurally classified as samples/spoken/recorded media.
+
+    Only directory ancestry is considered so a legitimate song title containing
+    words such as "Sample" or "Recording" is not excluded.
+    """
+
+    return not any(NON_MUSIC_ANCESTOR_RE.search(part) for part in path.parts[:-1])
+
+
 def iter_music_files(roots: Iterable[Path]) -> Iterator[Path]:
     seen: set[tuple[int, int]] = set()
     for root in roots:
@@ -791,6 +806,8 @@ def iter_music_files(roots: Iterable[Path]) -> Iterator[Path]:
             for filename in filenames:
                 path = Path(dirpath) / filename
                 if path.suffix.lower() not in MUSIC_EXTENSIONS:
+                    continue
+                if not is_music_candidate_path(path):
                     continue
                 try:
                     stat = path.stat()
@@ -935,6 +952,8 @@ def iter_catalog_files(db_path: Path) -> Iterator[Path]:
                 if not path.is_absolute() and isinstance(raw_root, str) and raw_root:
                     path = Path(raw_root) / path
                 if path.suffix.lower() not in MUSIC_EXTENSIONS:
+                    continue
+                if not is_music_candidate_path(path):
                     continue
                 normalized = str(path)
                 if normalized in emitted:

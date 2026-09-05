@@ -37,6 +37,10 @@ source_contract:
       supported_path_columns: [path, file_path, absolute_path, source_path, full_path, filepath]
       supported_relative_path_columns: [relative_path, relpath, source_relative_path]
       supported_root_columns: [source_root, mount_root, mount_path, root_path]
+    music_selection:
+      ancestry_scope: full
+      filename_considered: false
+      exclude_ancestor_classes: [sample, loop, one-shot, stem, drumkit, podcast, episode, recording, voice-memo, field-recording]
 
 pipeline:
   stages:
