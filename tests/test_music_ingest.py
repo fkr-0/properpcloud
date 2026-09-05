@@ -123,6 +123,49 @@ def test_catalog_discovery_resolves_relative_path_against_source_root(tmp_path: 
     assert list(music_ingest.iter_catalog_files(db)) == [root / "A/song.mp3"]
 
 
+def test_default_companion_catalog_is_used_when_no_source_root_is_given(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "mounted" / "Artist" / "(2024) Album" / "01 - Song.wav"
+    make_wav(source)
+    catalog = tmp_path / "catalog.sqlite"
+    con = sqlite3.connect(catalog)
+    con.execute("CREATE TABLE files(path TEXT NOT NULL, category TEXT)")
+    con.execute("INSERT INTO files(path, category) VALUES (?, 'audio')", (str(source),))
+    con.commit()
+    con.close()
+    monkeypatch.setattr(music_ingest, "DEFAULT_COMPANION_CATALOG", catalog)
+
+    library = tmp_path / "library"
+    assert (
+        music_ingest.main(
+            [
+                "ingest",
+                "--library-root",
+                str(library),
+                "--metadata-root",
+                str(tmp_path / "metadata"),
+                "--state-db",
+                str(tmp_path / "state.sqlite"),
+                "--staging-root",
+                str(tmp_path / "staging"),
+            ]
+        )
+        == 0
+    )
+    assert (library / "Artist" / "(2024) Album" / "01 Song.wav").is_file()
+
+
+def test_pcloud_target_guard_rejects_underlying_tmp_when_mount_is_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(music_ingest.os.path, "ismount", lambda path: False)
+    with pytest.raises(RuntimeError, match="pCloud mount is not active"):
+        music_ingest.ensure_pcloud_target_available(Path("/tmp/dib/media-library/audio/music/x.mp3"))
+    # Custom/local destinations remain usable for tests and explicit staging.
+    music_ingest.ensure_pcloud_target_available(Path("/var/tmp/properpcloud-test/x.mp3"))
+
+
 def test_wav_ingest_uses_staging_and_is_resumable(tmp_path: Path) -> None:
     source = tmp_path / "source" / "Artist" / "(2022) Album" / "03 - Track.wav"
     make_wav(source)

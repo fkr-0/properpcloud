@@ -7,6 +7,7 @@ paths:
   metadata_root: /tmp/dib/media-library/metadata
   state_db: ~/.local/state/properpcloud/music-ingest.sqlite3
   staging_root: ~/.cache/properpcloud/music-ingest-staging
+  companion_catalog: ~/.local/share/disk-catalog/catalog.db
 
 source_contract:
   immutable: true
@@ -29,6 +30,9 @@ source_contract:
       device_classes: [usb, removable, sd_disk, loop]
       fallback_to_system_root: false
     explicit_roots: true
+    automatic_catalog:
+      environment_override: PROPERPCLOUD_DISK_CATALOG
+      prefer_when_present: true
     catalog_sqlite:
       supported_path_columns: [path, file_path, absolute_path, source_path, full_path, filepath]
       supported_relative_path_columns: [relative_path, relpath, source_relative_path]
@@ -127,3 +131,6 @@ safety:
   bounded_limit: true
   failure_policy: persist_and_continue
   sqlite_over_fuse: false
+  require_active_pcloud_mount_for_default_target: true
+  prevent_destination_self_ingest: true
+  atomic_report_publication: true

@@ -24,7 +24,9 @@ library metadata.
 
 The utility refuses to fall back to `/` when it cannot discover an external or
 loop-device mount. Explicit `--source-root` values are always preferred for a
-controlled run.
+controlled run. It also refuses writes below `/tmp/dib` if that path is no
+longer an active mountpoint, preventing a dropped rclone mount from silently
+turning a cloud ingest into local `/tmp` data.
 
 ## Discovery
 
@@ -37,7 +39,8 @@ List mounted external/loop filesystems:
 
 The automatic detector reads `lsblk` JSON and follows mounted USB/removable,
 `sd*`, and loop-device trees. It only returns real mountpoints and excludes the
-system root.
+system root. The JSON response also reports pCloud mount readiness and whether
+the companion catalog exists.
 
 When the companion file catalog already exists, pass it directly. The reader
 supports SQLite tables with common absolute path-column names such as `path`,
@@ -49,6 +52,11 @@ store `relative_path`/`source_relative_path` with a `source_root`/`mount_root`:
       --dry-run
 
 Direct roots and catalog databases can be combined and repeated.
+
+When neither is supplied, the utility automatically prefers the companion
+`disk-catalog` database at `~/.local/share/disk-catalog/catalog.db` when it
+exists; otherwise it scans automatically discovered mounted external/loop
+filesystems. Override the companion location with `PROPERPCLOUD_DISK_CATALOG`.
 
 ## Dry run first
 
@@ -170,3 +178,5 @@ matches.
   is a separate, review-sensitive policy.
 - Album art copying currently recognizes JPEG cover files. Embedded artwork is
   preserved when it is 500 KiB or smaller.
+- Source paths that resolve inside the destination music library are excluded,
+  preventing accidental recursive self-ingestion.

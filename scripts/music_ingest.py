@@ -128,6 +128,10 @@ UNKNOWN_VALUES = {
 
 BACKUP_KEY = "PROPERPCLOUD_ORIGINAL_TAGS"
 QUALITY_KEY = "PROPERPCLOUD_QUALITY"
+PCLOUD_MOUNT = Path("/tmp/dib")
+DEFAULT_COMPANION_CATALOG = Path(
+    os.environ.get("PROPERPCLOUD_DISK_CATALOG", "~/.local/share/disk-catalog/catalog.db")
+).expanduser()
 
 
 @dataclass(slots=True)
@@ -795,9 +799,45 @@ def iter_music_files(roots: Iterable[Path]) -> Iterator[Path]:
 def publish_file(stage: Path, destination: Path, source_sha256: str) -> None:
     """Publish one staged object without exposing a partial final filename."""
 
+    ensure_pcloud_target_available(destination)
     partial = destination.with_name(f".{destination.name}.properpcloud-partial-{source_sha256[:12]}")
-    shutil.copy2(stage, partial)
-    os.replace(partial, destination)
+    try:
+        shutil.copy2(stage, partial)
+        os.replace(partial, destination)
+    finally:
+        with contextlib.suppress(OSError):
+            partial.unlink()
+
+
+def path_is_within(path: Path, parent: Path) -> bool:
+    try:
+        path.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def ensure_pcloud_target_available(target: Path) -> None:
+    """Fail closed when a default pCloud target would hit underlying /tmp."""
+
+    if path_is_within(target, PCLOUD_MOUNT) and not os.path.ismount(PCLOUD_MOUNT):
+        raise RuntimeError(f"pCloud mount is not active at {PCLOUD_MOUNT}; refusing local fallback write")
+
+
+def atomic_write_text(path: Path, content: str) -> None:
+    ensure_pcloud_target_available(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".partial", dir=path.parent)
+    temp = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(content)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temp, path)
+    finally:
+        with contextlib.suppress(OSError):
+            temp.unlink()
 
 
 def _walk_block_devices(nodes: Sequence[dict[str, Any]], parent_external: bool = False) -> Iterator[str]:
@@ -1037,6 +1077,7 @@ def save_result(
 
 def copy_cover_if_available(source: Path, destination_dir: Path, max_bytes: int = 500 * 1024) -> None:
     target = destination_dir / "cover.jpg"
+    ensure_pcloud_target_available(target)
     if target.exists():
         return
     candidates = ["cover.jpg", "folder.jpg", "front.jpg", "Cover.jpg", "Folder.jpg"]
@@ -1044,7 +1085,7 @@ def copy_cover_if_available(source: Path, destination_dir: Path, max_bytes: int 
         candidate = source.parent / name
         try:
             if candidate.is_file() and candidate.stat().st_size <= max_bytes:
-                shutil.copy2(candidate, target)
+                publish_file(candidate, target, file_sha256(candidate))
                 return
         except OSError:
             continue
@@ -1105,6 +1146,7 @@ def process_one(
         )
 
     staging_root.mkdir(parents=True, exist_ok=True)
+    ensure_pcloud_target_available(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, stage_name = tempfile.mkstemp(prefix="track-", suffix=source.suffix.lower(), dir=staging_root)
     os.close(fd)
@@ -1209,6 +1251,7 @@ def replacement_candidates(connection: sqlite3.Connection) -> dict[str, str]:
 
 
 def write_reports(connection: sqlite3.Connection, metadata_root: Path) -> tuple[Path, Path, Path]:
+    ensure_pcloud_target_available(metadata_root)
     metadata_root.mkdir(parents=True, exist_ok=True)
     rows = connection.execute(
         "SELECT * FROM ingest_files WHERE status IN ('INGESTED', 'DUPLICATE', 'FAILED') ORDER BY source_path"
@@ -1279,7 +1322,7 @@ def write_reports(connection: sqlite3.Connection, metadata_root: Path) -> tuple[
         "low_quality": low_records,
     }
     quality_path = metadata_root / "quality-audit.json"
-    quality_path.write_text(json.dumps(quality_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(quality_path, json.dumps(quality_payload, ensure_ascii=False, indent=2) + "\n")
 
     unsorted_payload = {
         "schema_version": 1,
@@ -1287,7 +1330,7 @@ def write_reports(connection: sqlite3.Connection, metadata_root: Path) -> tuple[
         "files": unsorted_records,
     }
     unsorted_path = metadata_root / "unsorted-manifest.json"
-    unsorted_path.write_text(json.dumps(unsorted_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text(unsorted_path, json.dumps(unsorted_payload, ensure_ascii=False, indent=2) + "\n")
 
     failed_rows = [row for row in rows if row["status"] == "FAILED"]
     report_lines = [
@@ -1339,7 +1382,7 @@ def write_reports(connection: sqlite3.Connection, metadata_root: Path) -> tuple[
         report_lines.append("- None.")
 
     report_path = metadata_root / "ingest-report.md"
-    report_path.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
+    atomic_write_text(report_path, "\n".join(report_lines) + "\n")
     return quality_path, report_path, unsorted_path
 
 
@@ -1366,7 +1409,13 @@ def default_staging_root() -> Path:
 
 def command_discover(args: argparse.Namespace) -> int:
     mounts = discover_external_mounts()
-    payload = {"external_mounts": [str(path) for path in mounts], "count": len(mounts)}
+    companion = DEFAULT_COMPANION_CATALOG if DEFAULT_COMPANION_CATALOG.is_file() else None
+    payload = {
+        "external_mounts": [str(path) for path in mounts],
+        "count": len(mounts),
+        "companion_catalog": str(companion) if companion else None,
+        "pcloud_mounted": os.path.ismount(PCLOUD_MOUNT),
+    }
     if args.json:
         print(json.dumps(payload, indent=2))
     else:
@@ -1375,7 +1424,7 @@ def command_discover(args: argparse.Namespace) -> int:
                 print(mount)
         else:
             print("No mounted external/loop filesystems discovered.", file=sys.stderr)
-    return 0 if mounts else 2
+    return 0 if mounts or companion else 2
 
 
 def command_ingest(args: argparse.Namespace) -> int:
@@ -1384,14 +1433,24 @@ def command_ingest(args: argparse.Namespace) -> int:
     state_db = args.state_db.expanduser().resolve()
     staging_root = args.staging_root.expanduser().resolve()
     source_roots = [path.expanduser().resolve() for path in args.source_root]
-    if not source_roots and not args.catalog_db:
+    catalog_dbs = [path.expanduser().resolve() for path in args.catalog_db]
+    if not source_roots and not catalog_dbs and DEFAULT_COMPANION_CATALOG.is_file():
+        catalog_dbs.append(DEFAULT_COMPANION_CATALOG.resolve())
+    if not source_roots and not catalog_dbs:
         source_roots = discover_external_mounts()
-    if not source_roots and not args.catalog_db:
+    if not source_roots and not catalog_dbs:
         print(
             "No mounted external/loop source filesystems discovered; refusing to scan an implicit system root.",
             file=sys.stderr,
         )
         return 2
+    if not args.dry_run:
+        try:
+            ensure_pcloud_target_available(library_root)
+            ensure_pcloud_target_available(metadata_root)
+        except RuntimeError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
 
     connection = initialize_state(state_db)
     run_id = connection.execute(
@@ -1401,7 +1460,8 @@ def command_ingest(args: argparse.Namespace) -> int:
     connection.commit()
     results: list[ProcessResult] = []
     try:
-        sources = collect_sources(source_roots, args.catalog_db)
+        sources = collect_sources(source_roots, catalog_dbs)
+        sources = [path for path in sources if not path_is_within(path, library_root)]
         if args.limit is not None:
             sources = sources[: args.limit]
         if run_id is not None:
@@ -1453,6 +1513,11 @@ def command_ingest(args: argparse.Namespace) -> int:
 
 
 def command_report(args: argparse.Namespace) -> int:
+    try:
+        ensure_pcloud_target_available(args.metadata_root.expanduser().resolve())
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     connection = initialize_state(args.state_db.expanduser().resolve())
     try:
         quality_path, report_path, unsorted_path = write_reports(
