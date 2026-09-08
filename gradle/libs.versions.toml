@@ -20,7 +20,7 @@ datastore = "1.2.1"
 core = "1.19.0"
 robolectric = "4.16.1"
 androidx-test-core = "1.7.0"
-kotlin = "2.3.21"
+kotlin = "2.4.10"
 
 [libraries]
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
