@@ -58,11 +58,13 @@ Recognized column aliases include:
 | Source disk | `source_disk`, `disk`, `disk_id`, `volume`, `volume_id`, `device` |
 | Size | `size`, `size_bytes`, `bytes`, `file_size` |
 | Modification time | `mtime_ns`, `modified_ns`, `mtime`, `modified_at`, `modified_ms` |
-| Exact hash | `sha256`, `content_hash`, `hash` |
+| Hash evidence | `sha256`, `content_hash`, `hash` |
 | Type hint | `media_type`, `type`, `kind`, `category` |
 
 An absolute path is sufficient. A relative-only catalog must also expose a source-root
-column so the importer can open the source bytes.
+column so the importer can open the source bytes. Relative paths are validated before
+filesystem access, and declared source roots plus destination paths are checked after
+realpath/symlink resolution so intermediate symlinks cannot escape their intended tree.
 
 ## Initialize and test
 
@@ -78,6 +80,11 @@ Create the directory contract on the configured mount:
 make media-library-init
 ```
 
+`init` is idempotent and also publishes an initial consistent `metadata/catalog.db`
+snapshot. When the configured library is below `/tmp/dib`, the command refuses to run if
+`/tmp/dib` is not an active mount. This prevents a lost rclone mount from turning a cloud
+operation into an accidental write to the server's underlying local filesystem.
+
 Override locations when needed:
 
 ```bash
@@ -89,6 +96,13 @@ make media-library-init \
 ## Import workflow
 
 Import is preview-first. `MEDIA_LIBRARY_SOURCE_DB` is required by the Make targets.
+General media-library `init`, import (including dry-run planning), and explicit publish
+operations take a local non-blocking writer lock keyed by library root. A second general
+import against the same root fails instead of racing cloud copies or catalog updates.
+
+The specialized `scripts/music_ingest.py` tool currently has its own independent state
+lock. Do **not** run that specialized ingester concurrently with this general importer
+against the same pCloud media tree until both tools share one cross-tool writer lock.
 
 ```bash
 # No pCloud media writes. Reports what would be copied/skipped/deduplicated.
@@ -97,6 +111,9 @@ make media-library-dry-run MEDIA_LIBRARY_SOURCE_DB=/path/to/external-catalog.db
 # Explicitly perform the import after reviewing the dry-run.
 make media-library-import MEDIA_LIBRARY_SOURCE_DB=/path/to/external-catalog.db
 ```
+
+Dry-run JSON uses `would_copy` and `bytes_would_copy`; `copied` and `bytes_copied` remain
+zero, so previews cannot be mistaken for completed transfers.
 
 The direct CLI exposes exact-content dedupe and a transfer throttle:
 
@@ -114,13 +131,21 @@ Deduplication modes:
 
 - `filename-size` (default) is a fast **heuristic**. It satisfies cheap incremental
   screening but does not claim two files have equal content.
-- `hash` computes/uses SHA-256 and deduplicates only exact content.
+- `hash` computes SHA-256 from the source bytes and deduplicates only exact content. If
+  the companion catalog supplies a 64-hex SHA-256 value, properpcloud verifies it instead
+  of trusting stale hash evidence. Generic MD5/SHA-1-shaped `hash` values are not guessed
+  to be SHA-256; exact mode computes its own SHA-256 instead.
 - `off` never deduplicates independent source objects.
 
 Every successful run records source provenance in `source_items`, publishes one JSONL
 manifest in `metadata/manifests/`, writes a compact run summary in `metadata/logs/`, and
 publishes a consistent `metadata/catalog.db` snapshot. Multiple source rows can point at
 one physical cloud object after deduplication without losing their source disk/path.
+
+The manifest is streamed to a local temporary JSONL file while importing, so a catalog
+with millions of rows does not require one in-memory Python object per source file.
+Malformed catalog rows and cataloged files that disappear from the source mount are
+recorded as failed rows without terminating the rest of the run.
 
 Copies are written to hidden `.part-*` siblings first. A source whose size or mtime
 changes during the copy fails rather than becoming visible as complete. Transient copy
@@ -137,6 +162,10 @@ source disk/provenance, import timestamps and SHA-256 when available. If install
 
 Metadata extraction is enrichment, not identity, and failure does not discard a valid
 media copy. FTS5 indexes filenames and library paths.
+
+The writable database must stay on a local filesystem. The CLI rejects a state database
+below `/tmp/dib` and also rejects state storage detected on any `fuse.rclone` filesystem.
+Only the SQLite backup snapshot is published to pCloud.
 
 Examples matching common library questions:
 
@@ -175,12 +204,16 @@ python3 scripts/media_library.py verify --hash
 Inspect cleanup candidates:
 
 ```bash
-python3 scripts/media_library.py cleanup
+make media-library-cleanup
+# or bound the displayed sample per category explicitly:
+python3 scripts/media_library.py cleanup --limit 100
 ```
 
-Cleanup is deliberately **report-only**. It reports hash duplicate groups, zero-byte
-catalog entries, broken symlinks found below the library root, and cataloged objects with
-no remaining source provenance. It never deletes cloud media automatically.
+Cleanup is deliberately **report-only** and bounds displayed samples while retaining
+counts. It reports exact-hash and filename+size duplicate groups, zero-byte catalog and
+filesystem objects, broken symlinks, interrupted `.part-*`/`.tmp-*` uploads, media files
+present on pCloud but absent from the catalog, and cataloged objects with no remaining
+source provenance. It never deletes cloud media automatically.
 
 ## Backup strategy
 

@@ -11,9 +11,11 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -22,12 +24,14 @@ import tempfile
 import time
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 
 DEFAULT_LIBRARY_ROOT = Path("/tmp/dib/media-library")
 DEFAULT_STATE_DB = Path.home() / ".local/state/properpcloud/media-library/catalog.db"
+CANONICAL_PCLOUD_MOUNT = Path("/tmp/dib")
 CHUNK_SIZE = 8 * 1024 * 1024
 
 LIBRARY_DIRS = (
@@ -113,6 +117,90 @@ def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+def is_within(path: Path, parent: Path) -> bool:
+    absolute = Path(os.path.realpath(os.path.abspath(path)))
+    ancestor = Path(os.path.realpath(os.path.abspath(parent)))
+    return absolute == ancestor or ancestor in absolute.parents
+
+
+def filesystem_type_for_path(path: Path) -> str | None:
+    """Return the Linux mount filesystem type containing path, if mountinfo is readable."""
+    probe = Path(os.path.realpath(os.path.abspath(path)))
+    while not probe.exists() and probe.parent != probe:
+        probe = probe.parent
+    try:
+        lines = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    best: tuple[int, str] | None = None
+    for line in lines:
+        if " - " not in line:
+            continue
+        before, after = line.split(" - ", 1)
+        fields = before.split()
+        trailing = after.split()
+        if len(fields) < 5 or not trailing:
+            continue
+        mount_text = fields[4]
+        for escaped, literal in (("\\040", " "), ("\\011", "\t"), ("\\012", "\n"), ("\\134", "\\")):
+            mount_text = mount_text.replace(escaped, literal)
+        mount_path = Path(mount_text)
+        if is_within(probe, mount_path):
+            score = len(str(mount_path))
+            if best is None or score > best[0]:
+                best = (score, trailing[0])
+    return best[1] if best else None
+
+
+def validate_storage_boundary(
+    library_root: Path,
+    state_db: Path,
+    *,
+    require_library_mount: bool = True,
+) -> None:
+    """Fail closed when the canonical cloud mount vanished or state was put on it."""
+    if (
+        require_library_mount
+        and is_within(library_root, CANONICAL_PCLOUD_MOUNT)
+        and not os.path.ismount(CANONICAL_PCLOUD_MOUNT)
+    ):
+        raise RuntimeError(
+            f"canonical pCloud mount is unavailable: {CANONICAL_PCLOUD_MOUNT}; refusing filesystem access"
+        )
+    if is_within(state_db, CANONICAL_PCLOUD_MOUNT):
+        raise RuntimeError("the writable SQLite state database must not reside on the pCloud/rclone mount")
+    state_filesystem = filesystem_type_for_path(state_db.parent)
+    if state_filesystem == "fuse.rclone":
+        raise RuntimeError("the writable SQLite state database must reside on local storage, not fuse.rclone")
+
+
+def acquire_writer_lock(library_root: Path, state_db: Path) -> Any:
+    """Serialize planning/writes for one library root through a local advisory lock."""
+    canonical_root = Path(os.path.realpath(os.path.abspath(library_root)))
+    library_key = hashlib.sha256(str(canonical_root).encode()).hexdigest()[:24]
+    lock_path = state_db.parent / "locks" / f"library-{library_key}.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+", encoding="utf-8")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError as error:
+        handle.seek(0)
+        holder = handle.read().strip() or "unknown"
+        handle.close()
+        raise RuntimeError(f"media-library writer is already active for {library_root} ({holder})") from error
+    handle.seek(0)
+    handle.truncate()
+    handle.write(f"pid={os.getpid()} started={utc_now()} root={canonical_root}\n")
+    handle.flush()
+    return handle
+
+
+def release_writer_lock(handle: Any) -> None:
+    with contextlib.suppress(OSError):
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    handle.close()
+
+
 def safe_component(value: str, fallback: str = "unknown") -> str:
     cleaned = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in value.strip())
     cleaned = cleaned.strip("._")
@@ -127,13 +215,34 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def as_sha256(value: str | None) -> str | None:
+    """Return normalized SHA-256 evidence without guessing the algorithm of generic hashes."""
+    if value is None:
+        return None
+    text = value.strip().lower()
+    return text if re.fullmatch(r"[0-9a-f]{64}", text) else None
+
+
 def parse_size(value: str) -> int:
-    text = value.strip().lower().replace("ib", "b")
-    units = {"b": 1, "kb": 1000, "mb": 1000**2, "gb": 1000**3, "tb": 1000**4,
-             "k": 1024, "m": 1024**2, "g": 1024**3, "t": 1024**4}
+    text = value.strip().lower()
+    units = {
+        "b": 1,
+        "kb": 1000,
+        "mb": 1000**2,
+        "gb": 1000**3,
+        "tb": 1000**4,
+        "kib": 1024,
+        "mib": 1024**2,
+        "gib": 1024**3,
+        "tib": 1024**4,
+        "k": 1024,
+        "m": 1024**2,
+        "g": 1024**3,
+        "t": 1024**4,
+    }
     for suffix in sorted(units, key=len, reverse=True):
         if text.endswith(suffix):
-            return int(float(text[:-len(suffix)]) * units[suffix])
+            return int(Decimal(text[:-len(suffix)]) * units[suffix])
     return int(text)
 
 
@@ -197,8 +306,16 @@ class SourceItem:
     source_root: Path | None
     size_bytes: int
     mtime_ns: int
+    mtime_tolerance_ns: int
     source_hash: str | None
     declared_type: str | None
+
+
+@dataclass(frozen=True)
+class CatalogIssue:
+    source_path: str
+    source_disk: str
+    reason: str
 
 
 class SourceCatalog:
@@ -230,48 +347,68 @@ class SourceCatalog:
         candidates.sort(key=lambda item: (-item[0], item[1]))
         return candidates[0][1]
 
-    def items(self) -> Iterator[SourceItem]:
+    def items(self) -> Iterator[SourceItem | CatalogIssue]:
         quoted = self.table.replace('"', '""')
         for record in self.connection.execute(f'SELECT * FROM "{quoted}"'):
             row = dict(record)
-            absolute = first_value(row, PATH_ALIASES)
-            relative = first_value(row, RELATIVE_PATH_ALIASES)
-            root_value = first_value(row, SOURCE_ROOT_ALIASES)
-            root = Path(str(root_value)).expanduser() if root_value else None
-            if absolute:
-                source_path = Path(str(absolute)).expanduser()
-            elif relative and root:
-                source_path = root / str(relative)
-            else:
-                continue
-            if relative:
-                relative_path = PurePosixPath(str(relative).replace(os.sep, "/")).relative_to("/") if str(relative).startswith("/") else PurePosixPath(str(relative).replace(os.sep, "/"))
-            else:
-                relative_path = self._relative_from_path(source_path, root, first_value(row, SOURCE_DISK_ALIASES))
-            raw_size = first_value(row, SIZE_ALIASES)
-            raw_mtime = first_value(row, MTIME_ALIASES)
-            stat = None
-            if raw_size is None or raw_mtime is None:
-                with contextlib.suppress(OSError):
-                    stat = source_path.stat()
-            if raw_size is None and stat is None:
-                continue
-            if raw_mtime is None and stat is None:
-                continue
-            size = int(raw_size) if raw_size is not None else stat.st_size
-            mtime_ns = normalize_mtime_ns(raw_mtime, stat.st_mtime_ns if stat is not None else 0)
-            source_disk = safe_component(str(first_value(row, SOURCE_DISK_ALIASES) or infer_disk(source_path)))
-            source_hash = first_value(row, HASH_ALIASES)
-            yield SourceItem(
-                source_path=source_path,
-                relative_path=sanitize_relative(relative_path),
-                source_disk=source_disk,
-                source_root=root,
-                size_bytes=size,
-                mtime_ns=mtime_ns,
-                source_hash=str(source_hash).lower() if source_hash else None,
-                declared_type=str(first_value(row, MEDIA_TYPE_ALIASES)) if first_value(row, MEDIA_TYPE_ALIASES) else None,
-            )
+            try:
+                yield self._item_from_row(row)
+            except (OSError, TypeError, ValueError, OverflowError) as error:
+                path_value = first_value(row, PATH_ALIASES) or first_value(row, RELATIVE_PATH_ALIASES) or "<unresolved>"
+                disk_value = first_value(row, SOURCE_DISK_ALIASES) or "unknown"
+                yield CatalogIssue(
+                    source_path=str(path_value),
+                    source_disk=safe_component(str(disk_value)),
+                    reason=str(error)[:200] or error.__class__.__name__,
+                )
+
+    def _item_from_row(self, row: Mapping[str, Any]) -> SourceItem:
+        absolute = first_value(row, PATH_ALIASES)
+        relative = first_value(row, RELATIVE_PATH_ALIASES)
+        root_value = first_value(row, SOURCE_ROOT_ALIASES)
+        root = Path(str(root_value)).expanduser() if root_value else None
+        relative_path = None
+        if relative:
+            relative_path = sanitize_relative(PurePosixPath(str(relative).replace(os.sep, "/")))
+        if absolute:
+            source_path = Path(str(absolute)).expanduser()
+        elif relative_path is not None and root:
+            source_path = root / Path(*relative_path.parts)
+            if not is_within(source_path, root):
+                raise ValueError("source-relative path escapes its declared source root")
+        else:
+            raise ValueError("catalog row has no resolvable source path")
+        if root is not None and absolute and not is_within(source_path, root):
+            raise ValueError("absolute source path escapes its declared source root")
+        if relative_path is None:
+            relative_path = self._relative_from_path(source_path, root, first_value(row, SOURCE_DISK_ALIASES))
+        raw_size = first_value(row, SIZE_ALIASES)
+        raw_mtime = first_value(row, MTIME_ALIASES)
+        stat = None
+        if raw_size is None or raw_mtime is None:
+            with contextlib.suppress(OSError):
+                stat = source_path.stat()
+        if raw_size is None and stat is None:
+            raise ValueError("catalog row has no usable file size")
+        if raw_mtime is None and stat is None:
+            raise ValueError("catalog row has no usable modification time")
+        size = int(raw_size) if raw_size is not None else stat.st_size
+        if size < 0:
+            raise ValueError("catalog row has negative file size")
+        mtime_ns, mtime_tolerance_ns = normalize_mtime(raw_mtime, stat.st_mtime_ns if stat is not None else 0)
+        source_disk = safe_component(str(first_value(row, SOURCE_DISK_ALIASES) or infer_disk(source_path)))
+        source_hash = first_value(row, HASH_ALIASES)
+        return SourceItem(
+            source_path=source_path,
+            relative_path=relative_path,
+            source_disk=source_disk,
+            source_root=root,
+            size_bytes=size,
+            mtime_ns=mtime_ns,
+            mtime_tolerance_ns=mtime_tolerance_ns,
+            source_hash=str(source_hash).lower() if source_hash else None,
+            declared_type=str(first_value(row, MEDIA_TYPE_ALIASES)) if first_value(row, MEDIA_TYPE_ALIASES) else None,
+        )
 
     @staticmethod
     def _relative_from_path(path: Path, root: Path | None, disk: Any | None) -> PurePosixPath:
@@ -288,15 +425,22 @@ class SourceCatalog:
         return PurePosixPath("_unrooted", token, path.name)
 
 
-def normalize_mtime_ns(value: Any | None, fallback: int) -> int:
+def normalize_mtime(value: Any | None, fallback: int) -> tuple[int, int]:
     if value is None:
-        return fallback
-    number = int(float(value))
-    if number < 10_000_000_000:  # seconds
-        return number * 1_000_000_000
-    if number < 10_000_000_000_000:  # milliseconds
-        return number * 1_000_000
-    return number
+        return fallback, 0
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        text = str(value).strip().replace("Z", "+00:00")
+        parsed = dt.datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt.timezone.utc)
+        return int(parsed.timestamp() * 1_000_000_000), 1_000
+    if abs(number) < 10_000_000_000:  # seconds
+        return int(number * Decimal(1_000_000_000)), 1_000_000_000
+    if abs(number) < 10_000_000_000_000:  # milliseconds
+        return int(number * Decimal(1_000_000)), 1_000_000
+    return int(number), 0
 
 
 def infer_disk(path: Path) -> str:
@@ -310,7 +454,15 @@ def infer_disk(path: Path) -> str:
 
 
 def sanitize_relative(path: PurePosixPath) -> PurePosixPath:
-    parts = [safe_component(part) for part in path.parts if part not in ("", ".", "..")]
+    if path.is_absolute():
+        raise ValueError("source-relative path must not be absolute")
+    parts: list[str] = []
+    for part in path.parts:
+        if part in ("", "."):
+            continue
+        if part == ".." or "\x00" in part:
+            raise ValueError("unsafe source-relative path component")
+        parts.append(part)
     if not parts:
         raise ValueError("empty source-relative path")
     return PurePosixPath(*parts)
@@ -431,28 +583,37 @@ class LibraryDatabase:
 
 def atomic_publish_file(source: Path, target: Path, retries: int = 4) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f".{target.name}.tmp-{uuid.uuid4().hex}")
-    try:
-        shutil.copyfile(source, temporary)
-        for attempt in range(retries):
-            try:
-                if temporary.stat().st_size != source.stat().st_size:
-                    raise OSError("published temporary file size mismatch")
-                os.replace(temporary, target)
-                if target.stat().st_size != source.stat().st_size:
-                    raise OSError("published target size mismatch")
-                return
-            except OSError:
-                if attempt + 1 == retries:
-                    raise
-                time.sleep(0.5 * (2**attempt))
-    finally:
-        temporary.unlink(missing_ok=True)
+    expected_size = source.stat().st_size
+    last_error: OSError | None = None
+    for attempt in range(retries):
+        temporary = target.parent / f".tmp-{uuid.uuid4().hex}"
+        try:
+            shutil.copyfile(source, temporary)
+            if temporary.stat().st_size != expected_size:
+                raise OSError("published temporary file size mismatch")
+            os.replace(temporary, target)
+            if target.stat().st_size != expected_size:
+                raise OSError("published target size mismatch")
+            return
+        except OSError as error:
+            last_error = error
+            if attempt + 1 == retries:
+                break
+            time.sleep(0.5 * (2**attempt))
+        finally:
+            temporary.unlink(missing_ok=True)
+    assert last_error is not None
+    raise last_error
 
 
 def initialize_library(root: Path) -> None:
     for relative in LIBRARY_DIRS:
-        (root / relative).mkdir(parents=True, exist_ok=True)
+        directory = root / relative
+        if not is_within(directory, root):
+            raise ValueError(f"library directory escapes root through a symlink: {directory}")
+        directory.mkdir(parents=True, exist_ok=True)
+        if directory.is_symlink() or not is_within(directory, root):
+            raise ValueError(f"library directory is not a contained real directory: {directory}")
     readme = root / "README.md"
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
         handle.write(LIBRARY_README)
@@ -535,15 +696,27 @@ def destination_for(root: Path, item: SourceItem, media_type: str, subtype: str)
     return root / media_type / subtype / item.source_disk / Path(*item.relative_path.parts)
 
 
-def choose_collision_path(path: Path, item: SourceItem) -> Path:
-    token = hashlib.sha256(f"{item.source_path}\0{item.size_bytes}\0{item.mtime_ns}".encode()).hexdigest()[:12]
+def choose_collision_path(path: Path, item: SourceItem, content_hash: str | None = None) -> Path:
+    token = hashlib.sha256(
+        f"{item.source_path}\0{item.size_bytes}\0{item.mtime_ns}\0{content_hash or ''}".encode()
+    ).hexdigest()[:12]
     return path.with_name(f"{path.stem}__{token}{path.suffix}")
 
 
-def copy_with_progress(source: Path, target: Path, bandwidth_mib: float | None = None) -> int:
+def copy_with_progress(
+    source: Path,
+    target: Path,
+    bandwidth_mib: float | None = None,
+    expected_size: int | None = None,
+    expected_mtime_ns: int | None = None,
+) -> int:
     target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f".{target.name}.part-{uuid.uuid4().hex}")
+    temporary = target.parent / f".part-{uuid.uuid4().hex}"
     source_before = source.stat()
+    if expected_size is not None and source_before.st_size != expected_size:
+        raise OSError("source size changed before copy")
+    if expected_mtime_ns is not None and source_before.st_mtime_ns != expected_mtime_ns:
+        raise OSError("source modification time changed before copy")
     total = source_before.st_size
     copied = 0
     started = time.monotonic()
@@ -577,7 +750,19 @@ def copy_with_progress(source: Path, target: Path, bandwidth_mib: float | None =
         source_after = source.stat()
         if source_after.st_size != source_before.st_size or source_after.st_mtime_ns != source_before.st_mtime_ns:
             raise OSError("source changed during copy")
-        os.replace(temporary, target)
+        last_replace_error: OSError | None = None
+        for attempt in range(4):
+            try:
+                os.replace(temporary, target)
+                last_replace_error = None
+                break
+            except OSError as error:
+                last_replace_error = error
+                if attempt + 1 == 4:
+                    break
+                time.sleep(0.5 * (2**attempt))
+        if last_replace_error is not None:
+            raise last_replace_error
         if sys.stderr.isatty():
             print(file=sys.stderr)
         return copied
@@ -590,12 +775,20 @@ def copy_with_retries(
     target: Path,
     bandwidth_mib: float | None = None,
     attempts: int = 4,
+    expected_size: int | None = None,
+    expected_mtime_ns: int | None = None,
 ) -> int:
     """Retry transient copy/FUSE errors without ever exposing a partial target."""
     last_error: OSError | None = None
     for attempt in range(attempts):
         try:
-            return copy_with_progress(source, target, bandwidth_mib)
+            return copy_with_progress(
+                source,
+                target,
+                bandwidth_mib,
+                expected_size=expected_size,
+                expected_mtime_ns=expected_mtime_ns,
+            )
         except OSError as error:
             last_error = error
             if attempt + 1 == attempts:
@@ -608,11 +801,13 @@ def copy_with_retries(
 @dataclass
 class ImportSummary:
     copied: int = 0
+    would_copy: int = 0
     deduplicated: int = 0
     unchanged: int = 0
     skipped: int = 0
     failed: int = 0
     bytes_copied: int = 0
+    bytes_would_copy: int = 0
 
 
 class Importer:
@@ -626,40 +821,71 @@ class Importer:
         self.run_id = uuid.uuid4().hex
         self.started_at = utc_now()
         self.summary = ImportSummary()
-        self.manifest_rows: list[dict[str, Any]] = []
+        self._manifest = tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            prefix="properpcloud-import-manifest-",
+            suffix=".jsonl",
+            delete=False,
+        )
+        self._manifest_path = Path(self._manifest.name)
 
     def run(self, catalog: SourceCatalog) -> ImportSummary:
-        if not self.dry_run:
-            self.db.connection.execute(
-                "INSERT INTO import_runs(run_id,source_catalog,started_at,status) VALUES(?,?,?,'running')",
-                (self.run_id, self.source_catalog, self.started_at),
-            )
-            self.db.connection.commit()
-        for item in catalog.items():
-            try:
-                self._import_one(item)
-            except (OSError, sqlite3.Error, ValueError) as error:
-                self.summary.failed += 1
-                self._record(item, "failed", error=error.__class__.__name__)
-        if not self.dry_run:
-            self.db.connection.execute(
-                "UPDATE import_runs SET completed_at=?,copied=?,deduplicated=?,unchanged=?,skipped=?,failed=?,bytes_copied=?,status=? WHERE run_id=?",
-                (utc_now(), self.summary.copied, self.summary.deduplicated, self.summary.unchanged,
-                 self.summary.skipped, self.summary.failed, self.summary.bytes_copied,
-                 "complete" if self.summary.failed == 0 else "partial", self.run_id),
-            )
-            self.db.connection.commit()
-            self._publish_run_artifacts()
-        return self.summary
+        try:
+            if not self.dry_run:
+                self.db.connection.execute(
+                    "INSERT INTO import_runs(run_id,source_catalog,started_at,status) VALUES(?,?,?,'running')",
+                    (self.run_id, self.source_catalog, self.started_at),
+                )
+                self.db.connection.commit()
+            for item in catalog.items():
+                if isinstance(item, CatalogIssue):
+                    self.summary.failed += 1
+                    self._record_issue(item)
+                    continue
+                try:
+                    self._import_one(item)
+                except (OSError, sqlite3.Error, ValueError) as error:
+                    self.summary.failed += 1
+                    self._record(
+                        item,
+                        "failed",
+                        error=error.__class__.__name__,
+                        detail=str(error)[:200],
+                    )
+            if not self.dry_run:
+                self.db.connection.execute(
+                    "UPDATE import_runs SET completed_at=?,copied=?,deduplicated=?,unchanged=?,skipped=?,failed=?,bytes_copied=?,status=? WHERE run_id=?",
+                    (utc_now(), self.summary.copied, self.summary.deduplicated, self.summary.unchanged,
+                     self.summary.skipped, self.summary.failed, self.summary.bytes_copied,
+                     "complete" if self.summary.failed == 0 else "partial", self.run_id),
+                )
+                self.db.connection.commit()
+                self._manifest.flush()
+                self._manifest.close()
+                self._publish_run_artifacts()
+            return self.summary
+        finally:
+            if not self._manifest.closed:
+                self._manifest.close()
+            self._manifest_path.unlink(missing_ok=True)
 
     def _import_one(self, item: SourceItem) -> None:
-        if item.source_path.is_symlink() or not item.source_path.is_file():
+        if item.source_path.is_symlink():
+            self.summary.skipped += 1
+            self._record(item, "skipped", reason="source_symlink")
+            return
+        if not item.source_path.exists():
+            raise FileNotFoundError(f"cataloged source is unavailable: {item.source_path}")
+        if not item.source_path.is_file():
             self.summary.skipped += 1
             self._record(item, "skipped", reason="not_regular_file")
             return
         current_stat = item.source_path.stat()
         if current_stat.st_size != item.size_bytes:
             raise ValueError("source size changed since catalog")
+        if abs(current_stat.st_mtime_ns - item.mtime_ns) > item.mtime_tolerance_ns:
+            raise ValueError("source modification time changed since catalog")
         classified = classify(item.source_path, item.declared_type)
         if classified is None:
             self.summary.skipped += 1
@@ -670,7 +896,18 @@ class Importer:
             "SELECT s.*,l.library_path FROM source_items s JOIN library_files l ON l.id=s.library_file_id WHERE s.source_catalog=? AND s.source_path=?",
             (self.source_catalog, str(item.source_path)),
         ).fetchone()
-        if previous and previous["size_bytes"] == item.size_bytes and previous["mtime_ns"] == item.mtime_ns and previous["source_hash"] == item.source_hash:
+        if self.dedupe == "hash":
+            catalog_sha256 = as_sha256(item.source_hash)
+            previous_sha256 = as_sha256(previous["source_hash"]) if previous else None
+            hash_evidence_matches = previous_sha256 is not None and (
+                catalog_sha256 is None or previous_sha256 == catalog_sha256
+            )
+        else:
+            catalog_sha256 = None
+            hash_evidence_matches = item.source_hash is None or (
+                previous and previous["source_hash"] == item.source_hash
+            )
+        if previous and previous["size_bytes"] == item.size_bytes and previous["mtime_ns"] == item.mtime_ns and hash_evidence_matches:
             cloud_path = self.root / previous["library_path"]
             if cloud_path.is_file() and cloud_path.stat().st_size == item.size_bytes:
                 self.summary.unchanged += 1
@@ -683,16 +920,25 @@ class Importer:
         source_hash = item.source_hash
         duplicate = None
         if self.dedupe == "hash":
-            source_hash = source_hash or sha256_file(item.source_path)
+            actual_hash = sha256_file(item.source_path)
+            if catalog_sha256 is not None and catalog_sha256 != actual_hash:
+                raise ValueError("source SHA-256 does not match catalog")
+            source_hash = actual_hash
             duplicate = self.db.connection.execute(
                 "SELECT * FROM library_files WHERE sha256=? AND size_bytes=? ORDER BY id LIMIT 1",
                 (source_hash, item.size_bytes),
             ).fetchone()
         elif self.dedupe == "filename-size":
-            duplicate = self.db.connection.execute(
-                "SELECT * FROM library_files WHERE filename=? AND size_bytes=? ORDER BY id LIMIT 1",
-                (item.source_path.name, item.size_bytes),
-            ).fetchone()
+            if previous:
+                duplicate = self.db.connection.execute(
+                    "SELECT * FROM library_files WHERE filename=? AND size_bytes=? AND id<>? ORDER BY id LIMIT 1",
+                    (item.source_path.name, item.size_bytes, previous["library_file_id"]),
+                ).fetchone()
+            else:
+                duplicate = self.db.connection.execute(
+                    "SELECT * FROM library_files WHERE filename=? AND size_bytes=? ORDER BY id LIMIT 1",
+                    (item.source_path.name, item.size_bytes),
+                ).fetchone()
         if duplicate and (self.root / duplicate["library_path"]).is_file():
             self.summary.deduplicated += 1
             if not self.dry_run:
@@ -701,18 +947,24 @@ class Importer:
             return
 
         target = destination_for(self.root, item, media_type, subtype)
+        if not is_within(target.parent, self.root):
+            raise ValueError("destination path escapes the media-library root")
         if target.exists():
+            target_relative = str(target.relative_to(self.root)).replace(os.sep, "/")
+            target_is_previous = bool(previous and previous["library_path"] == target_relative)
             if target.is_symlink() or not target.is_file():
-                target = choose_collision_path(target, item)
+                target = choose_collision_path(target, item, source_hash)
             elif target.stat().st_size == item.size_bytes and self.dedupe == "filename-size":
-                self.summary.deduplicated += 1
-                if not self.dry_run:
-                    library_id = self._register_existing(target, item, media_type, subtype, source_hash)
-                    self._upsert_source(item, library_id, source_hash)
-                self._record(item, "deduplicated", library_path=str(target.relative_to(self.root)).replace(os.sep, "/"))
-                return
+                if target_is_previous:
+                    target = choose_collision_path(target, item, source_hash)
+                else:
+                    self.summary.deduplicated += 1
+                    if not self.dry_run:
+                        library_id = self._register_existing(target, item, media_type, subtype, source_hash)
+                        self._upsert_source(item, library_id, source_hash)
+                    self._record(item, "deduplicated", library_path=target_relative)
+                    return
             elif self.dedupe == "hash":
-                source_hash = source_hash or sha256_file(item.source_path)
                 if sha256_file(target) == source_hash:
                     self.summary.deduplicated += 1
                     if not self.dry_run:
@@ -720,23 +972,34 @@ class Importer:
                         self._upsert_source(item, library_id, source_hash)
                     self._record(item, "deduplicated", library_path=str(target.relative_to(self.root)).replace(os.sep, "/"))
                     return
-                target = choose_collision_path(target, item)
+                target = choose_collision_path(target, item, source_hash)
             else:
-                target = choose_collision_path(target, item)
+                target = choose_collision_path(target, item, source_hash)
 
         relative_target = str(target.relative_to(self.root)).replace(os.sep, "/")
         if self.dry_run:
-            self.summary.copied += 1
-            self.summary.bytes_copied += item.size_bytes
+            self.summary.would_copy += 1
+            self.summary.bytes_would_copy += item.size_bytes
             self._record(item, "would_copy", library_path=relative_target)
             return
 
-        copied = copy_with_retries(item.source_path, target, self.bandwidth_mib)
-        source_hash = source_hash or (sha256_file(target) if self.dedupe == "hash" else None)
-        metadata = extract_metadata(target, media_type)
-        library_id = self._insert_library_file(target, item, media_type, subtype, source_hash, metadata)
-        self._upsert_source(item, library_id, source_hash)
-        self.db.connection.commit()
+        metadata = extract_metadata(item.source_path, media_type)
+        copied = copy_with_retries(
+            item.source_path,
+            target,
+            self.bandwidth_mib,
+            expected_size=current_stat.st_size,
+            expected_mtime_ns=current_stat.st_mtime_ns,
+        )
+        try:
+            library_id = self._insert_library_file(target, item, media_type, subtype, source_hash, metadata)
+            self._upsert_source(item, library_id, source_hash)
+            self.db.connection.commit()
+        except (sqlite3.Error, ValueError):
+            self.db.connection.rollback()
+            with contextlib.suppress(OSError):
+                target.unlink()
+            raise
         self.summary.copied += 1
         self.summary.bytes_copied += copied
         self._record(item, "copied", library_path=relative_target, sha256=source_hash)
@@ -777,12 +1040,24 @@ class Importer:
         )
 
     def _record(self, item: SourceItem, status: str, **extra: Any) -> None:
-        self.manifest_rows.append({
+        record = {
             "run_id": self.run_id, "timestamp": utc_now(), "status": status,
             "source_disk": item.source_disk, "source_path": str(item.source_path),
             "source_relative_path": str(item.relative_path), "size_bytes": item.size_bytes,
             **extra,
-        })
+        }
+        self._manifest.write(json.dumps(record, sort_keys=True) + "\n")
+
+    def _record_issue(self, issue: CatalogIssue) -> None:
+        self._manifest.write(json.dumps({
+            "run_id": self.run_id,
+            "timestamp": utc_now(),
+            "status": "failed",
+            "source_disk": issue.source_disk,
+            "source_path": issue.source_path,
+            "reason": "catalog_row_invalid",
+            "detail": issue.reason,
+        }, sort_keys=True) + "\n")
 
     def _publish_run_artifacts(self) -> None:
         stamp = self.started_at.replace(":", "").replace("-", "")
@@ -791,9 +1066,7 @@ class Importer:
         manifests.mkdir(parents=True, exist_ok=True)
         logs.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="properpcloud-run-") as temp_dir:
-            manifest_source = Path(temp_dir) / "manifest.jsonl"
-            manifest_source.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in self.manifest_rows), encoding="utf-8")
-            atomic_publish_file(manifest_source, manifests / f"import-{stamp}-{self.run_id[:8]}.jsonl")
+            atomic_publish_file(self._manifest_path, manifests / f"import-{stamp}-{self.run_id[:8]}.jsonl")
             summary_source = Path(temp_dir) / "summary.json"
             summary_source.write_text(json.dumps({
                 "run_id": self.run_id, "started_at": self.started_at, "completed_at": utc_now(),
@@ -853,21 +1126,83 @@ def space_report(db: LibraryDatabase) -> dict[str, Any]:
     return {"physical": dict(physical), "by_type": by_type, "by_source": by_source}
 
 
-def cleanup_report(db: LibraryDatabase, root: Path) -> dict[str, Any]:
+def cleanup_report(db: LibraryDatabase, root: Path, limit: int = 1000) -> dict[str, Any]:
+    limit = max(1, limit)
     exact_duplicates = [dict(row) for row in db.connection.execute(
-        "SELECT sha256,COUNT(*) AS files,SUM(size_bytes) AS bytes FROM library_files WHERE sha256 IS NOT NULL GROUP BY sha256 HAVING COUNT(*)>1 ORDER BY bytes DESC"
+        """SELECT sha256,COUNT(*) AS files,SUM(size_bytes) AS bytes,
+                  (COUNT(*)-1)*MIN(size_bytes) AS reclaimable_bytes
+           FROM library_files WHERE sha256 IS NOT NULL
+           GROUP BY sha256 HAVING COUNT(*)>1 ORDER BY reclaimable_bytes DESC LIMIT ?""",
+        (limit,),
     )]
-    empty = [row[0] for row in db.connection.execute("SELECT library_path FROM library_files WHERE size_bytes=0 ORDER BY library_path")]
+    heuristic_duplicates = [dict(row) for row in db.connection.execute(
+        """SELECT filename,size_bytes,COUNT(*) AS files,(COUNT(*)-1)*size_bytes AS candidate_reclaimable_bytes
+           FROM library_files GROUP BY filename,size_bytes HAVING COUNT(*)>1
+           ORDER BY candidate_reclaimable_bytes DESC LIMIT ?""",
+        (limit,),
+    )]
+    empty_total = db.connection.execute("SELECT COUNT(*) FROM library_files WHERE size_bytes=0").fetchone()[0]
+    empty = [row[0] for row in db.connection.execute(
+        "SELECT library_path FROM library_files WHERE size_bytes=0 ORDER BY library_path LIMIT ?",
+        (limit,),
+    )]
+    unreferenced_total = db.connection.execute(
+        "SELECT COUNT(*) FROM library_files l LEFT JOIN source_items s ON s.library_file_id=l.id WHERE s.id IS NULL"
+    ).fetchone()[0]
+    unreferenced = [row[0] for row in db.connection.execute(
+        """SELECT l.library_path FROM library_files l LEFT JOIN source_items s ON s.library_file_id=l.id
+           WHERE s.id IS NULL ORDER BY l.library_path LIMIT ?""",
+        (limit,),
+    )]
+
     broken_symlinks: list[str] = []
+    broken_symlink_count = 0
+    filesystem_empty: list[str] = []
+    filesystem_empty_count = 0
+    untracked_media: list[str] = []
+    untracked_media_count = 0
+    partial_uploads: list[str] = []
+    partial_upload_count = 0
+    media_roots = {"audio", "video", "images", "documents"}
     for base, dirnames, filenames in os.walk(root, followlinks=False):
         for name in dirnames + filenames:
             path = Path(base) / name
+            relative = str(path.relative_to(root)).replace(os.sep, "/")
             if path.is_symlink() and not path.exists():
-                broken_symlinks.append(str(path.relative_to(root)).replace(os.sep, "/"))
-    unreferenced = [row[0] for row in db.connection.execute(
-        "SELECT l.library_path FROM library_files l LEFT JOIN source_items s ON s.library_file_id=l.id WHERE s.id IS NULL ORDER BY l.library_path"
-    )]
-    return {"exact_duplicate_groups": exact_duplicates, "empty_files": empty, "broken_symlinks": broken_symlinks, "unreferenced_catalog_files": unreferenced}
+                broken_symlink_count += 1
+                if len(broken_symlinks) < limit:
+                    broken_symlinks.append(relative)
+                continue
+            if path.is_symlink() or not path.is_file():
+                continue
+            if ".part-" in name or ".tmp-" in name:
+                partial_upload_count += 1
+                if len(partial_uploads) < limit:
+                    partial_uploads.append(relative)
+                continue
+            parts = Path(relative).parts
+            if not parts or parts[0] not in media_roots:
+                continue
+            stat = path.stat()
+            if stat.st_size == 0:
+                filesystem_empty_count += 1
+                if len(filesystem_empty) < limit:
+                    filesystem_empty.append(relative)
+            if db.connection.execute("SELECT 1 FROM library_files WHERE library_path=?", (relative,)).fetchone() is None:
+                untracked_media_count += 1
+                if len(untracked_media) < limit:
+                    untracked_media.append(relative)
+    return {
+        "sample_limit": limit,
+        "exact_duplicate_groups": exact_duplicates,
+        "filename_size_duplicate_groups": heuristic_duplicates,
+        "catalog_empty_files": {"count": empty_total, "sample": empty},
+        "filesystem_empty_files": {"count": filesystem_empty_count, "sample": filesystem_empty},
+        "broken_symlinks": {"count": broken_symlink_count, "sample": broken_symlinks},
+        "partial_uploads": {"count": partial_upload_count, "sample": partial_uploads},
+        "untracked_media_files": {"count": untracked_media_count, "sample": untracked_media},
+        "unreferenced_catalog_files": {"count": unreferenced_total, "sample": unreferenced},
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -894,7 +1229,8 @@ def build_parser() -> argparse.ArgumentParser:
     verify = sub.add_parser("verify", help="verify cataloged objects exist and match expected size/hash")
     verify.add_argument("--hash", action="store_true")
     sub.add_parser("space", help="report physical usage by media type and source")
-    sub.add_parser("cleanup", help="report duplicate, empty, broken-symlink, and unreferenced candidates")
+    cleanup = sub.add_parser("cleanup", help="report duplicate, empty, broken-symlink, and unreferenced candidates")
+    cleanup.add_argument("--limit", type=int, default=1000, help="maximum sample rows per cleanup category")
     sub.add_parser("publish", help="publish a consistent catalog.db snapshot to pCloud")
     return parser
 
@@ -906,12 +1242,38 @@ def print_rows(rows: Iterable[Mapping[str, Any]]) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.command == "init":
-        initialize_library(args.library_root)
-        print(args.library_root)
-        return 0
-    db = LibraryDatabase(args.state_db)
     try:
+        validate_storage_boundary(
+            args.library_root,
+            args.state_db,
+            require_library_mount=args.command in {"init", "import", "verify", "cleanup", "publish"},
+        )
+    except RuntimeError as error:
+        print(f"media-library: {error}", file=sys.stderr)
+        return 2
+    writer_lock = None
+    if args.command in {"init", "import", "publish"}:
+        try:
+            writer_lock = acquire_writer_lock(args.library_root, args.state_db)
+        except RuntimeError as error:
+            print(f"media-library: {error}", file=sys.stderr)
+            return 3
+    if args.command == "init":
+        try:
+            initialize_library(args.library_root)
+            db = LibraryDatabase(args.state_db)
+            try:
+                db.publish_snapshot(args.library_root)
+            finally:
+                db.close()
+            print(args.library_root)
+            return 0
+        finally:
+            assert writer_lock is not None
+            release_writer_lock(writer_lock)
+    db: LibraryDatabase | None = None
+    try:
+        db = LibraryDatabase(args.state_db)
         if args.command == "import":
             if not args.source_db.is_file():
                 raise SystemExit(f"source catalog not found: {args.source_db}")
@@ -941,12 +1303,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "space":
             print(json.dumps(space_report(db), indent=2, sort_keys=True))
         elif args.command == "cleanup":
-            print(json.dumps(cleanup_report(db, args.library_root), indent=2, sort_keys=True))
+            print(json.dumps(cleanup_report(db, args.library_root, args.limit), indent=2, sort_keys=True))
         elif args.command == "publish":
             print(db.publish_snapshot(args.library_root))
         return 0
     finally:
-        db.close()
+        if db is not None:
+            db.close()
+        if writer_lock is not None:
+            release_writer_lock(writer_lock)
 
 
 if __name__ == "__main__":

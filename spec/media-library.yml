@@ -26,10 +26,16 @@ media_library:
       size: [size, size_bytes, bytes, file_size]
       mtime: [mtime_ns, modified_ns, mtime, modified_at, modified_ms]
       content_hash: [sha256, content_hash, hash]
+    path_containment: >-
+      relative paths are validated before filesystem access; when a source root is
+      declared, absolute or symlink-resolved paths may not escape that root
   ingestion:
     default_mode: dry_run
     explicit_write_flag: --execute
     destination_rule: media_type/media_subtype/source_disk/source_relative_path
+    canonical_mount_guard: >-
+      Operations that touch the canonical /tmp/dib library fail closed unless /tmp/dib is
+      an active mount, preventing silent writes into a local directory after mount loss.
     partial_visibility: >-
       Copies use a hidden temporary sibling and rename only after the complete source
       has been read and its size/mtime remain unchanged.
@@ -39,18 +45,29 @@ media_library:
     progress: byte progress, throughput, and ETA on interactive terminals
     optional_bandwidth_limit: MiB per second
     unsupported_files: retained in source catalog but skipped by this media importer
+    unavailable_cataloged_sources: failed and manifested without aborting later rows
+    malformed_catalog_rows: isolated as failed manifest records without aborting later rows
+    manifest_memory: streamed to a local JSONL spool before publication
+    writer_serialization: >-
+      init, dry-run/import planning, execute imports, and explicit catalog publication take
+      a non-blocking local advisory lock keyed by library root to prevent same-tool writer races
+    cross_tool_writer_rule: >-
+      the specialized music_ingest.py currently owns a separate lock contract, so operators
+      must not run it concurrently with the general importer against the same pCloud tree
   deduplication:
     default: filename-size
     modes:
       filename-size: fast heuristic; never claimed as content equality
-      hash: SHA-256 exact-content equality
+      hash: >-
+        SHA-256 exact-content equality; 64-hex catalog SHA-256 evidence is verified
+        against source bytes, while shorter generic hashes never have their algorithm guessed
       off: preserve every independently addressed source object
     provenance_rule: >-
       Deduplication may map multiple source_items to one library_file but must never
       erase the source catalog, source disk, source path, or first/last-seen evidence.
   database:
     engine: SQLite with FTS5
-    writable_location: local filesystem, not the rclone FUSE mount
+    writable_location: local filesystem, never a fuse.rclone filesystem
     tables:
       library_files: physical objects stored in the pCloud media-library tree
       source_items: external source provenance mapped to physical library objects
@@ -69,7 +86,10 @@ media_library:
   maintenance:
     verify: existence and size by default; SHA-256 when requested and available
     space: physical bytes by media type plus provenance-referenced bytes by source disk
-    cleanup: report-only duplicate, empty-file, broken-symlink, and unreferenced candidates
+    cleanup: >-
+      report-only bounded samples/counts for exact and filename-size duplicate groups,
+      catalog/filesystem empty files, broken symlinks, partial uploads, untracked media,
+      and unreferenced catalog entries
     cleanup_mutation: forbidden; deletion remains an explicit separate operator decision
   backup:
     pcloud_is_backup: false
@@ -80,9 +100,14 @@ media_library:
       - Periodically verify both pCloud objects and an independent backup copy.
   invariants:
     - A dry run is the default for catalog imports; bulk cloud writes require --execute.
+    - Dry-run summaries report would_copy/bytes_would_copy and never increment copied bytes.
     - No hardlinks are created or required.
     - Symbolic-link source objects are never followed or imported.
+    - Source-root and destination containment is checked after realpath/symlink resolution.
     - A source changing while copied never becomes a visible completed destination.
+    - A disappeared cataloged source is a failed item, not a successful skip.
     - Filename-plus-size deduplication is explicitly heuristic; SHA-256 is the exact mode.
     - The live writable SQLite database never resides on the pCloud/rclone FUSE mount.
+    - Canonical pCloud writes fail closed when /tmp/dib is not mounted.
+    - Concurrent general media-library imports for the same root are rejected rather than raced.
     - Cleanup reports candidates and never deletes library media automatically.

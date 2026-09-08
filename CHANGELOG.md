@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   browse the server-generated folder tree, restore stable server queue identities, and resolve
   fresh server playback tickets through the existing Media3 path instead of scanning pCloud on
   the device.
+- Added persistent tabbed audio sessions on Android and Linux with the default Hörbücher, Musik,
+  DJ/Auflege, Sci-Fi, Krimi, and Fantasy roots. Each tab keeps its own pCloud browser location,
+  queue/current item, resume position, speed, volume, shuffle, and repeat state; switching tabs
+  checkpoints and pauses the old tab and restores the new tab without autoplay.
+- Added active-tab tree search, name/date/size sorting, current-track and last-played/progress
+  browser cues, explicit resume, named queue playlists, drag reordering with non-drag alternatives,
+  ±30-second seeking, 0.5–3× playback speed, sleep timers, and desktop Space/arrow media shortcuts.
+  Durable tab/playlist state uses only stable source/node/folder identities; signed pCloud stream
+  URLs remain just-in-time capabilities and disconnected pCloud queues are preserved for reconnect.
 - Added an extensive `/tmp/dib/media-library` organization/import layer for external-disk
   discovery catalogs. Imports are dry-run by default, preserve source-disk/path provenance,
   support filename+size or exact SHA-256 dedupe, stage copies before atomic visibility, retry
@@ -34,7 +43,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added FTS5 filename/path search, optional ffprobe/exiftool audio/image enrichment, FLAC/photo
   query filters, verification, by-type/source space reports, report-only cleanup candidates, and
   a documented independent-backup strategy; the live writable SQLite state stays local rather
-  than relying on WAL/locking semantics through the pCloud/rclone mount.
+  than relying on WAL/locking semantics through the pCloud/rclone mount. Canonical writes now
+  fail closed if `/tmp/dib` is not mounted, arbitrary `fuse.rclone` state locations are rejected,
+  manifests stream through local spools for large catalogs, supplied SHA-256 evidence is verified,
+  malformed/missing source rows are isolated, and cleanup diagnostics are bounded while covering
+  interrupted uploads and untracked cloud media. Import planning/writes are locally serialized per
+  library root, dry-run counters cannot masquerade as completed copies, and source/destination
+  traversal through absolute paths or intermediate symlinks is rejected before media access.
 - Added resumable music ingestion from external-disk catalogs into `audio/music` with full-ancestry
   exclusion of sample/podcast/recording trees, NFC/pCloud-safe filenames, staged Mutagen metadata
   normalization with original-tag provenance, exact SHA-256 duplicate suppression, MP3 bitrate
