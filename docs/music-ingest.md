@@ -189,6 +189,20 @@ inside the configured media-library root, registers each physical track in `libr
 links all original/duplicate source paths through `source_items`. Source SHA-256 values remain
 provenance evidence because normalized tags can make destination bytes differ from source bytes.
 
+For tracks parked in `Unsorted`, generate a read-only organization assessment with:
+
+```bash
+make music-organize-plan
+```
+
+The planner reads the current destination tags and only proposes an Artist/Album/Singles path
+when at least artist and title evidence are present. By default it uses the durable normalized
+metadata already recorded in the ingest state, avoiding hundreds of slow cloud-FUSE reads. Use
+`python3 scripts/music_ingest.py organize-plan --refresh-tags` only after an external/manual tag
+edit when the pCloud files themselves are the newer metadata authority. Missing artist/title
+evidence is reported as a blocker; the planner never guesses artists from generic filenames and
+never moves files.
+
 The Markdown report contains processed/duplicate/failure counts, filename/tag
 change counts, removed artwork count, unique artist and album counts, measured
 audio duration, the MP3 quality-tier breakdown, and low-quality replacement

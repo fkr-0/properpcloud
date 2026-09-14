@@ -1188,6 +1188,18 @@ def cleanup_report(db: LibraryDatabase, root: Path, limit: int = 1000) -> dict[s
            WHERE s.id IS NULL ORDER BY l.library_path LIMIT ?""",
         (limit,),
     )]
+    adopted_unresolved_total = db.connection.execute(
+        """SELECT COUNT(*) FROM library_files l LEFT JOIN source_items s ON s.library_file_id=l.id
+           WHERE s.id IS NULL AND json_valid(l.metadata_json)
+             AND json_extract(l.metadata_json, '$.catalog_source')='existing_pcloud_adoption'"""
+    ).fetchone()[0]
+    adopted_unresolved = [row[0] for row in db.connection.execute(
+        """SELECT l.library_path FROM library_files l LEFT JOIN source_items s ON s.library_file_id=l.id
+           WHERE s.id IS NULL AND json_valid(l.metadata_json)
+             AND json_extract(l.metadata_json, '$.catalog_source')='existing_pcloud_adoption'
+           ORDER BY l.library_path LIMIT ?""",
+        (limit,),
+    )]
 
     broken_symlinks: list[str] = []
     broken_symlink_count = 0
@@ -1236,7 +1248,120 @@ def cleanup_report(db: LibraryDatabase, root: Path, limit: int = 1000) -> dict[s
         "partial_uploads": {"count": partial_upload_count, "sample": partial_uploads},
         "untracked_media_files": {"count": untracked_media_count, "sample": untracked_media},
         "unreferenced_catalog_files": {"count": unreferenced_total, "sample": unreferenced},
+        "adopted_unresolved_provenance_files": {
+            "count": adopted_unresolved_total,
+            "sample": adopted_unresolved,
+        },
     }
+
+
+def existing_location_class(root: Path, path: Path) -> tuple[str, str] | None:
+    """Return the media class asserted by an existing canonical library location."""
+    if path.is_symlink() or not path.is_file() or not is_within(path, root):
+        return None
+    relative = path.relative_to(root)
+    if len(relative.parts) < 3:
+        return None
+    media_type, subtype = relative.parts[:2]
+    location = f"{media_type}/{subtype}"
+    if location not in LIBRARY_DIRS or media_type == "metadata":
+        return None
+    classified = classify(path)
+    if classified is None or classified[0] != media_type:
+        return None
+    return media_type, subtype
+
+
+def adopt_existing_media(
+    db: LibraryDatabase,
+    root: Path,
+    *,
+    prefixes: Sequence[str] = (),
+    execute: bool,
+    hashes: bool,
+    probe_metadata: bool = False,
+) -> dict[str, Any]:
+    """Catalog existing pCloud media without inventing external-source provenance."""
+    normalized_prefixes = tuple(prefix.strip("/") for prefix in prefixes if prefix.strip("/"))
+    invalid_prefixes = [prefix for prefix in normalized_prefixes if prefix not in LIBRARY_DIRS or prefix.startswith("metadata/")]
+    if invalid_prefixes:
+        raise ValueError("invalid media-library prefix: " + ", ".join(sorted(invalid_prefixes)))
+    known = {row[0] for row in db.connection.execute("SELECT library_path FROM library_files")}
+    candidates: list[tuple[Path, str, str, str, int, int]] = []
+    skipped_unsupported = 0
+    for base, _, filenames in os.walk(root, followlinks=False):
+        for name in filenames:
+            if ".part-" in name or ".tmp-" in name or ".properpcloud-partial-" in name:
+                continue
+            path = Path(base) / name
+            relative = str(path.relative_to(root)).replace(os.sep, "/")
+            if relative in known:
+                continue
+            if normalized_prefixes and not any(
+                relative == prefix or relative.startswith(prefix + "/") for prefix in normalized_prefixes
+            ):
+                continue
+            location = existing_location_class(root, path)
+            if location is None:
+                if relative.split("/", 1)[0] in {"audio", "video", "images", "documents"}:
+                    skipped_unsupported += 1
+                continue
+            media_type, subtype = location
+            stat = path.stat()
+            candidates.append((path, relative, media_type, subtype, stat.st_size, stat.st_mtime_ns))
+
+    summary: dict[str, Any] = {
+        "execute": execute,
+        "hashes": hashes,
+        "probe_metadata": probe_metadata,
+        "prefixes": list(normalized_prefixes),
+        "candidates": len(candidates),
+        "adopted": 0,
+        "bytes": sum(size for _, _, _, _, size, _ in candidates),
+        "skipped_unsupported": skipped_unsupported,
+        "provenance_status": "unresolved",
+    }
+    if not execute:
+        return summary
+
+    adopted_at = utc_now()
+    try:
+        for path, relative, media_type, subtype, expected_size, expected_mtime_ns in candidates:
+            stat = path.stat()
+            if stat.st_size != expected_size or stat.st_mtime_ns != expected_mtime_ns:
+                raise OSError(f"existing media changed before adoption: {relative}")
+            metadata = extract_metadata(path, media_type) if probe_metadata else {}
+            digest = sha256_file(path) if hashes else None
+            after = path.stat()
+            if after.st_size != expected_size or after.st_mtime_ns != expected_mtime_ns:
+                raise OSError(f"existing media changed during adoption: {relative}")
+            catalog_metadata = {
+                **metadata,
+                "catalog_source": "existing_pcloud_adoption",
+                "provenance_status": "unresolved",
+                "adopted_at": adopted_at,
+            }
+            db.connection.execute(
+                """INSERT INTO library_files(
+                       library_path,filename,extension,size_bytes,media_type,media_subtype,mtime_ns,
+                       sha256,imported_at,audio_title,audio_artist,audio_album,audio_duration_seconds,
+                       audio_bitrate,image_width,image_height,captured_at,metadata_json
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    relative, path.name, path.suffix.lower(), stat.st_size, media_type, subtype,
+                    stat.st_mtime_ns, digest, adopted_at, metadata.get("audio_title"),
+                    metadata.get("audio_artist"), metadata.get("audio_album"),
+                    metadata.get("audio_duration_seconds"), metadata.get("audio_bitrate"),
+                    metadata.get("image_width"), metadata.get("image_height"),
+                    metadata.get("captured_at"), json.dumps(catalog_metadata, sort_keys=True),
+                ),
+            )
+        db.connection.commit()
+    except (OSError, sqlite3.Error, ValueError):
+        db.connection.rollback()
+        raise
+    summary["adopted"] = len(candidates)
+    return summary
 
 
 def _music_ingest_columns(connection: sqlite3.Connection) -> set[str]:
@@ -1425,6 +1550,21 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("space", help="report physical usage by media type and source")
     cleanup = sub.add_parser("cleanup", help="report duplicate, empty, broken-symlink, and unreferenced candidates")
     cleanup.add_argument("--limit", type=int, default=1000, help="maximum sample rows per cleanup category")
+    adopt = sub.add_parser("adopt-existing", help="catalog existing library media without fabricating source provenance")
+    adopt.add_argument(
+        "--prefix",
+        action="append",
+        default=[],
+        choices=tuple(path for path in LIBRARY_DIRS if not path.startswith("metadata/")),
+        help="limit to a canonical media prefix such as audio/music; repeatable",
+    )
+    adopt.add_argument("--hash", action="store_true", help="compute SHA-256 for adopted physical files")
+    adopt.add_argument(
+        "--probe-metadata",
+        action="store_true",
+        help="probe embedded technical/tag metadata; optional because cloud-FUSE reads can be slow",
+    )
+    adopt.add_argument("--execute", action="store_true", help="write catalog rows; default is preview only")
     music_sync = sub.add_parser("sync-music-ingest", help="reconcile specialized music-ingest state into this catalog")
     music_sync.add_argument("--music-state-db", type=Path, default=DEFAULT_MUSIC_INGEST_DB)
     music_sync.add_argument("--execute", action="store_true", help="update the local catalog and publish its snapshot")
@@ -1443,13 +1583,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         validate_storage_boundary(
             args.library_root,
             args.state_db,
-            require_library_mount=args.command in {"init", "import", "verify", "cleanup", "sync-music-ingest", "publish"},
+            require_library_mount=args.command in {"init", "import", "verify", "cleanup", "adopt-existing", "sync-music-ingest", "publish"},
         )
     except RuntimeError as error:
         print(f"media-library: {error}", file=sys.stderr)
         return 2
     writer_lock = None
-    if args.command in {"init", "import", "sync-music-ingest", "publish"}:
+    if args.command in {"init", "import", "adopt-existing", "sync-music-ingest", "publish"}:
         try:
             writer_lock = acquire_writer_lock(args.library_root, args.state_db)
         except RuntimeError as error:
@@ -1501,6 +1641,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(space_report(db), indent=2, sort_keys=True))
         elif args.command == "cleanup":
             print(json.dumps(cleanup_report(db, args.library_root, args.limit), indent=2, sort_keys=True))
+        elif args.command == "adopt-existing":
+            report = adopt_existing_media(
+                db,
+                args.library_root,
+                prefixes=args.prefix,
+                execute=args.execute,
+                hashes=args.hash,
+                probe_metadata=args.probe_metadata,
+            )
+            if args.execute:
+                db.publish_snapshot(args.library_root)
+            print(json.dumps(report, indent=2, sort_keys=True))
         elif args.command == "sync-music-ingest":
             report = sync_music_ingest_catalog(
                 db, args.library_root, args.music_state_db, execute=args.execute

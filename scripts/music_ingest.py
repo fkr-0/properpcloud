@@ -1445,6 +1445,105 @@ def write_reports(connection: sqlite3.Connection, metadata_root: Path) -> tuple[
     return quality_path, report_path, unsorted_path
 
 
+def unsorted_organization_plan(
+    connection: sqlite3.Connection,
+    library_root: Path,
+    *,
+    sample_limit: int = 100,
+    refresh_tags: bool = False,
+) -> dict[str, Any]:
+    """Build a non-mutating plan for tracks currently parked below Unsorted."""
+    rows = connection.execute(
+        """SELECT source_path,destination_path,status,normalized_tags_json FROM ingest_files
+           WHERE status IN ('INGESTED','DUPLICATE') AND destination_path IS NOT NULL
+           ORDER BY destination_path, source_path"""
+    ).fetchall()
+    seen_destinations: set[str] = set()
+    field_coverage = Counter()
+    blocked = Counter()
+    candidates: list[dict[str, Any]] = []
+    missing: list[str] = []
+    total = 0
+    ready_total = 0
+    for row in rows:
+        destination_text = str(row["destination_path"])
+        if destination_text in seen_destinations:
+            continue
+        seen_destinations.add(destination_text)
+        destination = Path(destination_text)
+        try:
+            destination.relative_to(library_root / "Unsorted")
+        except ValueError:
+            continue
+        total += 1
+        if refresh_tags:
+            if destination.is_symlink() or not destination.is_file():
+                missing.append(destination_text)
+                continue
+            try:
+                current = read_metadata(destination)
+            except Exception:
+                blocked["metadata_unreadable"] += 1
+                continue
+        else:
+            try:
+                stored = json.loads(row["normalized_tags_json"] or "{}")
+                if not isinstance(stored, dict):
+                    raise ValueError("normalized metadata is not an object")
+                current = TrackMetadata(
+                    title=clean_text(stored.get("title")),
+                    artist=clean_text(stored.get("artist")),
+                    album=clean_text(stored.get("album")),
+                    album_artist=clean_text(stored.get("album_artist")),
+                    track=clean_text(stored.get("track")),
+                    year=clean_text(stored.get("year")),
+                    genre=clean_text(stored.get("genre")),
+                    compilation=bool(stored.get("compilation", False)),
+                )
+            except (json.JSONDecodeError, TypeError, ValueError):
+                blocked["metadata_unreadable"] += 1
+                continue
+        normalized = normalized_metadata(current, destination)
+        for field in ("title", "artist", "album", "album_artist", "track", "year", "genre"):
+            if meaningful(getattr(normalized, field)):
+                field_coverage[field] += 1
+        if not meaningful(normalized.artist):
+            blocked["missing_artist"] += 1
+            continue
+        if not meaningful(normalized.title):
+            blocked["missing_title"] += 1
+            continue
+        proposed = destination_for(normalized, destination, library_root)
+        if proposed == destination:
+            blocked["already_canonical"] += 1
+            continue
+        collision = proposed.exists() and proposed != destination
+        if not collision:
+            ready_total += 1
+        if len(candidates) < sample_limit:
+            candidates.append(
+                {
+                    "current_path": str(destination),
+                    "proposed_path": str(proposed),
+                    "collision": collision,
+                    "metadata": asdict(normalized),
+                }
+            )
+        blocked["collision"] += int(collision)
+    return {
+        "total_unsorted": total,
+        "field_coverage": dict(sorted(field_coverage.items())),
+        "ready_to_organize": ready_total,
+        "candidate_sample": candidates,
+        "candidate_sample_limit": sample_limit,
+        "missing_destinations": missing[:sample_limit],
+        "missing_destination_count": len(missing),
+        "blocked": dict(sorted(blocked.items())),
+        "mutation_performed": False,
+        "metadata_source": "destination_tags" if refresh_tags else "ingest_state",
+    }
+
+
 def collect_sources(source_roots: Sequence[Path], catalog_dbs: Sequence[Path]) -> list[Path]:
     paths: dict[str, Path] = {}
     for path in iter_music_files(source_roots):
@@ -1602,6 +1701,21 @@ def command_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_organize_plan(args: argparse.Namespace) -> int:
+    connection = initialize_state(args.state_db.expanduser().resolve())
+    try:
+        plan = unsorted_organization_plan(
+            connection,
+            args.library_root.expanduser().resolve(),
+            sample_limit=args.limit,
+            refresh_tags=args.refresh_tags,
+        )
+    finally:
+        connection.close()
+    print(json.dumps(plan, indent=2, sort_keys=True))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1636,6 +1750,13 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--state-db", type=Path, default=default_state_db())
     report.add_argument("--metadata-root", type=Path, default=Path("/tmp/dib/media-library/metadata"))
     report.set_defaults(func=command_report)
+
+    organize = subparsers.add_parser("organize-plan", help="preview evidence-backed moves out of Unsorted without changing files")
+    organize.add_argument("--state-db", type=Path, default=default_state_db())
+    organize.add_argument("--library-root", type=Path, default=Path("/tmp/dib/media-library/audio/music"))
+    organize.add_argument("--limit", type=int, default=100, help="maximum candidate/missing paths to include")
+    organize.add_argument("--refresh-tags", action="store_true", help="re-read current destination tags instead of using durable ingest-state metadata")
+    organize.set_defaults(func=command_organize_plan)
 
     return parser
 

@@ -119,6 +119,28 @@ multiple source paths as provenance. Because music ingestion may normalize tags,
 SHA-256 is retained only on `source_items`; it is not falsely asserted as the transformed cloud
 file's SHA-256. Applying the sync publishes a fresh `metadata/catalog.db` snapshot.
 
+### Adopt media that already exists on pCloud
+
+Files can exist under the canonical library tree without a recoverable external-source record
+(for example, a manually copied album). Preview them before registering them:
+
+```bash
+make media-library-adopt-existing
+make media-library-adopt-existing-apply
+```
+
+Adoption never copies, moves, renames, retags, or deletes the media. The default apply target
+registers path/size/mtime evidence, adds the object to `library_files`/FTS, and publishes a new
+catalog snapshot without rereading every media byte.
+It deliberately creates **no** `source_items` row: unknown provenance is recorded as
+`provenance_status=unresolved`, not guessed from artist/album folder names. Cleanup reports these
+separately as `adopted_unresolved_provenance_files` so later source recovery can reconcile them.
+
+Use the direct CLI with `--prefix audio/music` to constrain a review/apply to one canonical
+subtree. Files whose extension does not match the containing media class are not adopted. Add
+`--hash` for a full SHA-256 integrity pass and `--probe-metadata` for embedded tag/technical
+enrichment; both are deliberately opt-in because reading every cloud-FUSE object can be slow.
+
 ```bash
 # No pCloud media writes. Reports what would be copied/skipped/deduplicated.
 make media-library-dry-run MEDIA_LIBRARY_SOURCE_DB=/path/to/external-catalog.db

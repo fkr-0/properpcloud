@@ -104,6 +104,16 @@ media_library:
       catalog/filesystem empty files, broken symlinks, partial uploads, untracked media,
       and unreferenced catalog entries
     cleanup_mutation: forbidden; deletion remains an explicit separate operator decision
+    existing_media_adoption:
+      default_mode: dry_run
+      execute_flag: --execute
+      byte_mutation: forbidden
+      provenance_rule: >-
+        Existing physical media may be registered in library_files after review, but no
+        source_items row is created unless an actual external source is known. Such rows are
+        explicitly marked provenance_status=unresolved and remain visible in cleanup reports.
+      hash_option: --hash records SHA-256 of the existing physical pCloud object
+      metadata_probe_option: --probe-metadata enriches embedded metadata but is opt-in for slow cloud-FUSE trees
   backup:
     pcloud_is_backup: false
     requirements:

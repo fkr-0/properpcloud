@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 import sqlite3
 import sys
@@ -480,7 +481,8 @@ class MediaLibraryTest(unittest.TestCase):
         makefile = (ROOT / "Makefile").read_text()
         for target in (
             "media-library-test:", "media-library-init:", "media-library-dry-run:",
-            "media-library-import:", "media-library-sync-music:", "media-library-sync-music-apply:",
+            "media-library-import:", "media-library-adopt-existing:", "media-library-adopt-existing-apply:",
+            "media-library-sync-music:", "media-library-sync-music-apply:", "music-organize-plan:",
             "media-library-verify:", "media-library-space:", "media-library-cleanup:",
         ):
             self.assertIn(target, makefile)
@@ -539,6 +541,49 @@ class MediaLibraryTest(unittest.TestCase):
             self.assertEqual(1, cleanup["filesystem_empty_files"]["count"])
             self.assertEqual(1, cleanup["untracked_media_files"]["count"])
             self.assertEqual(1, cleanup["partial_uploads"]["count"])
+        finally:
+            db.close()
+
+    def test_adopt_existing_catalogs_bytes_without_fabricating_source_provenance(self):
+        track = self.library_root / "audio/music/Artist/Album/01 Track.wav"
+        track.parent.mkdir(parents=True, exist_ok=True)
+        track.write_bytes(b"RIFFexisting")
+        db = ml.LibraryDatabase(self.state_db)
+        try:
+            preview = ml.adopt_existing_media(
+                db, self.library_root, prefixes=("audio/music",), execute=False, hashes=True
+            )
+            self.assertEqual(1, preview["candidates"])
+            self.assertEqual(0, db.connection.execute("SELECT COUNT(*) FROM library_files").fetchone()[0])
+
+            applied = ml.adopt_existing_media(
+                db, self.library_root, prefixes=("audio/music",), execute=True, hashes=True
+            )
+            self.assertEqual(1, applied["adopted"])
+            row = db.connection.execute("SELECT * FROM library_files").fetchone()
+            self.assertEqual("audio/music/Artist/Album/01 Track.wav", row["library_path"])
+            self.assertEqual(ml.sha256_file(track), row["sha256"])
+            self.assertEqual(0, db.connection.execute("SELECT COUNT(*) FROM source_items").fetchone()[0])
+            metadata = json.loads(row["metadata_json"])
+            self.assertEqual("existing_pcloud_adoption", metadata["catalog_source"])
+            self.assertEqual("unresolved", metadata["provenance_status"])
+            cleanup = ml.cleanup_report(db, self.library_root, limit=10)
+            self.assertEqual(1, cleanup["adopted_unresolved_provenance_files"]["count"])
+            self.assertEqual(0, cleanup["untracked_media_files"]["count"])
+        finally:
+            db.close()
+
+    def test_adopt_existing_skips_location_extension_mismatch(self):
+        cover = self.library_root / "audio/music/Artist/Album/cover.jpg"
+        cover.parent.mkdir(parents=True, exist_ok=True)
+        cover.write_bytes(b"jpeg")
+        db = ml.LibraryDatabase(self.state_db)
+        try:
+            report = ml.adopt_existing_media(
+                db, self.library_root, prefixes=("audio/music",), execute=True, hashes=False
+            )
+            self.assertEqual(0, report["adopted"])
+            self.assertEqual(1, report["skipped_unsupported"])
         finally:
             db.close()
 

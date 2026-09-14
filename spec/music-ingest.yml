@@ -125,6 +125,12 @@ reports:
   quality_audit: /tmp/dib/media-library/metadata/quality-audit.json
   unsorted_manifest: /tmp/dib/media-library/metadata/unsorted-manifest.json
   ingest_report: /tmp/dib/media-library/metadata/ingest-report.md
+  unsorted_organization_plan:
+    command: make music-organize-plan
+    mutation: false
+    default_metadata_source: durable ingest-state normalized_tags_json
+    refresh_current_tags_flag: --refresh-tags
+    readiness_rule: artist and title evidence are required before proposing a path outside Unsorted
   required_summary:
     - processed_status_counts
     - filename_changes

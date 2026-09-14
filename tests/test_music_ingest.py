@@ -590,3 +590,51 @@ def test_unsorted_manifest_preserves_source_context(tmp_path: Path) -> None:
     item = json.loads(manifest.read_text())["files"][0]
     assert item["source_path"] == str(source)
     assert item["original_directory"] == str(source.parent)
+
+
+def test_unsorted_organization_plan_is_non_mutating_and_requires_artist_evidence(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    unsorted = library / "Unsorted"
+    unsorted.mkdir(parents=True)
+    unknown = unsorted / "Mystery.wav"
+    make_wav(unknown)
+    state = music_ingest.initialize_state(tmp_path / "state.sqlite")
+    state.execute(
+        """INSERT INTO ingest_files(
+          source_path, source_size, source_mtime_ns, status, destination_path,
+          normalized_tags_json, updated_at
+        ) VALUES (?, ?, ?, 'INGESTED', ?, ?, ?)""",
+        (str(tmp_path / "source" / "Mystery.wav"), unknown.stat().st_size, 1, str(unknown), '{"title":"Mystery"}', music_ingest.utc_now()),
+    )
+    state.commit()
+    before = unknown.read_bytes()
+    plan = music_ingest.unsorted_organization_plan(state, library)
+    state.close()
+    assert plan["total_unsorted"] == 1
+    assert plan["blocked"]["missing_artist"] == 1
+    assert plan["ready_to_organize"] == 0
+    assert plan["mutation_performed"] is False
+    assert plan["metadata_source"] == "ingest_state"
+    assert unknown.read_bytes() == before
+
+
+def test_unsorted_organization_plan_isolates_unreadable_metadata(tmp_path: Path) -> None:
+    library = tmp_path / "library"
+    unsorted = library / "Unsorted"
+    unsorted.mkdir(parents=True)
+    corrupt = unsorted / "Corrupt.mp3"
+    corrupt.write_bytes(b"not-real-audio")
+    state = music_ingest.initialize_state(tmp_path / "state.sqlite")
+    state.execute(
+        """INSERT INTO ingest_files(
+          source_path, source_size, source_mtime_ns, status, destination_path,
+          normalized_tags_json, updated_at
+        ) VALUES (?, ?, ?, 'INGESTED', ?, '{}', ?)""",
+        (str(tmp_path / "source" / "Corrupt.mp3"), corrupt.stat().st_size, 1, str(corrupt), music_ingest.utc_now()),
+    )
+    state.commit()
+    plan = music_ingest.unsorted_organization_plan(state, library, refresh_tags=True)
+    state.close()
+    assert plan["blocked"]["metadata_unreadable"] == 1
+    assert plan["ready_to_organize"] == 0
+    assert plan["metadata_source"] == "destination_tags"
