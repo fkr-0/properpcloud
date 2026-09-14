@@ -54,6 +54,19 @@ media_library:
     cross_tool_writer_rule: >-
       the specialized music_ingest.py currently owns a separate lock contract, so operators
       must not run it concurrently with the general importer against the same pCloud tree
+    specialized_music_reconciliation:
+      source: ~/.local/state/properpcloud/music-ingest.sqlite3
+      default_mode: dry_run
+      execute_flag: --execute
+      behavior: >-
+        Reconcile INGESTED and DUPLICATE rows into canonical library_files/source_items without
+        recopying or rewriting media bytes; verify each destination is a contained regular file.
+      transformed_hash_rule: >-
+        music-ingest source_sha256 remains source provenance only because tag normalization may
+        change destination bytes; it is never asserted as library_files.sha256.
+      concurrency: >-
+        reconciliation holds the canonical library writer lock and a shared advisory lock on the
+        music-ingest state lock, so it refuses to overlap an active specialized ingest writer.
   deduplication:
     default: filename-size
     modes:
@@ -110,4 +123,5 @@ media_library:
     - The live writable SQLite database never resides on the pCloud/rclone FUSE mount.
     - Canonical pCloud writes fail closed when /tmp/dib is not mounted.
     - Concurrent general media-library imports for the same root are rejected rather than raced.
+    - Specialized music-ingest results are reconciled into canonical catalog/search provenance without recopying media.
     - Cleanup reports candidates and never deletes library media automatically.

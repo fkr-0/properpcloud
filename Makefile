@@ -12,6 +12,7 @@ NPM ?= npm
 MEDIA_LIBRARY_ROOT ?= /tmp/dib/media-library
 MEDIA_LIBRARY_STATE_DB ?= $(HOME)/.local/state/properpcloud/media-library/catalog.db
 MEDIA_LIBRARY_SOURCE_DB ?=
+MEDIA_LIBRARY_MUSIC_STATE_DB ?= $(HOME)/.local/state/properpcloud/music-ingest.sqlite3
 
 DOTENV_PCLOUD_CLIENT_ID := $(shell python3 scripts/read-dotenv-public.py)
 PCLOUD_CLIENT_ID ?= $(DOTENV_PCLOUD_CLIENT_ID)
@@ -19,7 +20,7 @@ PCLOUD_CLIENT_ID ?= $(DOTENV_PCLOUD_CLIENT_ID)
 export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
 export PCLOUD_CLIENT_ID
 
-.PHONY: help oauth-config-check oauth-config-test media-library-test media-library-init media-library-dry-run media-library-import media-library-verify media-library-space media-library-cleanup toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts release-020-readiness release-020-pretag release-020-readiness-strict dependencies fast-test local-check test desktop-test desktop-smoke desktop-crash-recovery-smoke desktop-local-tag-recovery-process-smoke desktop-resilience-soak desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit desktop-sleep-monitor-smoke desktop-session-audit desktop-run desktop-package desktop-appimage desktop-appimage-smoke desktop-flatpak desktop-flatpak-smoke arch-package-gate linux-packages linux-package-smoke linux-ci docs-install docs-build lint build check ci shell compose install clean
+.PHONY: help oauth-config-check oauth-config-test media-library-test media-library-init media-library-dry-run media-library-import media-library-sync-music media-library-sync-music-apply media-library-verify media-library-space media-library-cleanup toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts release-020-readiness release-020-pretag release-020-readiness-strict dependencies fast-test local-check test desktop-test desktop-smoke desktop-crash-recovery-smoke desktop-local-tag-recovery-process-smoke desktop-resilience-soak desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit desktop-sleep-monitor-smoke desktop-session-audit desktop-run desktop-package desktop-appimage desktop-appimage-smoke desktop-flatpak desktop-flatpak-smoke arch-package-gate linux-packages linux-package-smoke linux-ci docs-install docs-build lint build check ci shell compose install clean
 .NOTPARALLEL: linux-ci linux-packages linux-package-smoke
 
 help: ## Show available targets.
@@ -45,6 +46,12 @@ media-library-dry-run: ## Preview a catalog import; set MEDIA_LIBRARY_SOURCE_DB 
 media-library-import: ## Execute the reviewed catalog import and publish manifests/catalog snapshot.
 	@test -n "$(MEDIA_LIBRARY_SOURCE_DB)" || { echo "MEDIA_LIBRARY_SOURCE_DB is required" >&2; exit 2; }
 	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" import --source-db "$(MEDIA_LIBRARY_SOURCE_DB)" --execute
+
+media-library-sync-music: ## Preview reconciliation of specialized music-ingest results into the canonical catalog.
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" sync-music-ingest --music-state-db "$(MEDIA_LIBRARY_MUSIC_STATE_DB)"
+
+media-library-sync-music-apply: ## Apply reviewed music-ingest catalog reconciliation and publish catalog.db.
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" sync-music-ingest --music-state-db "$(MEDIA_LIBRARY_MUSIC_STATE_DB)" --execute
 
 media-library-verify: ## Verify every cataloged pCloud object exists with the expected size.
 	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" verify

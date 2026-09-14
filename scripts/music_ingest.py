@@ -1527,6 +1527,7 @@ def command_ingest(args: argparse.Namespace) -> int:
     ).lastrowid
     connection.commit()
     results: list[ProcessResult] = []
+    resume_skipped = 0
     try:
         sources = collect_sources(source_roots, catalog_dbs)
         sources = [path for path in sources if not path_is_within(path, library_root)]
@@ -1539,6 +1540,7 @@ def command_ingest(args: argparse.Namespace) -> int:
         for index, source in enumerate(sources, start=1):
             if args.resume and is_resumable_skip(connection, source):
                 print(f"[{index}/{len(sources)}] resume-skip {source}")
+                resume_skipped += 1
                 continue
             try:
                 result = process_one(
@@ -1569,7 +1571,7 @@ def command_ingest(args: argparse.Namespace) -> int:
                 (
                     utc_now(),
                     counts["INGESTED"],
-                    counts["DUPLICATE"],
+                    counts["DUPLICATE"] + resume_skipped,
                     counts["FAILED"],
                     run_id,
                 ),

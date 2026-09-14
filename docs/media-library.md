@@ -104,6 +104,21 @@ The specialized `scripts/music_ingest.py` tool currently has its own independent
 lock. Do **not** run that specialized ingester concurrently with this general importer
 against the same pCloud media tree until both tools share one cross-tool writer lock.
 
+Completed specialized music ingestion is reconciled into this catalog without copying media
+again. Preview first, then apply after reviewing missing/invalid destination counts:
+
+```bash
+make media-library-sync-music
+make media-library-sync-music-apply
+```
+
+Reconciliation holds the canonical media-library writer lock and takes a shared advisory lock
+against the music-ingest state lock, so it refuses to race an active specialized ingest. It maps
+all `INGESTED` and exact-`DUPLICATE` source rows to the physical pCloud destination, preserving
+multiple source paths as provenance. Because music ingestion may normalize tags, its source
+SHA-256 is retained only on `source_items`; it is not falsely asserted as the transformed cloud
+file's SHA-256. Applying the sync publishes a fresh `metadata/catalog.db` snapshot.
+
 ```bash
 # No pCloud media writes. Reports what would be copied/skipped/deduplicated.
 make media-library-dry-run MEDIA_LIBRARY_SOURCE_DB=/path/to/external-catalog.db

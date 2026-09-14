@@ -227,6 +227,12 @@ def test_wav_ingest_uses_staging_and_is_resumable(tmp_path: Path) -> None:
         ]
     ) == 0
     assert list(library.rglob("*.wav")) == [destination]
+    con = sqlite3.connect(state)
+    latest_run = con.execute(
+        "SELECT discovered, ingested, skipped, failed FROM ingest_runs ORDER BY run_id DESC LIMIT 1"
+    ).fetchone()
+    con.close()
+    assert latest_run == (1, 0, 1, 0)
 
 
 def test_duplicate_resume_reprocesses_when_referenced_destination_is_missing(tmp_path: Path) -> None:

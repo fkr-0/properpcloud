@@ -93,6 +93,96 @@ class MediaLibraryTest(unittest.TestCase):
         self.assertEqual(2, len(items))
         self.assertTrue(all(isinstance(item, ml.CatalogIssue) for item in items))
 
+    def test_source_provenance_location_under_common_automount(self):
+        disk, relative = ml.source_provenance_location(
+            Path("/run/media/user/volume-uuid/Music/Artist/track.flac")
+        )
+        self.assertEqual("volume-uuid", disk)
+        self.assertEqual("Music/Artist/track.flac", str(relative))
+
+    def test_music_ingest_sync_builds_canonical_catalog_and_source_provenance(self):
+        destination = self.library_root / "audio/music/Artist/Album/01 Track.wav"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"RIFFcatalogued")
+        music_state = self.root / "music-ingest.sqlite3"
+        source = sqlite3.connect(music_state)
+        source.execute(
+            """CREATE TABLE ingest_files(
+                 source_path TEXT PRIMARY KEY, source_size INTEGER NOT NULL,
+                 source_mtime_ns INTEGER NOT NULL, source_sha256 TEXT, status TEXT NOT NULL,
+                 destination_path TEXT, normalized_tags_json TEXT, quality_tier TEXT,
+                 bitrate_kbps INTEGER, bitrate_mode TEXT, duration_seconds REAL, updated_at TEXT NOT NULL
+               )"""
+        )
+        tags = '{"title":"Track","artist":"Artist","album":"Album"}'
+        source.executemany(
+            "INSERT INTO ingest_files VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            [
+                (
+                    "/run/media/user/vol/Music/a.wav", 100, 10, "a" * 64, "INGESTED",
+                    str(destination), tags, "GOOD", 256, "VBR", 12.5, ml.utc_now(),
+                ),
+                (
+                    "/run/media/user/vol/Backup/a.wav", 100, 11, "a" * 64, "DUPLICATE",
+                    str(destination), tags, None, None, None, None, ml.utc_now(),
+                ),
+            ],
+        )
+        source.commit()
+        source.close()
+
+        db = ml.LibraryDatabase(self.state_db)
+        try:
+            preview = ml.sync_music_ingest_catalog(db, self.library_root, music_state, execute=False)
+            self.assertEqual(1, preview["cataloged_files"])
+            self.assertEqual(2, preview["source_links"])
+            self.assertEqual(0, db.connection.execute("SELECT COUNT(*) FROM library_files").fetchone()[0])
+
+            applied = ml.sync_music_ingest_catalog(db, self.library_root, music_state, execute=True)
+            self.assertEqual(1, applied["cataloged_files"])
+            self.assertEqual(2, applied["source_links"])
+            row = db.connection.execute("SELECT * FROM library_files").fetchone()
+            self.assertEqual("audio/music/Artist/Album/01 Track.wav", row["library_path"])
+            self.assertEqual("audio", row["media_type"])
+            self.assertEqual("music", row["media_subtype"])
+            self.assertEqual("Track", row["audio_title"])
+            self.assertEqual(256000, row["audio_bitrate"])
+            self.assertIsNone(row["sha256"])
+            provenance = db.connection.execute(
+                "SELECT source_disk,source_relative_path,source_hash FROM source_items ORDER BY source_path"
+            ).fetchall()
+            self.assertEqual(2, len(provenance))
+            self.assertEqual({"vol"}, {item["source_disk"] for item in provenance})
+            self.assertEqual({"a" * 64}, {item["source_hash"] for item in provenance})
+        finally:
+            db.close()
+
+    def test_music_ingest_sync_reports_missing_destination_without_cataloguing_it(self):
+        music_state = self.root / "missing-music.sqlite3"
+        source = sqlite3.connect(music_state)
+        source.execute(
+            """CREATE TABLE ingest_files(
+                 source_path TEXT PRIMARY KEY, source_size INTEGER NOT NULL,
+                 source_mtime_ns INTEGER NOT NULL, source_sha256 TEXT, status TEXT NOT NULL,
+                 destination_path TEXT, normalized_tags_json TEXT, quality_tier TEXT,
+                 bitrate_kbps INTEGER, bitrate_mode TEXT, duration_seconds REAL, updated_at TEXT NOT NULL
+               )"""
+        )
+        missing = self.library_root / "audio/music/missing.wav"
+        source.execute(
+            "INSERT INTO ingest_files VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("/mnt/disk/missing.wav", 4, 1, None, "INGESTED", str(missing), "{}", None, None, None, None, ml.utc_now()),
+        )
+        source.commit()
+        source.close()
+        db = ml.LibraryDatabase(self.state_db)
+        try:
+            report = ml.sync_music_ingest_catalog(db, self.library_root, music_state, execute=True)
+            self.assertEqual([str(missing)], report["missing_destinations"])
+            self.assertEqual(0, db.connection.execute("SELECT COUNT(*) FROM library_files").fetchone()[0])
+        finally:
+            db.close()
+
     def test_source_root_rejects_intermediate_symlink_escape(self):
         outside = self.root / "outside"
         outside.mkdir()
@@ -374,13 +464,25 @@ class MediaLibraryTest(unittest.TestCase):
         self.assertEqual("dry_run", contract["ingestion"]["default_mode"])
         self.assertFalse(contract["backup"]["pcloud_is_backup"])
         self.assertIn("SHA-256 exact-content equality", contract["deduplication"]["modes"]["hash"])
+        self.assertEqual(
+            "~/.local/state/properpcloud/music-ingest.sqlite3",
+            contract["ingestion"]["specialized_music_reconciliation"]["source"],
+        )
+        self.assertIn(
+            "never asserted as library_files.sha256",
+            contract["ingestion"]["specialized_music_reconciliation"]["transformed_hash_rule"],
+        )
 
         docs = (ROOT / "docs/media-library.md").read_text()
         self.assertIn("--extension flac --min-size 10MiB", docs)
         self.assertIn("--media-type images --taken-year 2024", docs)
         self.assertIn("report-only", docs.lower())
         makefile = (ROOT / "Makefile").read_text()
-        for target in ("media-library-test:", "media-library-init:", "media-library-dry-run:", "media-library-import:", "media-library-verify:", "media-library-space:", "media-library-cleanup:"):
+        for target in (
+            "media-library-test:", "media-library-init:", "media-library-dry-run:",
+            "media-library-import:", "media-library-sync-music:", "media-library-sync-music-apply:",
+            "media-library-verify:", "media-library-space:", "media-library-cleanup:",
+        ):
             self.assertIn(target, makefile)
 
     def test_hash_dedupe_preserves_two_source_provenance_rows(self):

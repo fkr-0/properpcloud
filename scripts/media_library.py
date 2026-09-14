@@ -31,6 +31,7 @@ from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 DEFAULT_LIBRARY_ROOT = Path("/tmp/dib/media-library")
 DEFAULT_STATE_DB = Path.home() / ".local/state/properpcloud/media-library/catalog.db"
+DEFAULT_MUSIC_INGEST_DB = Path.home() / ".local/state/properpcloud/music-ingest.sqlite3"
 CANONICAL_PCLOUD_MOUNT = Path("/tmp/dib")
 CHUNK_SIZE = 8 * 1024 * 1024
 
@@ -196,6 +197,25 @@ def acquire_writer_lock(library_root: Path, state_db: Path) -> Any:
 
 
 def release_writer_lock(handle: Any) -> None:
+    with contextlib.suppress(OSError):
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    handle.close()
+
+
+def acquire_shared_music_ingest_lock(state_db: Path) -> Any:
+    """Refuse catalog reconciliation while music_ingest.py owns its state exclusively."""
+    lock_path = Path(f"{state_db}.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("a+", encoding="utf-8")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except BlockingIOError as error:
+        handle.close()
+        raise RuntimeError(f"music ingest is active for {state_db}; catalog sync refused") from error
+    return handle
+
+
+def release_shared_lock(handle: Any) -> None:
     with contextlib.suppress(OSError):
         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
     handle.close()
@@ -451,6 +471,20 @@ def infer_disk(path: Path) -> str:
             if len(parts) > index + 1:
                 return parts[index + 1]
     return path.anchor.strip("/") or "source"
+
+
+def source_provenance_location(path: Path) -> tuple[str, PurePosixPath]:
+    """Recover a useful stable mount identity and relative path from a source path."""
+    parts = path.parts
+    # Common desktop automounts: /run/media/<user>/<volume>/... and /media/<user>/<volume>/...
+    if len(parts) >= 6 and parts[1:3] == ("run", "media"):
+        return safe_component(parts[4]), PurePosixPath(*parts[5:])
+    if len(parts) >= 5 and parts[1] == "media":
+        return safe_component(parts[3]), PurePosixPath(*parts[4:])
+    if len(parts) >= 4 and parts[1] == "mnt":
+        return safe_component(parts[2]), PurePosixPath(*parts[3:])
+    token = hashlib.sha256(str(path.parent).encode()).hexdigest()[:12]
+    return safe_component(infer_disk(path)), PurePosixPath("_unrooted", token, path.name)
 
 
 def sanitize_relative(path: PurePosixPath) -> PurePosixPath:
@@ -1205,6 +1239,166 @@ def cleanup_report(db: LibraryDatabase, root: Path, limit: int = 1000) -> dict[s
     }
 
 
+def _music_ingest_columns(connection: sqlite3.Connection) -> set[str]:
+    return {str(row[1]) for row in connection.execute("PRAGMA table_info(ingest_files)")}
+
+
+def sync_music_ingest_catalog(
+    db: LibraryDatabase,
+    root: Path,
+    music_state_db: Path,
+    *,
+    execute: bool,
+) -> dict[str, Any]:
+    """Reconcile specialized music-ingest results into the canonical media catalog.
+
+    The specialized ingester may rewrite tags, so its source SHA-256 is provenance
+    evidence and is deliberately not copied into library_files.sha256 as a claim about
+    the transformed destination bytes.
+    """
+    music_state_db = music_state_db.expanduser().resolve()
+    if not music_state_db.is_file():
+        raise ValueError(f"music ingest state database not found: {music_state_db}")
+    shared_lock = acquire_shared_music_ingest_lock(music_state_db)
+    try:
+        source = sqlite3.connect(f"file:{music_state_db}?mode=ro", uri=True)
+        source.row_factory = sqlite3.Row
+        try:
+            required = {
+                "source_path", "source_size", "source_mtime_ns", "source_sha256", "status",
+                "destination_path", "normalized_tags_json", "quality_tier", "bitrate_kbps",
+                "bitrate_mode", "duration_seconds", "updated_at",
+            }
+            columns = _music_ingest_columns(source)
+            missing_columns = sorted(required - columns)
+            if missing_columns:
+                raise ValueError(
+                    "music ingest state is missing required columns: " + ", ".join(missing_columns)
+                )
+            rows = source.execute(
+                """SELECT * FROM ingest_files
+                   WHERE status IN ('INGESTED','DUPLICATE') AND destination_path IS NOT NULL
+                   ORDER BY destination_path, CASE status WHEN 'INGESTED' THEN 0 ELSE 1 END, source_path"""
+            ).fetchall()
+        finally:
+            source.close()
+
+        summary: dict[str, Any] = {
+            "execute": execute,
+            "music_state_db": str(music_state_db),
+            "source_rows": len(rows),
+            "physical_candidates": 0,
+            "cataloged_files": 0,
+            "source_links": 0,
+            "missing_destinations": [],
+            "invalid_destinations": [],
+        }
+        by_destination: dict[str, list[sqlite3.Row]] = {}
+        for row in rows:
+            by_destination.setdefault(str(row["destination_path"]), []).append(row)
+        summary["physical_candidates"] = len(by_destination)
+
+        validated: list[tuple[Path, list[sqlite3.Row]]] = []
+        for destination_text, linked_rows in by_destination.items():
+            destination = Path(destination_text).expanduser()
+            if not is_within(destination, root):
+                summary["invalid_destinations"].append(destination_text)
+                continue
+            if destination.is_symlink() or not destination.is_file():
+                summary["missing_destinations"].append(destination_text)
+                continue
+            validated.append((destination, linked_rows))
+
+        if not execute:
+            summary["cataloged_files"] = len(validated)
+            summary["source_links"] = sum(len(linked_rows) for _, linked_rows in validated)
+            return summary
+
+        source_catalog = f"music-ingest:{music_state_db}"
+        try:
+            for destination, linked_rows in validated:
+                physical_row = linked_rows[0]
+                for candidate in linked_rows:
+                    if candidate["status"] == "INGESTED":
+                        physical_row = candidate
+                        break
+                stat = destination.stat()
+                relative = str(destination.relative_to(root)).replace(os.sep, "/")
+                try:
+                    tags = json.loads(physical_row["normalized_tags_json"] or "{}")
+                    if not isinstance(tags, dict):
+                        tags = {}
+                except (json.JSONDecodeError, TypeError):
+                    tags = {}
+                existing = db.connection.execute(
+                    "SELECT id,size_bytes,mtime_ns,sha256 FROM library_files WHERE library_path=?",
+                    (relative,),
+                ).fetchone()
+                retained_sha256 = None
+                if existing and existing["size_bytes"] == stat.st_size and existing["mtime_ns"] == stat.st_mtime_ns:
+                    retained_sha256 = existing["sha256"]
+                metadata = {
+                    "catalog_source": "music_ingest",
+                    "quality_tier": physical_row["quality_tier"],
+                    "bitrate_kbps": physical_row["bitrate_kbps"],
+                    "bitrate_mode": physical_row["bitrate_mode"],
+                }
+                imported_at = physical_row["updated_at"] or utc_now()
+                db.connection.execute(
+                    """INSERT INTO library_files(
+                           library_path,filename,extension,size_bytes,media_type,media_subtype,mtime_ns,
+                           sha256,imported_at,audio_title,audio_artist,audio_album,
+                           audio_duration_seconds,audio_bitrate,metadata_json
+                       ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(library_path) DO UPDATE SET
+                           filename=excluded.filename,extension=excluded.extension,size_bytes=excluded.size_bytes,
+                           media_type=excluded.media_type,media_subtype=excluded.media_subtype,
+                           mtime_ns=excluded.mtime_ns,sha256=excluded.sha256,
+                           audio_title=excluded.audio_title,audio_artist=excluded.audio_artist,
+                           audio_album=excluded.audio_album,audio_duration_seconds=excluded.audio_duration_seconds,
+                           audio_bitrate=excluded.audio_bitrate,metadata_json=excluded.metadata_json""",
+                    (
+                        relative, destination.name, destination.suffix.lower(), stat.st_size, "audio", "music",
+                        stat.st_mtime_ns, retained_sha256, imported_at, tags.get("title"), tags.get("artist"),
+                        tags.get("album"), physical_row["duration_seconds"],
+                        int(physical_row["bitrate_kbps"] * 1000) if physical_row["bitrate_kbps"] is not None else None,
+                        json.dumps(metadata, sort_keys=True),
+                    ),
+                )
+                library_id = int(db.connection.execute(
+                    "SELECT id FROM library_files WHERE library_path=?", (relative,)
+                ).fetchone()[0])
+                for linked in linked_rows:
+                    source_path = Path(str(linked["source_path"]))
+                    source_disk, source_relative = source_provenance_location(source_path)
+                    seen_at = linked["updated_at"] or utc_now()
+                    db.connection.execute(
+                        """INSERT INTO source_items(
+                               source_catalog,source_disk,source_path,source_relative_path,size_bytes,mtime_ns,
+                               source_hash,library_file_id,first_imported_at,last_seen_at
+                           ) VALUES(?,?,?,?,?,?,?,?,?,?)
+                           ON CONFLICT(source_catalog,source_path) DO UPDATE SET
+                               source_disk=excluded.source_disk,source_relative_path=excluded.source_relative_path,
+                               size_bytes=excluded.size_bytes,mtime_ns=excluded.mtime_ns,
+                               source_hash=excluded.source_hash,library_file_id=excluded.library_file_id,
+                               last_seen_at=excluded.last_seen_at""",
+                        (
+                            source_catalog, source_disk, str(source_path), str(source_relative),
+                            int(linked["source_size"]), int(linked["source_mtime_ns"]), linked["source_sha256"],
+                            library_id, seen_at, seen_at,
+                        ),
+                    )
+            db.connection.commit()
+        except (OSError, sqlite3.Error, ValueError, TypeError):
+            db.connection.rollback()
+            raise
+        summary["cataloged_files"] = len(validated)
+        summary["source_links"] = sum(len(linked_rows) for _, linked_rows in validated)
+        return summary
+    finally:
+        release_shared_lock(shared_lock)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--library-root", type=Path, default=DEFAULT_LIBRARY_ROOT)
@@ -1231,6 +1425,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("space", help="report physical usage by media type and source")
     cleanup = sub.add_parser("cleanup", help="report duplicate, empty, broken-symlink, and unreferenced candidates")
     cleanup.add_argument("--limit", type=int, default=1000, help="maximum sample rows per cleanup category")
+    music_sync = sub.add_parser("sync-music-ingest", help="reconcile specialized music-ingest state into this catalog")
+    music_sync.add_argument("--music-state-db", type=Path, default=DEFAULT_MUSIC_INGEST_DB)
+    music_sync.add_argument("--execute", action="store_true", help="update the local catalog and publish its snapshot")
     sub.add_parser("publish", help="publish a consistent catalog.db snapshot to pCloud")
     return parser
 
@@ -1246,13 +1443,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         validate_storage_boundary(
             args.library_root,
             args.state_db,
-            require_library_mount=args.command in {"init", "import", "verify", "cleanup", "publish"},
+            require_library_mount=args.command in {"init", "import", "verify", "cleanup", "sync-music-ingest", "publish"},
         )
     except RuntimeError as error:
         print(f"media-library: {error}", file=sys.stderr)
         return 2
     writer_lock = None
-    if args.command in {"init", "import", "publish"}:
+    if args.command in {"init", "import", "sync-music-ingest", "publish"}:
         try:
             writer_lock = acquire_writer_lock(args.library_root, args.state_db)
         except RuntimeError as error:
@@ -1304,6 +1501,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(space_report(db), indent=2, sort_keys=True))
         elif args.command == "cleanup":
             print(json.dumps(cleanup_report(db, args.library_root, args.limit), indent=2, sort_keys=True))
+        elif args.command == "sync-music-ingest":
+            report = sync_music_ingest_catalog(
+                db, args.library_root, args.music_state_db, execute=args.execute
+            )
+            if args.execute:
+                db.publish_snapshot(args.library_root)
+            print(json.dumps(report, indent=2, sort_keys=True))
+            return 1 if report["missing_destinations"] or report["invalid_destinations"] else 0
         elif args.command == "publish":
             print(db.publish_snapshot(args.library_root))
         return 0

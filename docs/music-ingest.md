@@ -173,6 +173,22 @@ Final report paths:
 - `/tmp/dib/media-library/metadata/unsorted-manifest.json`
 - `/tmp/dib/media-library/metadata/ingest-report.md`
 
+## Canonical media-library catalog reconciliation
+
+The ingestion state database is a resumable processing ledger, not the global library search
+catalog. After a successful ingest, preview and then apply reconciliation into the canonical
+media-library SQLite authority:
+
+```bash
+make media-library-sync-music
+make media-library-sync-music-apply
+```
+
+This does not copy, rename, retag, or delete music. It verifies each recorded destination exists
+inside the configured media-library root, registers each physical track in `library_files`, and
+links all original/duplicate source paths through `source_items`. Source SHA-256 values remain
+provenance evidence because normalized tags can make destination bytes differ from source bytes.
+
 The Markdown report contains processed/duplicate/failure counts, filename/tag
 change counts, removed artwork count, unique artist and album counts, measured
 audio duration, the MP3 quality-tier breakdown, and low-quality replacement

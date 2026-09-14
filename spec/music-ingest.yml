@@ -8,6 +8,12 @@ paths:
   state_db: ~/.local/state/properpcloud/music-ingest.sqlite3
   staging_root: ~/.cache/properpcloud/music-ingest-staging
   companion_catalog: ~/.local/share/disk-catalog/catalog.db
+  canonical_catalog_reconciliation:
+    command: make media-library-sync-music
+    apply_command: make media-library-sync-music-apply
+    rule: >-
+      Completed INGESTED/DUPLICATE rows are reconciled into the canonical media-library catalog
+      after ingestion; reconciliation does not recopy or mutate media files.
 
 source_contract:
   immutable: true
@@ -139,3 +145,4 @@ safety:
   require_active_pcloud_mount_for_default_target: true
   prevent_destination_self_ingest: true
   atomic_report_publication: true
+  canonical_catalog_uses_source_hash_as_destination_hash: false
