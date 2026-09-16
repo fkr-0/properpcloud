@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.6] - 2026-09-16
+
+### Fixed
+
+- Hardened Android Media3 playback liveness so item-scoped terminal decode, format, missing-media,
+  and provider-proven unavailable failures advance monotonically to the next eligible queue entry
+  when one exists, while final/all-bad queues terminate boundedly without repeat-wraparound or an
+  error/skip loop. Manual Next, Previous, selection, and explicit retry re-prepare from stable
+  source/node identity so one bad item cannot poison later valid playback.
+- Added source-neutral stream-resolution failure classification across direct pCloud and server
+  catalog adapters. Proven item-unavailable failures may omit only that stable item; offline,
+  timeout, authentication, 5xx, and temporary capability failures preserve the queue and remain
+  recoverable instead of destructively cascade-skipping later entries.
+- Reconciled player-confirmed Media3 timeline identity back into durable/UI queue state after
+  terminal-item compaction and across controller disconnect/rebind, preserving the intended stable
+  current item and sane position without accidental autoplay.
+- Removed the Android production demo library and demo-mode fallback. First run and provider
+  disconnect now use an explicit no-library-connected state or another already-connected provider,
+  while deterministic generated WAV media remains confined to the Android test source set.
+
+### Testing
+
+- Added focused regression coverage for bad→good, good→bad→good, consecutive/all-bad queues,
+  terminal final items, transient resolver failures, manual post-error recovery, queue/timeline
+  convergence, controller rebind, and generated test-media behavior.
+
 ## [0.2.0-rc.5] - 2026-09-08
 
 ### Added

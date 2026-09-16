@@ -1,0 +1,42 @@
+version: 0.2.0-rc.6
+tag: v0.2.0-rc.6
+status: release_candidate_for_hands_on_testing
+base_release: v0.2.0-rc.5
+final_target: v0.2.0
+date: 2026-09-16
+objective: >-
+  publish the Android playback-liveness, interrupt/restore convergence, source-neutral stream
+  failure classification, and production demo-removal tranche as an immutable prerelease without
+  claiming the remaining stable 0.2.0 protected-provider, physical-device, accessibility, or
+  post-tag promotion gates
+included_work:
+  - bounded Android Media3 recovery from item-scoped terminal decode, format, missing-media, and provider-proven unavailable failures with monotonic forward advancement and clean all-bad termination
+  - source-neutral direct-pCloud and server-catalog stream-resolution classification that preserves queue state across transient network, authentication, 5xx, and temporary capability failures
+  - manual Next, Previous, selection, and explicit retry recovery that re-prepares from stable source/node identity after player error
+  - Media3 timeline to durable/UI queue reconciliation after terminal-item compaction and controller disconnect/rebind, preserving paused restore semantics and stable current identity
+  - removal of the Android production demo source and fallback mode, replaced by an explicit disconnected state while keeping deterministic generated WAV media test-only
+verification_required_before_tag:
+  - make doctor
+  - make test
+  - make lint
+  - make build
+  - make ci
+  - make release-check
+  - git diff --check
+final_0_2_0_blockers_not_claimed_by_this_candidate:
+  - physical power-cut filesystem durability evidence
+  - supported Linux screen-reader/accessibility bridge or explicit maintainer exception where still required
+  - physical media-key behavior
+  - physical suspend/resume cycle
+  - GNOME and KDE Plasma session observations
+  - protected Europe and United States pCloud account validation
+  - retained protected-provider soak with real capability expiry and suspend/resume
+  - exact immutable v0.2.0 Arch archive rebuild after final stable tag creation
+stable_promotion_policy: >-
+  the canonical 0.2.0 promotion evidence remains authoritative; pending, blocked, manual,
+  protected, external-session, and post-tag stable-release states are not converted to success
+  for this release candidate
+publication_scope: >-
+  operator-authorized tagged prerelease: push main and the signed v0.2.0-rc.6 tag, allowing the
+  repository release workflow to publish its normal GitHub Release and release artifacts
+warning: this prerelease is for hands-on testing; final v0.2.0 promotion remains fail-closed
