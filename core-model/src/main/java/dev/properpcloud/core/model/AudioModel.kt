@@ -80,6 +80,25 @@ data class StreamHandle(
     val contentType: String? = null,
 )
 
+enum class StreamResolutionFailureKind {
+    /** The stable media identity no longer resolves to a playable item. */
+    ITEM_UNAVAILABLE,
+
+    /** The source, network, authorization, or capability lookup may recover later. */
+    TRANSIENT,
+}
+
+/**
+ * Source-neutral failure contract for turning a stable media identity into an ephemeral
+ * playback capability. Callers may skip ITEM_UNAVAILABLE entries, but must preserve and
+ * surface TRANSIENT failures so an outage cannot destructively consume a queue.
+ */
+class StreamResolutionException(
+    val kind: StreamResolutionFailureKind,
+    message: String,
+    cause: Throwable? = null,
+) : Exception(message, cause)
+
 data class NodeInspection(
     val fields: Map<String, String>,
 )

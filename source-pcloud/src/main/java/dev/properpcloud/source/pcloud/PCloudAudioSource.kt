@@ -1,6 +1,7 @@
 package dev.properpcloud.source.pcloud
 
 import com.pcloud.sdk.ApiClient
+import com.pcloud.sdk.ApiError
 import com.pcloud.sdk.Authenticators
 import com.pcloud.sdk.Checksums
 import com.pcloud.sdk.DownloadOptions
@@ -20,9 +21,13 @@ import dev.properpcloud.core.model.NodeInspection
 import dev.properpcloud.core.model.PreparedMetadataSource
 import dev.properpcloud.core.model.SourceId
 import dev.properpcloud.core.model.StreamHandle
+import dev.properpcloud.core.model.StreamResolutionException
+import dev.properpcloud.core.model.StreamResolutionFailureKind
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 import java.security.MessageDigest
 
 class PCloudAudioSource internal constructor(
@@ -58,16 +63,32 @@ class PCloudAudioSource internal constructor(
     }
 
     override suspend fun resolveStream(trackId: NodeId): StreamHandle = withContext(Dispatchers.IO) {
-        val parsed = PCloudNodeIds.parse(trackId)
-        require(parsed.kind == PCloudNodeKind.FILE) { "file id required" }
+        val parsed = runCatching { PCloudNodeIds.parse(trackId) }.getOrElse { error ->
+            throw StreamResolutionException(
+                StreamResolutionFailureKind.ITEM_UNAVAILABLE,
+                "pCloud media identity is unavailable",
+                error,
+            )
+        }
+        if (parsed.kind != PCloudNodeKind.FILE) {
+            throw StreamResolutionException(
+                StreamResolutionFailureKind.ITEM_UNAVAILABLE,
+                "pCloud media identity is not a file",
+            )
+        }
 
-        val remoteFile = client.loadFile(parsed.numericId).execute()
-        val link = client.createFileLink(remoteFile, DownloadOptions.DEFAULT).execute()
-        StreamHandle(
-            url = link.bestUrl().toExternalForm(),
-            expiresAtEpochMillis = link.expirationDate()?.time,
-            contentType = remoteFile.contentType(),
-        )
+        try {
+            val remoteFile = client.loadFile(parsed.numericId).execute()
+            val link = client.createFileLink(remoteFile, DownloadOptions.DEFAULT).execute()
+            StreamHandle(
+                url = link.bestUrl().toExternalForm(),
+                expiresAtEpochMillis = link.expirationDate()?.time,
+                contentType = remoteFile.contentType(),
+            )
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            throw classifyPCloudStreamResolutionFailure(error)
+        }
     }
 
     override suspend fun inspect(nodeId: NodeId): NodeInspection = withContext(Dispatchers.IO) {
@@ -191,6 +212,36 @@ class PCloudAudioSource internal constructor(
     }
 
 }
+
+internal fun classifyPCloudStreamResolutionFailure(error: Exception): StreamResolutionException = when (error) {
+    is StreamResolutionException -> error
+    // pCloud documents result 2009 as "File not found" for file/link operations.
+    is ApiError -> StreamResolutionException(
+        kind = if (error.errorCode() == PCLOUD_FILE_NOT_FOUND) {
+            StreamResolutionFailureKind.ITEM_UNAVAILABLE
+        } else {
+            StreamResolutionFailureKind.TRANSIENT
+        },
+        message = if (error.errorCode() == PCLOUD_FILE_NOT_FOUND) {
+            "pCloud media item is unavailable"
+        } else {
+            "pCloud stream capability is temporarily unavailable"
+        },
+        cause = error,
+    )
+    is IOException -> StreamResolutionException(
+        StreamResolutionFailureKind.TRANSIENT,
+        "pCloud stream capability is temporarily unavailable",
+        error,
+    )
+    else -> StreamResolutionException(
+        StreamResolutionFailureKind.TRANSIENT,
+        "pCloud stream capability could not be resolved",
+        error,
+    )
+}
+
+private const val PCLOUD_FILE_NOT_FOUND = 2009
 
 private fun File.sha256(): String {
     val digest = MessageDigest.getInstance("SHA-256")

@@ -17,6 +17,7 @@ import dev.properpcloud.core.model.PlaybackFailureRecovery
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.PlaybackRecoveryPolicy
 import dev.properpcloud.core.model.PlayerRepeatMode
+import dev.properpcloud.core.model.QueueTimelineReconciliation
 import dev.properpcloud.core.model.SignedLinkRetryGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +44,7 @@ data class PlaybackUiState(
     val shuffle: Boolean = false,
     val repeatMode: PlayerRepeatMode = PlayerRepeatMode.OFF,
     val playbackState: Int = Player.STATE_IDLE,
+    val timelineMediaIds: List<String> = emptyList(),
     val error: String? = null,
 )
 
@@ -70,6 +72,9 @@ internal fun isRetriablePlaybackFailure(errorCode: Int, responseCode: Int?): Boo
     errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> true
     else -> false
 }
+
+internal fun shouldPrepareAfterManualSeek(playbackState: Int, hasPlayerError: Boolean): Boolean =
+    hasPlayerError || playbackState == Player.STATE_IDLE
 
 @UnstableApi
 class PlaybackConnection(context: Context) : PlaybackController, Player.Listener {
@@ -113,8 +118,15 @@ class PlaybackConnection(context: Context) : PlaybackController, Player.Listener
     override fun setQueue(queue: PlaybackQueue, play: Boolean, startPositionMillis: Long) {
         lastQueue = queue
         val mediaItems = queue.toStableMediaItems()
-        if (mediaItems.isEmpty()) return
+        if (mediaItems.isEmpty()) {
+            clearQueue()
+            return
+        }
         withController { player ->
+            // Replacement must fail closed: a failed asynchronous resolve must not leave
+            // an unrelated old Media3 timeline playing behind the new durable queue.
+            player.stop()
+            player.clearMediaItems()
             player.setMediaItems(
                 mediaItems,
                 queue.currentIndex.coerceAtLeast(0),
@@ -126,9 +138,21 @@ class PlaybackConnection(context: Context) : PlaybackController, Player.Listener
     }
 
     override fun select(index: Int, play: Boolean) = withController { player ->
-        if (index in 0 until player.mediaItemCount) {
+        if (index in lastQueue.entries.indices) {
+            val selectedMediaId = lastQueue.entries[index].let { entry ->
+                MediaIdentity.encode(entry.track.sourceId, entry.track.id)
+            }
+            val playerIndex = (0 until player.mediaItemCount)
+                .firstOrNull { candidate -> player.getMediaItemAt(candidate).mediaId == selectedMediaId }
+            if (playerIndex == null) {
+                lastQueue = lastQueue.copy(currentIndex = index)
+                reinstallStableQueue(player, lastQueue, index, startPositionMillis = 0, play = play)
+                return@withController
+            }
+            val needsPrepare = shouldPrepareAfterManualSeek(player.playbackState, player.playerError != null)
             lastQueue = lastQueue.copy(currentIndex = index)
-            player.seekToDefaultPosition(index)
+            player.seekToDefaultPosition(playerIndex)
+            if (needsPrepare) player.prepare()
             if (play) player.play()
         }
     }
@@ -138,6 +162,9 @@ class PlaybackConnection(context: Context) : PlaybackController, Player.Listener
     override fun playPause() = withController { player ->
         if (player.isPlaying) {
             player.pause()
+        } else if (player.mediaItemCount == 0 && lastQueue.entries.isNotEmpty()) {
+            val index = lastQueue.currentIndex.takeIf { it in lastQueue.entries.indices } ?: 0
+            reinstallStableQueue(player, lastQueue, index, _state.value.positionMillis, play = true)
         } else if (player.playerError != null && explicitRecoveryEligible) {
             recoverAndPlay(player)
         } else if (player.playerError != null) {
@@ -146,8 +173,20 @@ class PlaybackConnection(context: Context) : PlaybackController, Player.Listener
             player.play()
         }
     }
-    override fun skipNext() = withController { it.seekToNextMediaItem() }
-    override fun skipPrevious() = withController { it.seekToPreviousMediaItem() }
+    override fun skipNext() = withController { player ->
+        if (player.hasNextMediaItem()) {
+            val needsPrepare = shouldPrepareAfterManualSeek(player.playbackState, player.playerError != null)
+            player.seekToNextMediaItem()
+            if (needsPrepare) player.prepare()
+        }
+    }
+    override fun skipPrevious() = withController { player ->
+        if (player.hasPreviousMediaItem()) {
+            val needsPrepare = shouldPrepareAfterManualSeek(player.playbackState, player.playerError != null)
+            player.seekToPreviousMediaItem()
+            if (needsPrepare) player.prepare()
+        }
+    }
     override fun seekTo(positionMillis: Long) = withController { it.seekTo(positionMillis.coerceAtLeast(0)) }
     override fun seekBy(deltaMillis: Long) = withController { it.seekTo((it.currentPosition + deltaMillis).coerceAtLeast(0)) }
     override fun setPlaybackSpeed(speed: Float) = withController { player ->
@@ -193,9 +232,27 @@ class PlaybackConnection(context: Context) : PlaybackController, Player.Listener
         player.play()
     }
 
+    private fun reinstallStableQueue(
+        player: MediaController,
+        queue: PlaybackQueue,
+        index: Int,
+        startPositionMillis: Long,
+        play: Boolean,
+    ) {
+        val mediaItems = queue.toStableMediaItems()
+        if (mediaItems.isEmpty()) return
+        player.stop()
+        player.clearMediaItems()
+        player.setMediaItems(mediaItems, index.coerceIn(mediaItems.indices), startPositionMillis.coerceAtLeast(0))
+        player.prepare()
+        if (play) player.play()
+    }
+
     private fun updateState(player: Player) {
         if (player.playerError == null) explicitRecoveryEligible = false
         val metadata = player.currentMediaItem?.mediaMetadata
+        val timelineMediaIds = (0 until player.mediaItemCount).map { index -> player.getMediaItemAt(index).mediaId }
+        lastQueue = QueueTimelineReconciliation.reconcile(lastQueue, timelineMediaIds, player.currentMediaItem?.mediaId)
         _state.value = PlaybackUiState(
             connected = true,
             mediaId = player.currentMediaItem?.mediaId,
@@ -213,6 +270,7 @@ class PlaybackConnection(context: Context) : PlaybackController, Player.Listener
                 else -> PlayerRepeatMode.OFF
             },
             playbackState = player.playbackState,
+            timelineMediaIds = timelineMediaIds,
             error = player.playerError?.errorCodeName,
         )
     }

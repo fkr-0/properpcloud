@@ -61,6 +61,41 @@ object QueueRestoration {
     }
 }
 
+object QueueTimelineReconciliation {
+    /**
+     * Align the durable/application queue with the platform-player timeline by stable media ID.
+     * An empty or unrelated timeline is not authoritative: this prevents a controller reconnect
+     * or a failed replacement from deleting a queue before the requested timeline is installed.
+     */
+    fun reconcile(
+        queue: PlaybackQueue,
+        timelineMediaIds: List<String>,
+        currentMediaId: String?,
+    ): PlaybackQueue {
+        if (timelineMediaIds.isEmpty() || queue.entries.isEmpty()) return select(queue, currentMediaId)
+        val entriesByMediaId = queue.entries.associateBy { entry ->
+            MediaIdentity.encode(entry.track.sourceId, entry.track.id)
+        }
+        val alignedEntries = timelineMediaIds.map { mediaId -> entriesByMediaId[mediaId] ?: return queue }
+        val selectedMediaId = currentMediaId ?: queue.current?.let { entry ->
+            MediaIdentity.encode(entry.track.sourceId, entry.track.id)
+        }
+        val alignedIndex = selectedMediaId
+            ?.let(timelineMediaIds::indexOf)
+            ?.takeIf { it >= 0 }
+            ?: -1
+        return queue.copy(entries = alignedEntries, currentIndex = alignedIndex)
+    }
+
+    private fun select(queue: PlaybackQueue, currentMediaId: String?): PlaybackQueue {
+        if (currentMediaId == null) return queue
+        val index = queue.entries.indexOfFirst { entry ->
+            MediaIdentity.encode(entry.track.sourceId, entry.track.id) == currentMediaId
+        }
+        return if (index >= 0 && index != queue.currentIndex) queue.copy(currentIndex = index) else queue
+    }
+}
+
 enum class DuplicatePolicy {
     PRESERVE,
     COLLAPSE_STABLE_ID,
@@ -171,7 +206,7 @@ class FolderQueueAssembler(
     private val sortPolicy: TrackSortPolicy = TrackSortPolicy(),
     private val maxFolders: Int = 10_000,
 ) {
-    suspend fun build(folderId: NodeId, recursive: Boolean): QueueBuildResult {
+    suspend fun build(folderId: NodeId, recursive: Boolean = true): QueueBuildResult {
         val pending = ArrayDeque<NodeId>().apply { add(folderId) }
         val visited = linkedSetOf<NodeId>()
         val tracks = mutableListOf<QueueEntry>()
