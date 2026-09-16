@@ -28,7 +28,7 @@ private val Context.properpcloudDataStore by preferencesDataStore(name = "proper
 
 data class StoredSettings(
     val clientId: String = "",
-    val sourceKind: SourceKind = SourceKind.DEMO,
+    val sourceKind: SourceKind = SourceKind.NONE,
     val sortKey: TrackSortKey = TrackSortKey.DISC_THEN_TRACK,
     val searchMatchTypes: Set<SearchMatchType> = SearchMatchType.entries.toSet(),
     val playbackHistoryEnabled: Boolean = false,
@@ -161,7 +161,7 @@ class AppPreferencesRepository(context: Context) {
 
     private fun decodeSettings(preferences: Preferences): StoredSettings = StoredSettings(
         clientId = preferences[CLIENT_ID].orEmpty(),
-        sourceKind = SourceKind.entries.firstOrNull { it.id == preferences[SOURCE_KIND] } ?: SourceKind.DEMO,
+        sourceKind = SourceKind.entries.firstOrNull { it.id == preferences[SOURCE_KIND] } ?: SourceKind.NONE,
         sortKey = TrackSortKey.entries.firstOrNull { it.name == preferences[SORT_KEY] }
             ?: TrackSortKey.DISC_THEN_TRACK,
         searchMatchTypes = preferences[SEARCH_MATCH_TYPES]?.let { encoded ->

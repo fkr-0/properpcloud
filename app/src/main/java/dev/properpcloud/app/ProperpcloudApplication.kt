@@ -4,12 +4,13 @@ package dev.properpcloud.app
 
 import android.app.Application
 import dev.properpcloud.app.data.AppPreferencesRepository
-import dev.properpcloud.app.data.DemoAudioSource
+import dev.properpcloud.app.data.DisconnectedAudioSource
 import dev.properpcloud.app.data.SourceRegistry
 import dev.properpcloud.app.metadata.MetadataEditingWorkspace
 import dev.properpcloud.app.playback.PlaybackConnection
 import dev.properpcloud.app.security.EncryptedTokenVault
 import dev.properpcloud.app.security.EncryptedServerCatalogVault
+import dev.properpcloud.core.model.AudioSource
 import dev.properpcloud.metadata.online.MusicBrainzMetadataProvider
 import dev.properpcloud.metadata.tags.JAudioTaggerToolkit
 import dev.properpcloud.source.pcloud.PCloudDirectLoginClient
@@ -31,12 +32,13 @@ class ProperpcloudApplication : Application() {
 class AppContainer(
     application: Application,
     val applicationScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    disconnectedSource: AudioSource = DisconnectedAudioSource,
 ) {
     val preferences = AppPreferencesRepository(application)
     val tokenVault = EncryptedTokenVault(application)
     val serverCatalogVault = EncryptedServerCatalogVault(application)
     val sources = SourceRegistry(
-        demoSource = DemoAudioSource(application),
+        disconnectedSource = disconnectedSource,
         tokenVault = tokenVault,
         serverVault = serverCatalogVault,
     )

@@ -13,20 +13,20 @@ import org.robolectric.RobolectricTestRunner
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
-class DemoAudioSourceTest {
+class GeneratedTestAudioSourceTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
     @Test
-    fun demoLibraryContainsNestedFolderFirstContent() = runTest {
-        val source = DemoAudioSource(context)
+    fun generatedLibraryContainsNestedFolderFirstContent() = runTest {
+        val source = GeneratedTestAudioSource(context)
         val rootChildren = source.list(source.root.id)
         assertEquals(listOf("Audiobooks", "Field recordings", "Numbered tracks"), rootChildren.map { it.name })
         assertTrue(rootChildren.all { it is AudioFolder })
     }
 
     @Test
-    fun demoStreamGeneratesAValidLocalWav() = runTest {
-        val source = DemoAudioSource(context)
+    fun generatedStreamProducesAValidLocalWav() = runTest {
+        val source = GeneratedTestAudioSource(context)
         val musicFolder = source.list(source.root.id).filterIsInstance<AudioFolder>().first { it.name == "Numbered tracks" }
         val track = source.list(musicFolder.id).filterIsInstance<AudioTrack>().first()
         val stream = source.resolveStream(track.id)

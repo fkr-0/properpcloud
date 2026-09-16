@@ -439,8 +439,8 @@ class ProperpcloudAppTest {
     }
 
     private fun sampleState(): AppUiState {
-        val source = SourceId("demo")
-        val root = AudioFolder(source, NodeId("root"), null, "Demo library")
+        val source = SourceId("pcloud")
+        val root = AudioFolder(source, NodeId("root"), null, "pCloud")
         val folder = AudioFolder(source, NodeId("folder"), root.id, "Audiobooks")
         val track = AudioTrack(
             sourceId = source,
@@ -451,7 +451,7 @@ class ProperpcloudAppTest {
             durationMillis = 8_000,
         )
         return AppUiState(
-            sourceKind = SourceKind.DEMO,
+            sourceKind = SourceKind.PCLOUD,
             sourceName = root.name,
             currentFolder = root,
             breadcrumbs = listOf(root),

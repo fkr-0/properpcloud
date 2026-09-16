@@ -2,7 +2,7 @@ package dev.properpcloud.app.metadata
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import dev.properpcloud.app.data.DemoAudioSource
+import dev.properpcloud.app.data.GeneratedTestAudioSource
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.MetadataProvenance
@@ -30,8 +30,8 @@ class MetadataEditingWorkspaceTest {
     private val toolkit = JAudioTaggerToolkit()
 
     @Test
-    fun demoTrackProducesSeparateVerifiedShareableCandidate() = runTest {
-        val source = DemoAudioSource(context)
+    fun generatedTrackProducesSeparateVerifiedShareableCandidate() = runTest {
+        val source = GeneratedTestAudioSource(context)
         val workspace = MetadataEditingWorkspace(
             context = context,
             tagToolkit = toolkit,
@@ -116,7 +116,7 @@ class MetadataEditingWorkspaceTest {
 
     @Test
     fun bundleIncludesManifestAndEveryVerifiedCandidate() = runTest {
-        val source = DemoAudioSource(context)
+        val source = GeneratedTestAudioSource(context)
         val workspace = MetadataEditingWorkspace(
             context = context,
             tagToolkit = toolkit,

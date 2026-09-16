@@ -31,7 +31,7 @@ class SourceRegistryTest {
         assertNull(store.session)
         assertTrue(store.cleared)
         assertFalse(registry.hasPCloudSession())
-        assertEquals(SourceId("demo"), registry.current.value.id)
+        assertEquals(SourceId(SourceKind.NONE.id), registry.current.value.id)
     }
 
     private class RecordingServerSessionStore : ServerCatalogSessionStore {
@@ -49,7 +49,7 @@ class SourceRegistryTest {
     }
 
     @Test
-    fun disconnectServerClearsEncryptedSessionAndReturnsToDemo() {
+    fun disconnectServerClearsEncryptedSessionAndReturnsToDisconnectedSource() {
         val pCloudStore = RecordingSessionStore()
         val serverStore = RecordingServerSessionStore()
         val registry = SourceRegistry(FakeSource(), pCloudStore, serverStore)
@@ -61,7 +61,31 @@ class SourceRegistryTest {
         assertNull(serverStore.session)
         assertTrue(serverStore.cleared)
         assertFalse(registry.hasServerSession())
-        assertEquals(SourceId("demo"), registry.current.value.id)
+        assertEquals(SourceId(SourceKind.NONE.id), registry.current.value.id)
+    }
+
+    @Test
+    fun disconnectActivePCloudFallsBackToConnectedServer() {
+        val registry = SourceRegistry(FakeSource(), RecordingSessionStore(), RecordingServerSessionStore())
+        registry.installServer(ServerCatalogSession("https://library.example", "never-log-this"))
+        registry.installPCloud(PCloudSession("never-log-this-either", "api.pcloud.com", 7))
+        assertTrue(registry.select(SourceKind.PCLOUD))
+
+        registry.disconnectPCloudLocally()
+
+        assertEquals(SourceId(SourceKind.SERVER.id), registry.current.value.id)
+    }
+
+    @Test
+    fun disconnectActiveServerFallsBackToConnectedPCloud() {
+        val registry = SourceRegistry(FakeSource(), RecordingSessionStore(), RecordingServerSessionStore())
+        registry.installPCloud(PCloudSession("never-log-this", "api.pcloud.com", 7))
+        registry.installServer(ServerCatalogSession("https://library.example", "never-log-this-either"))
+        assertTrue(registry.select(SourceKind.SERVER))
+
+        registry.disconnectServerLocally()
+
+        assertEquals(SourceId(SourceKind.PCLOUD.id), registry.current.value.id)
     }
 
     private class RecordingSessionStore : PCloudSessionStore {
@@ -79,8 +103,8 @@ class SourceRegistryTest {
     }
 
     private class FakeSource : AudioSource {
-        override val id = SourceId("demo")
-        override val root = AudioFolder(id, NodeId("root"), null, "Demo")
+        override val id = SourceId(SourceKind.NONE.id)
+        override val root = AudioFolder(id, NodeId("root"), null, "No source connected")
         override suspend fun list(folderId: NodeId): List<MediaNode> = emptyList()
         override suspend fun load(nodeId: NodeId): MediaNode = root
         override suspend fun resolveStream(trackId: NodeId) = StreamHandle("file:///dev/null")

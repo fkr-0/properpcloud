@@ -529,7 +529,7 @@ private fun LibraryScreen(state: AppUiState, actions: AppActions, expanded: Bool
         AudioTabStrip(state, actions)
         if (state.search.expanded) LibrarySearchControls(state, actions)
         if (state.refreshing) LinearProgressIndicator(Modifier.fillMaxWidth())
-        SourceBanner(state, actions)
+        if (state.sourceKind == SourceKind.NONE) SourceBanner(state, actions)
         if (state.queueBuilding) {
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.fillMaxWidth()) {
                 Row(
@@ -557,14 +557,14 @@ private fun LibraryScreen(state: AppUiState, actions: AppActions, expanded: Bool
 
 @Composable
 private fun SourceBanner(state: AppUiState, actions: AppActions) {
-    val isDemo = state.sourceKind == SourceKind.DEMO
+    val disconnected = state.sourceKind == SourceKind.NONE
     val message = when (state.sourceKind) {
-        SourceKind.DEMO -> "Playable local demo. Connect pCloud directly or a server library in Settings when ready."
+        SourceKind.NONE -> "No library connected. Connect pCloud directly or a server library in Settings."
         SourceKind.PCLOUD -> "Connected directly to pCloud; account credentials are never stored."
         SourceKind.SERVER -> "Using the server-generated pCloud catalog with short-lived playback tickets."
     }
     Surface(
-        color = if (isDemo) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+        color = if (disconnected) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -572,7 +572,7 @@ private fun SourceBanner(state: AppUiState, actions: AppActions) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                if (isDemo) Icons.Default.CloudOff else Icons.Default.Cloud,
+                if (disconnected) Icons.Default.CloudOff else Icons.Default.Cloud,
                 contentDescription = null,
             )
             Spacer(Modifier.width(10.dp))
@@ -581,9 +581,9 @@ private fun SourceBanner(state: AppUiState, actions: AppActions) {
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            if (isDemo && state.serverConnected) {
+            if (disconnected && state.serverConnected) {
                 TextButton(onClick = { actions.selectSource(SourceKind.SERVER) }) { Text("Use server") }
-            } else if (isDemo && state.pCloudConnected) {
+            } else if (disconnected && state.pCloudConnected) {
                 TextButton(onClick = { actions.selectSource(SourceKind.PCLOUD) }) { Text("Use pCloud") }
             }
         }
@@ -617,6 +617,7 @@ private fun FolderContent(state: AppUiState, actions: AppActions, modifier: Modi
         when {
             state.loading -> CircularProgressIndicator(Modifier.align(Alignment.Center).testTag("library-loading"))
             state.errorMessage != null -> ErrorState(state.errorMessage, actions.refresh, Modifier.align(Alignment.Center))
+            state.sourceKind == SourceKind.NONE -> NoSourceState(actions, Modifier.align(Alignment.Center))
             searchActive && !state.search.searching && visibleNodes.isEmpty() -> Column(
                 Modifier.align(Alignment.Center).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -1092,13 +1093,10 @@ private fun SettingsScreen(state: AppUiState, actions: AppActions, onAuthorizePC
         item { TopAppBar(title = { Text("Settings") }) }
         item {
             SettingsSection("Source") {
-                Text("The demo source is always available and never uses the network.")
+                Text(
+                    if (state.sourceKind == SourceKind.NONE) "No library is currently selected." else "Current library: ${state.sourceName}",
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { actions.selectSource(SourceKind.DEMO) }) {
-                        Icon(Icons.Default.LibraryMusic, null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Use demo")
-                    }
                     if (state.pCloudConnected) {
                         Button(onClick = { actions.selectSource(SourceKind.PCLOUD) }) {
                             Icon(Icons.Default.Cloud, null)
@@ -1352,6 +1350,17 @@ private fun ErrorState(message: String, retry: () -> Unit, modifier: Modifier = 
         Text(message, color = MaterialTheme.colorScheme.error)
         Spacer(Modifier.height(12.dp))
         Button(onClick = retry) { Text("Retry") }
+    }
+}
+
+@Composable
+private fun NoSourceState(actions: AppActions, modifier: Modifier = Modifier) {
+    Column(modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(Icons.Default.CloudOff, null, Modifier.size(64.dp), tint = MaterialTheme.colorScheme.tertiary)
+        Text("No library connected", style = MaterialTheme.typography.titleMedium)
+        Text("Connect pCloud or a server library to browse and play audio.", style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(12.dp))
+        Button(onClick = { actions.selectDestination(AppDestination.SETTINGS) }) { Text("Open settings") }
     }
 }
 

@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import dev.properpcloud.app.AppContainer
 import dev.properpcloud.app.data.AppPreferencesRepository
+import dev.properpcloud.app.data.GeneratedTestAudioSource
 import dev.properpcloud.app.playback.PlaybackController
 import dev.properpcloud.app.playback.PlaybackUiState
 import dev.properpcloud.core.model.AudioFolder
@@ -53,7 +54,11 @@ class MainViewModelTest {
     fun switchingAudioTabsPausesAndRestoresNextQueueWithoutAutoplay() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val playback = FakePlaybackController()
-        val container = AppContainer(context.applicationContext as Application, applicationScope = this)
+        val container = AppContainer(
+            context.applicationContext as Application,
+            applicationScope = this,
+            disconnectedSource = GeneratedTestAudioSource(context),
+        )
         val source = container.sources.current.value
         val folder = source.list(source.root.id)
             .filterIsInstance<AudioFolder>()
@@ -98,7 +103,11 @@ class MainViewModelTest {
     fun playerDrivenCurrentItemChangePersistsSelectedStableQueueItem() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val playback = FakePlaybackController()
-        val container = AppContainer(context.applicationContext as Application, applicationScope = this)
+        val container = AppContainer(
+            context.applicationContext as Application,
+            applicationScope = this,
+            disconnectedSource = GeneratedTestAudioSource(context),
+        )
         val source = container.sources.current.value
         val folder = source.list(source.root.id)
             .filterIsInstance<AudioFolder>()
@@ -141,10 +150,132 @@ class MainViewModelTest {
     }
 
     @Test
+    fun controllerDisconnectAndRebindPreservePlayerDrivenStableSelectionWithoutAutoplay() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val playback = FakePlaybackController()
+        val container = AppContainer(
+            context.applicationContext as Application,
+            applicationScope = this,
+            disconnectedSource = GeneratedTestAudioSource(context),
+        )
+        val source = container.sources.current.value
+        val folder = source.list(source.root.id)
+            .filterIsInstance<AudioFolder>()
+            .first { it.name == "Numbered tracks" }
+        val tracks = source.list(folder.id).filterIsInstance<AudioTrack>().take(2)
+        container.preferences.saveQueue(
+            PlaybackQueue(entries = tracks.map(::QueueEntry), currentIndex = 0),
+        )
+
+        withViewModel(container, playback) { viewModel ->
+            for (attempt in 0 until 200) {
+                advanceUntilIdle()
+                if (viewModel.state.value.queue.entries.size == 2) break
+                Thread.sleep(10)
+            }
+            val secondMediaId = MediaIdentity.encode(tracks[1].sourceId, tracks[1].id)
+            playback.emit(
+                PlaybackUiState(
+                    connected = true,
+                    mediaId = secondMediaId,
+                    positionMillis = 900,
+                    durationMillis = 5_000,
+                    isPlaying = false,
+                ),
+            )
+            advanceUntilIdle()
+            assertEquals(1, viewModel.state.value.queue.currentIndex)
+
+            playback.emit(PlaybackUiState(connected = false, error = "controller disconnected"))
+            advanceUntilIdle()
+            assertEquals(1, viewModel.state.value.queue.currentIndex)
+            assertEquals(tracks[1].id, viewModel.state.value.queue.current?.track?.id)
+
+            playback.emit(
+                PlaybackUiState(
+                    connected = true,
+                    mediaId = secondMediaId,
+                    positionMillis = 900,
+                    durationMillis = 5_000,
+                    isPlaying = false,
+                ),
+            )
+            advanceUntilIdle()
+
+            assertEquals(1, viewModel.state.value.queue.currentIndex)
+            assertEquals(false, viewModel.state.value.playback.isPlaying)
+            var stored = container.preferences.loadQueue()
+            for (attempt in 0 until 200) {
+                if (stored.currentIndex == 1) break
+                advanceUntilIdle()
+                Thread.sleep(10)
+                stored = container.preferences.loadQueue()
+            }
+            assertEquals(1, stored.currentIndex)
+        }
+    }
+
+    @Test
+    fun playerTimelineCompactionConvergesUiAndPersistedQueueAfterTerminalOmission() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val playback = FakePlaybackController()
+        val container = AppContainer(
+            context.applicationContext as Application,
+            applicationScope = this,
+            disconnectedSource = GeneratedTestAudioSource(context),
+        )
+        val source = container.sources.current.value
+        val folder = source.list(source.root.id)
+            .filterIsInstance<AudioFolder>()
+            .first { it.name == "Numbered tracks" }
+        val tracks = source.list(folder.id).filterIsInstance<AudioTrack>().take(3)
+        container.preferences.saveQueue(PlaybackQueue(entries = tracks.map(::QueueEntry), currentIndex = 0))
+
+        withViewModel(container, playback) { viewModel ->
+            for (attempt in 0 until 200) {
+                advanceUntilIdle()
+                if (viewModel.state.value.queue.entries.size == 3) break
+                Thread.sleep(10)
+            }
+            val good = tracks[1]
+            val later = tracks[2]
+            val goodId = MediaIdentity.encode(good.sourceId, good.id)
+            val laterId = MediaIdentity.encode(later.sourceId, later.id)
+            playback.emit(
+                PlaybackUiState(
+                    connected = true,
+                    mediaId = goodId,
+                    timelineMediaIds = listOf(goodId, laterId),
+                    positionMillis = 250,
+                    durationMillis = 5_000,
+                    isPlaying = true,
+                ),
+            )
+            advanceUntilIdle()
+
+            assertEquals(listOf(good.id, later.id), viewModel.state.value.queue.entries.map { it.track.id })
+            assertEquals(0, viewModel.state.value.queue.currentIndex)
+            var stored = container.preferences.loadQueue()
+            for (attempt in 0 until 200) {
+                if (stored.entries.size == 2 && stored.currentIndex == 0) break
+                advanceUntilIdle()
+                Thread.sleep(10)
+                stored = container.preferences.loadQueue()
+            }
+            assertEquals(listOf(good.id, later.id), stored.entries.map { it.nodeId })
+            assertEquals(0, stored.currentIndex)
+        }
+    }
+
+    @Test
     fun queueRestorationInstallsStoredProgressWithoutTransientZeroPosition() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val playback = FakePlaybackController()
-        val container = AppContainer(context.applicationContext as Application, applicationScope = this)
+        val container = AppContainer(
+            context.applicationContext as Application,
+            applicationScope = this,
+            disconnectedSource = GeneratedTestAudioSource(context),
+        )
         val source = container.sources.current.value
         val folder = source.list(source.root.id)
             .filterIsInstance<AudioFolder>()
@@ -184,7 +315,11 @@ class MainViewModelTest {
     fun partialQueueRestorationPreservesSelectedStableItemAndRewritesStorage() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val playback = FakePlaybackController()
-        val container = AppContainer(context.applicationContext as Application, applicationScope = this)
+        val container = AppContainer(
+            context.applicationContext as Application,
+            applicationScope = this,
+            disconnectedSource = GeneratedTestAudioSource(context),
+        )
         val source = container.sources.current.value
         val folder = source.list(source.root.id)
             .filterIsInstance<AudioFolder>()
@@ -229,7 +364,11 @@ class MainViewModelTest {
     fun playbackControllerFailureBecomesActionableUiMessage() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val playback = FakePlaybackController()
-        val container = AppContainer(context.applicationContext as Application, applicationScope = this)
+        val container = AppContainer(
+            context.applicationContext as Application,
+            applicationScope = this,
+            disconnectedSource = GeneratedTestAudioSource(context),
+        )
         withViewModel(container, playback) { viewModel ->
             advanceUntilIdle()
 
@@ -247,7 +386,11 @@ class MainViewModelTest {
     fun lifecycleFlushPersistsLatestSubThresholdPosition() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val playback = FakePlaybackController()
-        val container = AppContainer(context.applicationContext as Application, applicationScope = this)
+        val container = AppContainer(
+            context.applicationContext as Application,
+            applicationScope = this,
+            disconnectedSource = GeneratedTestAudioSource(context),
+        )
         withViewModel(container, playback) { viewModel ->
             advanceUntilIdle()
             val source = container.sources.current.value
@@ -294,7 +437,11 @@ class MainViewModelTest {
     fun staleStoredQueueIsClearedAndReported() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val playback = FakePlaybackController()
-        val container = AppContainer(context.applicationContext as Application, applicationScope = this)
+        val container = AppContainer(
+            context.applicationContext as Application,
+            applicationScope = this,
+            disconnectedSource = GeneratedTestAudioSource(context),
+        )
         val missingTrack = AudioTrack(
             sourceId = SourceId("missing-source"),
             id = NodeId("missing-track"),

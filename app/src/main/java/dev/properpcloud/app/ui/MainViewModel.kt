@@ -39,6 +39,7 @@ import dev.properpcloud.core.model.PlayerRepeatMode
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.QueueRestoration
+import dev.properpcloud.core.model.QueueTimelineReconciliation
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.QueueReducer
 import dev.properpcloud.core.model.ResumePolicy
@@ -101,8 +102,8 @@ class MainViewModel(
             val selected = when (settings.sourceKind) {
                 SourceKind.PCLOUD -> SourceKind.PCLOUD.takeIf { container.sources.hasPCloudSession() }
                 SourceKind.SERVER -> SourceKind.SERVER.takeIf { container.sources.hasServerSession() }
-                SourceKind.DEMO -> SourceKind.DEMO
-            } ?: SourceKind.DEMO
+                SourceKind.NONE -> SourceKind.NONE
+            } ?: SourceKind.NONE
             container.sources.select(selected)
             val serverSession = container.serverCatalogVault.read()
             _state.value = _state.value.copy(
@@ -125,7 +126,11 @@ class MainViewModel(
                 if (previous.playback.mediaId != null && previous.playback.mediaId != playback.mediaId) {
                     persistPlaybackProgress(previous.queue, previous.playback, force = true, scope = container.applicationScope)
                 }
-                val queue = synchronizeQueueSelection(previous.queue, playback.mediaId)
+                val queue = synchronizeQueueSelection(
+                    previous.queue,
+                    playback.mediaId,
+                    playback.timelineMediaIds,
+                )
                 val queueChanged = queue != previous.queue
                 val newError = playback.error?.takeIf { it != lastPlaybackError }
                 lastPlaybackError = playback.error
@@ -227,9 +232,10 @@ class MainViewModel(
             commitQueue(PlaybackQueue(generation = _state.value.queue.generation + 1))
         }
         container.sources.disconnectServerLocally()
+        val fallbackKind = container.sources.currentKind()
         _state.value = _state.value.copy(
-            sourceKind = SourceKind.DEMO,
-            sourceName = "Demo library",
+            sourceKind = fallbackKind,
+            sourceName = container.sources.current.value.root.name,
             serverConnected = false,
             serverConnectInProgress = false,
             serverBaseUrl = "",
@@ -240,7 +246,7 @@ class MainViewModel(
             },
         )
         viewModelScope.launch {
-            container.preferences.updateSource(SourceKind.DEMO)
+            container.preferences.updateSource(fallbackKind)
             openRoot()
         }
     }
@@ -1099,15 +1105,6 @@ class MainViewModel(
         viewModelScope.launch { container.preferences.updateClientId(value) }
     }
 
-    fun useDemoSource() {
-        container.sources.select(SourceKind.DEMO)
-        _state.value = _state.value.copy(sourceKind = SourceKind.DEMO, sourceName = "Demo library")
-        viewModelScope.launch {
-            container.preferences.updateSource(SourceKind.DEMO)
-            openRoot()
-        }
-    }
-
     fun usePCloudSource() {
         if (!container.sources.select(SourceKind.PCLOUD)) {
             _state.value = _state.value.copy(message = "Connect pCloud in Settings first.")
@@ -1216,9 +1213,10 @@ class MainViewModel(
             commitQueue(clearedQueue)
         }
         val session = container.sources.disconnectPCloudLocally()
+        val fallbackKind = container.sources.currentKind()
         _state.value = _state.value.copy(
-            sourceKind = SourceKind.DEMO,
-            sourceName = "Demo library",
+            sourceKind = fallbackKind,
+            sourceName = container.sources.current.value.root.name,
             pCloudConnected = false,
             message = if (hadPCloudQueue) {
                 "pCloud session and active cloud queue removed. Revoking provider access…"
@@ -1227,7 +1225,7 @@ class MainViewModel(
             },
         )
         viewModelScope.launch {
-            container.preferences.updateSource(SourceKind.DEMO)
+            container.preferences.updateSource(fallbackKind)
             openRoot()
             val revocation = session?.let { container.pCloudSessionRevoker.revoke(it) }
             _state.value = _state.value.copy(
@@ -1342,7 +1340,7 @@ class MainViewModel(
                     current.audioTabs
                 }
                 _state.value = current.copy(
-                    sourceKind = SourceKind.entries.firstOrNull { it.id == result.source.id.value } ?: SourceKind.DEMO,
+                    sourceKind = SourceKind.entries.firstOrNull { it.id == result.source.id.value } ?: SourceKind.NONE,
                     sourceName = result.source.root.name,
                     currentFolder = folder,
                     breadcrumbs = result.breadcrumbs,
@@ -1595,12 +1593,11 @@ class MainViewModel(
         return nodes
     }
 
-    private fun synchronizeQueueSelection(queue: PlaybackQueue, mediaId: String?): PlaybackQueue {
-        if (mediaId == null) return queue
-        val (sourceId, nodeId) = runCatching { MediaIdentity.decode(mediaId) }.getOrNull() ?: return queue
-        val index = queue.entries.indexOfFirst { it.track.sourceId == sourceId && it.track.id == nodeId }
-        return if (index >= 0 && index != queue.currentIndex) queue.copy(currentIndex = index) else queue
-    }
+    private fun synchronizeQueueSelection(
+        queue: PlaybackQueue,
+        mediaId: String?,
+        timelineMediaIds: List<String>,
+    ): PlaybackQueue = QueueTimelineReconciliation.reconcile(queue, timelineMediaIds, mediaId)
 
     fun flushPlaybackProgress(): Job? {
         val current = _state.value

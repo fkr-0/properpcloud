@@ -120,7 +120,7 @@ class MainActivity : ComponentActivity() {
                     openPCloudDeveloperConsole = ::openPCloudDeveloperConsole,
                     selectSource = { kind ->
                         when (kind) {
-                            SourceKind.DEMO -> viewModel.useDemoSource()
+                            SourceKind.NONE -> Unit
                             SourceKind.PCLOUD -> viewModel.usePCloudSource()
                             SourceKind.SERVER -> viewModel.useServerSource()
                         }

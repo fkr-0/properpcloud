@@ -20,28 +20,28 @@ import java.security.MessageDigest
 import kotlin.math.PI
 import kotlin.math.sin
 
-class DemoAudioSource(context: Context) : AudioSource, MetadataContentSource {
-    override val id = SourceId("demo")
-    override val root = AudioFolder(id, NodeId("demo:folder:root"), null, "Demo library")
+class GeneratedTestAudioSource(context: Context) : AudioSource, MetadataContentSource {
+    override val id = SourceId(SourceKind.NONE.id)
+    override val root = AudioFolder(id, NodeId("test:folder:root"), null, "Generated test library")
 
-    private val toneStore = DemoToneStore(context.applicationContext)
-    private val audiobooks = AudioFolder(id, NodeId("demo:folder:audiobooks"), root.id, "Audiobooks")
-    private val cityBook = AudioFolder(id, NodeId("demo:folder:city-book"), audiobooks.id, "The Badger and the City")
-    private val fieldNotes = AudioFolder(id, NodeId("demo:folder:field-notes"), root.id, "Field recordings")
-    private val music = AudioFolder(id, NodeId("demo:folder:music"), root.id, "Numbered tracks")
+    private val toneStore = GeneratedTestToneStore(context.applicationContext)
+    private val audiobooks = AudioFolder(id, NodeId("test:folder:audiobooks"), root.id, "Audiobooks")
+    private val cityBook = AudioFolder(id, NodeId("test:folder:city-book"), audiobooks.id, "The Badger and the City")
+    private val fieldNotes = AudioFolder(id, NodeId("test:folder:field-notes"), root.id, "Field recordings")
+    private val music = AudioFolder(id, NodeId("test:folder:music"), root.id, "Numbered tracks")
     private val playlist = LibraryFile(
         id,
-        NodeId("demo:file:summer-playlist"),
+        NodeId("test:file:summer-playlist"),
         music.id,
-        "Summer demo set.m3u8",
+        "Summer test set.m3u8",
         contentType = "audio/x-mpegurl",
         sizeBytes = 96,
     )
     private val notes = LibraryFile(
         id,
-        NodeId("demo:file:notes"),
+        NodeId("test:file:notes"),
         music.id,
-        "Summer demo notes.txt",
+        "Summer test notes.txt",
         contentType = "text/plain",
         sizeBytes = 64,
     )
@@ -99,7 +99,7 @@ class DemoAudioSource(context: Context) : AudioSource, MetadataContentSource {
 
     override suspend fun list(folderId: NodeId): List<MediaNode> = children[folderId].orEmpty()
 
-    override suspend fun load(nodeId: NodeId): MediaNode = requireNotNull(nodes[nodeId]) { "unknown demo node" }
+    override suspend fun load(nodeId: NodeId): MediaNode = requireNotNull(nodes[nodeId]) { "unknown test node" }
 
     override suspend fun resolveStream(trackId: NodeId): StreamHandle {
         val track = load(trackId) as? AudioTrack ?: error("track required")
@@ -113,7 +113,7 @@ class DemoAudioSource(context: Context) : AudioSource, MetadataContentSource {
         val node = load(nodeId)
         return NodeInspection(
             linkedMapOf(
-                "provider" to "Built-in deterministic demo",
+                "provider" to "Generated deterministic test fixture",
                 "sourceId" to node.sourceId.value,
                 "nodeId" to node.id.value,
                 "parentId" to node.parentId?.value.orEmpty(),
@@ -137,7 +137,7 @@ class DemoAudioSource(context: Context) : AudioSource, MetadataContentSource {
         frequency: Int,
     ) = AudioTrack(
         sourceId = id,
-        id = NodeId("demo:track:${frequency}:${durationMillis}"),
+        id = NodeId("test:track:${frequency}:${durationMillis}"),
         parentId = folder.id,
         name = name,
         contentType = "audio/wav",
@@ -161,8 +161,8 @@ private fun File.sha256(): String {
     return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
-private class DemoToneStore(context: Context) {
-    private val directory = File(context.filesDir, "demo-media").apply { mkdirs() }
+private class GeneratedTestToneStore(context: Context) {
+    private val directory = File(context.filesDir, "generated-test-media").apply { mkdirs() }
 
     fun fileFor(track: AudioTrack): File {
         val file = File(directory, track.id.value.replace(':', '_') + ".wav")
