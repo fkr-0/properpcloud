@@ -171,7 +171,13 @@ testing:
           inject: first stable-node resolution returns 403 capability and the next returns playable 200 capability
           expect: [fresh resolve by stable identity, queue/current item unchanged, intended position preserved, playback bytes reachable, no URL in identity/persistence]
         TEST-PLAY-EXPLICIT-RECOVERY:
-          expect: [explicit Play after eligible terminal HTTP/network error rebuilds URI-less item, permanent 422/decoder failure remains surfaced]
+          expect: [explicit Play after eligible terminal HTTP/network error rebuilds URI-less item, terminal failure on the final queue item remains surfaced]
+        TEST-PLAY-RESOLUTION-CLASSIFICATION:
+          expect: [provider-proven item-unavailable resolution can omit only that item, transient source/network/auth/capability resolution failure aborts without queue omission, all-terminal resolution ends boundedly]
+        TEST-PLAY-SKIP-UNPLAYABLE:
+          expect: [bad then good remains playable, good then bad then good advances correctly, consecutive bad entries advance monotonically, all-bad queue performs at most item-count-minus-one skips, missing 404 or 410 item advances after refresh budget is exhausted, final failed item surfaces instead of repeat-wraparound, transient network failure does not cascade through later queue items]
+        TEST-PLAY-MANUAL-RECOVERY:
+          expect: [manual next, previous, or queue selection after player error re-prepares before play, later valid media remains playable without clearing application state]
         TEST-SIGNED-LINK-RETRY-GATE:
           expect: [one immediate retry, no loop inside cooldown, later retry allowed]
         TEST-PLAY-RANGE:
@@ -179,7 +185,7 @@ testing:
         TEST-PLAY-AUDIO-FOCUS:
           scenarios: [transient_loss, duck, permanent_loss, headset_disconnect]
         TEST-PLAY-PROCESS-RECREATE:
-          expect: UI reconnects and authoritative queue remains
+          expect: [UI reconnects and authoritative queue remains, player-confirmed stable current item survives controller disconnect/rebind, restore remains paused until explicit play]
         TEST-PLAYER-DESTINATION:
           expect: mini-player opens dedicated now-playing without changing queue or playback
         TEST-PLAYER-SEEK:
@@ -272,7 +278,7 @@ testing:
         TEST-METADATA-EDITOR-UI:
           expect: original value, provenance, editable field, selection bar, and stage action are accessible
         TEST-METADATA-EXPORT:
-          fixture: deterministic demo WAV files
+          fixture: deterministic generated WAV files from the Android test source set
           expect: source copies remain unchanged and verified audio or ZIP plus CSV manifest is produced
     folder_tag_workbench:
       cases:

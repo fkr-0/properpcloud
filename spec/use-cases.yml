@@ -307,11 +307,21 @@ use_cases:
             - rebuild the platform item without the failed direct URI
             - resolve a fresh capability through AudioSource and prepare again
           permanent_failures: HTTP client/media failures outside the retriable policy remain visible and are not refreshed in a loop
+        stream_resolution_failure:
+          item_unavailable:
+            - omit or advance past only the stable item the source explicitly proves unavailable
+            - move forward monotonically without repeat wraparound
+            - if no eligible item remains, surface the failure and stop retrying automatically
+          transient:
+            - preserve every stable queue entry and current selection
+            - surface or retry in place; never convert source/network/auth/capability outage into destructive queue omission
         transient_network:
           result: Bounded backoff with visible retry and cancel.
         unsupported_decoder:
-          result: Fail item, preserve queue, offer inspect, download, external-open, or skip.
-      tests: [TEST-PLAY-REMOTE, TEST-PLAY-LINK-EXPIRY, TEST-PLAY-LOCAL-HTTP-RECOVERY, TEST-PLAY-EXPLICIT-RECOVERY, TEST-SIGNED-LINK-RETRY-GATE, TEST-PLAY-RANGE]
+          result: Fail item and advance to a distinct next eligible queue entry when present; otherwise surface the terminal item without looping.
+        controller_or_service_rebind:
+          result: Preserve the last player-confirmed stable queue selection and restore paused state/position without autoplay.
+      tests: [TEST-PLAY-REMOTE, TEST-PLAY-LINK-EXPIRY, TEST-PLAY-LOCAL-HTTP-RECOVERY, TEST-PLAY-EXPLICIT-RECOVERY, TEST-PLAY-RESOLUTION-CLASSIFICATION, TEST-PLAY-SKIP-UNPLAYABLE, TEST-PLAY-MANUAL-RECOVERY, TEST-SIGNED-LINK-RETRY-GATE, TEST-PLAY-PROCESS-RECREATE, TEST-PLAY-RANGE]
     UC-SAVE-PROGRESS:
       traces: [REQ-PROGRESS]
       title: Persist and restore long-form position
@@ -455,7 +465,7 @@ use_cases:
         - app: Stop provider requests and block new stream resolution.
         - app: Stop provider playback immediately while retaining non-secret stable tab/queue references for an explicit later reconnect.
         - app: Invalidate local credential handle immediately.
-        - app: Remove the provider source and switch to demo before any network request.
+        - app: Remove the provider source and switch to another already-connected library or the explicit disconnected state before any network request.
         - app: Attempt regional provider-side revocation using an HTTPS bearer header.
         - app: Report confirmed, already inactive, or unconfirmed remote invalidation separately.
         - user: Choose whether non-secret snapshots and offline files are retained.

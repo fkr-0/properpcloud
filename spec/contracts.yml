@@ -486,7 +486,8 @@ contracts:
         retriable_http_statuses: [401, 403, 404, 408, 410, 425, 429, 5xx]
         retriable_network: [connection_failed, connection_timeout]
         rule: invalidate only ephemeral stream location, keep queue/current/position stable, re-resolve from source/node identity under bounded retry
-        permanent: surface without automatic or explicit capability-refresh loop
+        permanent: skip an item-specific unplayable entry when a distinct next queue item exists; otherwise surface without an automatic capability-refresh loop
+        transient_network: surface or retry in place; never cascade-skip later queue items merely because connectivity is unavailable
     SavePlaybackProgress:
       input: stable media ID, revision, position, duration, speed, trigger, observation time
       output: stored record and completion transition

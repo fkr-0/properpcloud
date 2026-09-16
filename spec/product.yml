@@ -265,7 +265,9 @@ product:
         - Support seeking and HTTP ranges when provider and format permit.
         - Refresh a link after an eligible expiry, authorization, transient HTTP, or network transport response.
         - Explicit Play after an eligible terminal transport failure rebuilds the selected item from stable source/node identity so a failed direct URL is never blindly replayed.
-        - Permanent HTTP client failures and decoder/media failures remain surfaced rather than entering a capability-refresh loop.
+        - Stream resolution classifies provider failures source-neutrally: only a proven item-unavailable stable identity may be omitted or skipped; source, network, authentication, and temporary capability failures preserve the queue and remain retryable.
+        - Item-scoped HTTP client failures and decoder/media failures advance monotonically to a distinct next eligible entry when one exists, otherwise surface and end cleanly without wraparound or a capability-refresh loop.
+        - Manual next, previous, selection, or explicit retry after a player error re-prepares from stable identity so one bad item cannot permanently poison later valid playback.
         - Preserve queue and last confirmed position across reconnects and process death.
         - Integrate with OS media controls, audio focus, headphones, and foreground execution.
       retry_policy:
@@ -353,7 +355,7 @@ product:
             - display title
             - active sort values
             - active filename or tagged-title display choice
-            - source and generated-demo provenance
+            - source and test-fixture provenance when applicable
       constraints:
         - Inspection is read-only.
         - Raw values remain available.
@@ -363,7 +365,7 @@ product:
       release: v0_1_5
       title: Honest degraded operation
       behaviors:
-        - Provide a complete playable local demo while offline.
+        - Android without a connected library shows an explicit disconnected state and never fabricates playable media; credential-free generated media remains test-only.
         - Preserve durable queue/progress references through process death.
         - Distinguish auth, network, provider, media, and storage failures.
         - Preserve queue and progress through process death.
