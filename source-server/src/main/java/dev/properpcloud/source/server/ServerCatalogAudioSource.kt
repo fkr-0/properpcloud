@@ -12,9 +12,13 @@ import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.NodeInspection
 import dev.properpcloud.core.model.SourceId
 import dev.properpcloud.core.model.StreamHandle
+import dev.properpcloud.core.model.StreamResolutionException
+import dev.properpcloud.core.model.StreamResolutionFailureKind
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
@@ -39,6 +43,37 @@ data class ServerCatalogSession(
     private companion object {
         val loopbackHosts = setOf("localhost", "127.0.0.1", "::1")
     }
+}
+
+internal class ServerCatalogHttpException(
+    val statusCode: Int,
+) : IOException("server catalog request failed with HTTP $statusCode")
+
+internal fun classifyServerStreamResolutionFailure(error: Exception): StreamResolutionException = when (error) {
+    is StreamResolutionException -> error
+    is ServerCatalogHttpException -> StreamResolutionException(
+        kind = if (error.statusCode in setOf(404, 410)) {
+            StreamResolutionFailureKind.ITEM_UNAVAILABLE
+        } else {
+            StreamResolutionFailureKind.TRANSIENT
+        },
+        message = if (error.statusCode in setOf(404, 410)) {
+            "server catalog media item is unavailable"
+        } else {
+            "server catalog stream capability is temporarily unavailable"
+        },
+        cause = error,
+    )
+    is IOException -> StreamResolutionException(
+        StreamResolutionFailureKind.TRANSIENT,
+        "server catalog stream capability is temporarily unavailable",
+        error,
+    )
+    else -> StreamResolutionException(
+        StreamResolutionFailureKind.TRANSIENT,
+        "server catalog stream capability could not be resolved",
+        error,
+    )
 }
 
 class ServerCatalogAudioSource(
@@ -66,12 +101,17 @@ class ServerCatalogAudioSource(
     }
 
     override suspend fun resolveStream(trackId: NodeId): StreamHandle = withContext(Dispatchers.IO) {
-        val json = requestJson("/api/v1/library/stream-link?id=${encode(trackId.value)}", method = "POST")
-        StreamHandle(
-            url = json.get("url").asString,
-            expiresAtEpochMillis = json.get("expiresAtEpochMillis")?.takeUnless { it.isJsonNull }?.asLong,
-            contentType = json.get("contentType")?.takeUnless { it.isJsonNull }?.asString,
-        )
+        try {
+            val json = requestJson("/api/v1/library/stream-link?id=${encode(trackId.value)}", method = "POST")
+            StreamHandle(
+                url = json.get("url").asString,
+                expiresAtEpochMillis = json.get("expiresAtEpochMillis")?.takeUnless { it.isJsonNull }?.asLong,
+                contentType = json.get("contentType")?.takeUnless { it.isJsonNull }?.asString,
+            )
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            throw classifyServerStreamResolutionFailure(error)
+        }
     }
 
     override suspend fun inspect(nodeId: NodeId): NodeInspection = withContext(Dispatchers.IO) {
@@ -103,7 +143,7 @@ class ServerCatalogAudioSource(
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
             val body = stream?.use(::readBoundedUtf8).orEmpty()
-            require(status in 200..299) { "server catalog request failed with HTTP $status" }
+            if (status !in 200..299) throw ServerCatalogHttpException(status)
             return JsonParser.parseString(body).asJsonObject
         } finally {
             connection.disconnect()

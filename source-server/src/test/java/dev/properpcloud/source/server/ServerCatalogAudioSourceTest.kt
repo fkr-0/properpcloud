@@ -5,6 +5,8 @@ import com.sun.net.httpserver.HttpServer
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.NodeId
+import dev.properpcloud.core.model.StreamResolutionException
+import dev.properpcloud.core.model.StreamResolutionFailureKind
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -12,6 +14,46 @@ import org.junit.Test
 import java.net.InetSocketAddress
 
 class ServerCatalogAudioSourceTest {
+    @Test
+    fun `missing catalog item is terminal while auth and server failures remain transient`() = runTest {
+        assertEquals(
+            StreamResolutionFailureKind.ITEM_UNAVAILABLE,
+            classifyServerStreamResolutionFailure(ServerCatalogHttpException(404)).kind,
+        )
+        assertEquals(
+            StreamResolutionFailureKind.ITEM_UNAVAILABLE,
+            classifyServerStreamResolutionFailure(ServerCatalogHttpException(410)).kind,
+        )
+        assertEquals(
+            StreamResolutionFailureKind.TRANSIENT,
+            classifyServerStreamResolutionFailure(ServerCatalogHttpException(401)).kind,
+        )
+        assertEquals(
+            StreamResolutionFailureKind.TRANSIENT,
+            classifyServerStreamResolutionFailure(ServerCatalogHttpException(503)).kind,
+        )
+    }
+
+    @Test
+    fun `stream endpoint 404 is exposed as item unavailable`() = runTest {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            val bytes = "missing".toByteArray(Charsets.UTF_8)
+            exchange.sendResponseHeaders(404, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            val source = ServerCatalogAudioSource(ServerCatalogSession("http://127.0.0.1:${server.address.port}"))
+            val failure = runCatching { source.resolveStream(NodeId("catalog:pcloud:file:404")) }.exceptionOrNull()
+
+            assertTrue(failure is StreamResolutionException)
+            assertEquals(StreamResolutionFailureKind.ITEM_UNAVAILABLE, (failure as StreamResolutionException).kind)
+        } finally {
+            server.stop(0)
+        }
+    }
+
     @Test
     fun `browse load and stream resolution preserve stable catalog identity`() = runTest {
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
