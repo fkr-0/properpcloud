@@ -31,7 +31,8 @@ oauth-config-check: ## Validate public OAuth configuration without reading or ex
 	@python3 scripts/validate-pcloud-client-id.py
 
 oauth-config-test: ## Run host-side configuration and packaging boundary regression tests.
-	@python3 -m unittest discover -s tests -p 'test_*.py'
+	@# test_music_ingest.py is pytest-only; unittest discovery imports it but cannot execute its function tests.
+	@python3 -m unittest $$(find tests -maxdepth 1 -type f -name 'test_*.py' ! -name 'test_music_ingest.py' -print | sort | sed 's#/#.#g; s#\.py$$##')
 
 media-library-test: ## Run the catalog/import/media-library regression suite without touching pCloud.
 	@python3 -m unittest discover -s tests -p 'test_media_library.py'
