@@ -574,8 +574,12 @@ private fun LibraryScreen(state: AppUiState, actions: AppActions, expanded: Bool
             }
         }
         Breadcrumbs(state, actions)
-        if (state.directoryBookmarks.isNotEmpty()) DirectoryBookmarks(state.directoryBookmarks, actions)
-        if (!expanded && state.queue.entries.isNotEmpty()) CompactQueueLauncher(state, actions)
+        if (expanded && state.directoryBookmarks.isNotEmpty()) {
+            DirectoryBookmarks(state.directoryBookmarks, actions)
+        }
+        if (!expanded && (state.queue.entries.isNotEmpty() || state.directoryBookmarks.isNotEmpty())) {
+            CompactLibraryShortcuts(state, actions)
+        }
         if (expanded) {
             Row(Modifier.fillMaxSize()) {
                 FolderContent(state, actions, Modifier.weight(1.2f))
@@ -642,29 +646,45 @@ private fun Breadcrumbs(state: AppUiState, actions: AppActions) {
 }
 
 @Composable
-private fun CompactQueueLauncher(state: AppUiState, actions: AppActions) {
-    Surface(
-        tonalElevation = 2.dp,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+private fun CompactLibraryShortcuts(state: AppUiState, actions: AppActions) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null)
-            Column(Modifier.weight(1f)) {
-                Text("Queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "${state.queue.entries.size} item${if (state.queue.entries.size == 1) "" else "s"}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Button(
+        if (state.queue.entries.isNotEmpty()) {
+            AssistChip(
                 onClick = { actions.selectDestination(AppDestination.QUEUE) },
+                label = {
+                    Text(
+                        "Queue · ${state.queue.entries.size}",
+                        maxLines = 1,
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        Icons.AutoMirrored.Filled.QueueMusic,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
                 modifier = Modifier.testTag("open-queue"),
-            ) { Text("Open queue") }
+            )
+        }
+        state.directoryBookmarks.forEach { bookmark ->
+            AssistChip(
+                onClick = { actions.openDirectoryBookmark(bookmark) },
+                label = { Text(bookmark.name, maxLines = 1) },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Bookmark,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                },
+            )
         }
     }
 }

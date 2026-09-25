@@ -588,7 +588,8 @@ class ProperpcloudAppTest {
 
         compose.onNodeWithTag("players-screen").assertIsDisplayed()
         compose.onNodeWithText("ProperPCloud local player").assertIsDisplayed()
-        compose.onNodeWithText("Living room").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("players-list").performScrollToNode(hasText("Living room"))
+        compose.onNodeWithText("Living room").assertIsDisplayed()
         compose.onNodeWithText("Server • Unavailable • stale").assertIsDisplayed()
         compose.onNodeWithText("Controls unavailable while this target is offline.").assertIsDisplayed()
     }

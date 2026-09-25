@@ -53,7 +53,7 @@ fun PlayersScreen(state: AppUiState, actions: AppActions) {
             return@Column
         }
         LazyColumn(
-            Modifier.fillMaxSize().padding(horizontal = 16.dp),
+            Modifier.fillMaxSize().padding(horizontal = 16.dp).testTag("players-list"),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item {
