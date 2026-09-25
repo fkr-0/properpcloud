@@ -84,7 +84,7 @@ class AppPreferencesRepositoryTest {
         assertEquals(PlaybackContentMode.AUDIOBOOK, audiobook.contentMode)
         assertEquals(10_000, audiobook.audiobookSkipBackMillis)
         assertEquals(60_000, audiobook.audiobookSkipForwardMillis)
-        assertEquals(987_654_321, audiobook.sleepTimerEndsAtEpochMillis)
+        assertEquals(987_654_321L, audiobook.sleepTimerEndsAtEpochMillis)
         assertEquals(NodeId("folder:44"), audiobook.activeAudiobookBookId?.bookNodeId)
         assertEquals(NodeId("file:9001"), restored.audiobookResumes.single().chapterNodeId)
         assertEquals(1.5f, restored.audiobookResumes.single().playbackSpeed)

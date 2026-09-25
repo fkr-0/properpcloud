@@ -108,7 +108,8 @@ class ProperpcloudAppTest {
 
         compose.onNodeWithText("Dub crates").performClick()
         assertEquals(state.directoryBookmarks.single(), opened)
-        compose.onNodeWithTag("open-queue").performClick()
+        compose.onNodeWithTag("open-queue").assertIsDisplayed().performClick()
+        compose.waitForIdle()
         assertEquals(AppDestination.QUEUE, destination)
     }
 
@@ -587,7 +588,7 @@ class ProperpcloudAppTest {
 
         compose.onNodeWithTag("players-screen").assertIsDisplayed()
         compose.onNodeWithText("ProperPCloud local player").assertIsDisplayed()
-        compose.onNodeWithText("Living room").assertIsDisplayed()
+        compose.onNodeWithText("Living room").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Server • Unavailable • stale").assertIsDisplayed()
         compose.onNodeWithText("Controls unavailable while this target is offline.").assertIsDisplayed()
     }
