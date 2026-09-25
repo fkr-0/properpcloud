@@ -49,20 +49,35 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.properpcloud.core.model.PlaybackContentMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NowPlayingScreen(state: AppUiState, actions: AppActions) {
     val current = state.queue.current?.track
+    val tab = state.audioTabs.active
+    val audiobookMode = tab.definition.contentMode == PlaybackContentMode.AUDIOBOOK
+    // These UI preferences are saveable so a user-selected interval survives Activity
+    // recreation and Android saved-state process restoration. The persisted tab values remain
+    // the cold-start defaults and forward-compatible storage authority.
+    var audiobookBackSkipMillis by rememberSaveable {
+        mutableStateOf(tab.audiobookSkipBackMillis)
+    }
+    var audiobookForwardSkipMillis by rememberSaveable {
+        mutableStateOf(tab.audiobookSkipForwardMillis)
+    }
     Column(Modifier.fillMaxSize()) {
         CenterAlignedTopAppBar(
             title = { Text("Now playing") },
@@ -153,10 +168,17 @@ fun NowPlayingScreen(state: AppUiState, actions: AppActions) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = actions.skipPrevious, modifier = Modifier.size(52.dp)) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous")
+                    Icon(
+                        Icons.Default.SkipPrevious,
+                        contentDescription = if (audiobookMode) "Previous chapter or restart chapter" else "Previous",
+                    )
                 }
-                IconButton(onClick = { actions.seekBy(-30_000) }, modifier = Modifier.size(52.dp)) {
-                    Icon(Icons.Default.FastRewind, contentDescription = "Rewind 30 seconds")
+                val backSkip = if (audiobookMode) audiobookBackSkipMillis else 30_000L
+                IconButton(onClick = { actions.seekBy(-backSkip) }, modifier = Modifier.size(52.dp)) {
+                    Icon(
+                        Icons.Default.FastRewind,
+                        contentDescription = "Rewind ${backSkip / 1_000} seconds",
+                    )
                 }
                 FilledIconButton(onClick = actions.playPause, modifier = Modifier.size(72.dp)) {
                     Icon(
@@ -165,15 +187,31 @@ fun NowPlayingScreen(state: AppUiState, actions: AppActions) {
                         modifier = Modifier.size(38.dp),
                     )
                 }
-                IconButton(onClick = { actions.seekBy(30_000) }, modifier = Modifier.size(52.dp)) {
-                    Icon(Icons.Default.FastForward, contentDescription = "Forward 30 seconds")
+                val forwardSkip = if (audiobookMode) audiobookForwardSkipMillis else 30_000L
+                IconButton(onClick = { actions.seekBy(forwardSkip) }, modifier = Modifier.size(52.dp)) {
+                    Icon(
+                        Icons.Default.FastForward,
+                        contentDescription = "Forward ${forwardSkip / 1_000} seconds",
+                    )
                 }
                 IconButton(onClick = actions.skipNext, modifier = Modifier.size(52.dp)) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "Next")
+                    Icon(
+                        Icons.Default.SkipNext,
+                        contentDescription = if (audiobookMode) "Next chapter" else "Next",
+                    )
                 }
             }
             Spacer(Modifier.height(24.dp))
-            PlaybackOptionsCard(state, actions)
+            PlaybackContextCard(state)
+            Spacer(Modifier.height(12.dp))
+            PlaybackOptionsCard(
+                state = state,
+                actions = actions,
+                audiobookBackSkipMillis = audiobookBackSkipMillis,
+                audiobookForwardSkipMillis = audiobookForwardSkipMillis,
+                onAudiobookBackSkipChanged = { audiobookBackSkipMillis = it },
+                onAudiobookForwardSkipChanged = { audiobookForwardSkipMillis = it },
+            )
             Spacer(Modifier.height(12.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -245,8 +283,79 @@ private fun trimPlayerFloat(value: Float): String =
     if (value % 1f == 0f) value.toInt().toString() else value.toString().trimEnd('0').trimEnd('.')
 
 @Composable
-private fun PlaybackOptionsCard(state: AppUiState, actions: AppActions) {
+private fun PlaybackContextCard(state: AppUiState) {
     val tab = state.audioTabs.active
+    val player = state.players.firstOrNull { it.id == state.activePlayerId }
+    val current = state.queue.current?.track
+    val audiobookMode = tab.definition.contentMode == PlaybackContentMode.AUDIOBOOK
+    val timerText = state.sleepTimerEndsAtEpochMillis?.let { endsAt ->
+        val remaining = (endsAt - System.currentTimeMillis()).coerceAtLeast(0)
+        "active · about ${(remaining + 59_999) / 60_000} min remaining"
+    } ?: "off"
+    val summary = buildString {
+        append("Active player: ")
+        append(player?.displayName ?: "Local playback controller")
+        if (audiobookMode) {
+            append(". Audiobook mode. Book: ")
+            append(tab.activeAudiobookBookId?.bookNodeId?.value ?: "not identified")
+            append(". Chapter: ")
+            append(state.playback.title.ifBlank { current?.taggedTitle ?: current?.filenameStem ?: "none" })
+            append(". Speed ")
+            append(trimPlayerFloat(tab.playbackSpeed))
+            append(" times. Resume position ")
+            append(formatPlayerDuration(state.playback.positionMillis))
+            append(". Sleep timer ")
+            append(timerText)
+        }
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = summary }.testTag("playback-context"),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text("Playback context", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Active player · ${player?.displayName ?: "Local playback controller"}",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (audiobookMode) {
+                Text("Mode · Audiobook", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "Book · ${tab.activeAudiobookBookId?.bookNodeId?.value ?: "Not identified"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "Chapter · ${state.playback.title.ifBlank { current?.taggedTitle ?: current?.filenameStem ?: "None" }}",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "Resume · ${formatPlayerDuration(state.playback.positionMillis)} · ${trimPlayerFloat(tab.playbackSpeed)}×",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "Chapter end · ${if (tab.stopAtChapterEnd) "stop" else "continue"} · Sleep timer · $timerText",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaybackOptionsCard(
+    state: AppUiState,
+    actions: AppActions,
+    audiobookBackSkipMillis: Long,
+    audiobookForwardSkipMillis: Long,
+    onAudiobookBackSkipChanged: (Long) -> Unit,
+    onAudiobookForwardSkipChanged: (Long) -> Unit,
+) {
+    val tab = state.audioTabs.active
+    val audiobookMode = tab.definition.contentMode == PlaybackContentMode.AUDIOBOOK
     var sleepMenuOpen by remember { mutableStateOf(false) }
     var volume by remember(tab.definition.id, tab.volume) { mutableStateOf(tab.volume) }
     Card(
@@ -267,17 +376,58 @@ private fun PlaybackOptionsCard(state: AppUiState, actions: AppActions) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = tab.shuffle,
-                        onClick = actions.toggleShuffle,
-                        label = { Text("Shuffle") },
+                if (!audiobookMode) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = tab.shuffle,
+                            onClick = actions.toggleShuffle,
+                            label = { Text("Shuffle") },
+                        )
+                        FilterChip(
+                            selected = tab.repeatMode != dev.properpcloud.core.model.PlayerRepeatMode.OFF,
+                            onClick = actions.cycleRepeatMode,
+                            label = { Text("Repeat ${tab.repeatMode.name.lowercase()}") },
+                        )
+                    }
+                } else {
+                    Text(
+                        "Audiobook",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
                     )
-                    FilterChip(
-                        selected = tab.repeatMode != dev.properpcloud.core.model.PlayerRepeatMode.OFF,
-                        onClick = actions.cycleRepeatMode,
-                        label = { Text("Repeat ${tab.repeatMode.name.lowercase()}") },
-                    )
+                }
+            }
+            if (audiobookMode) {
+                Text(
+                    "Chapter-aware previous/next · music shuffle and repeat are disabled",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text("Back skip · ${audiobookBackSkipMillis / 1_000}s", style = MaterialTheme.typography.labelLarge)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf(10_000L, 15_000L, 30_000L, 60_000L).forEach { interval ->
+                        FilterChip(
+                            selected = audiobookBackSkipMillis == interval,
+                            onClick = { onAudiobookBackSkipChanged(interval) },
+                            label = { Text("${interval / 1_000}s") },
+                        )
+                    }
+                }
+                Text("Forward skip · ${audiobookForwardSkipMillis / 1_000}s", style = MaterialTheme.typography.labelLarge)
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    listOf(10_000L, 15_000L, 30_000L, 60_000L).forEach { interval ->
+                        FilterChip(
+                            selected = audiobookForwardSkipMillis == interval,
+                            onClick = { onAudiobookForwardSkipChanged(interval) },
+                            label = { Text("${interval / 1_000}s") },
+                        )
+                    }
                 }
             }
             Text("Speed · ${trimPlayerFloat(tab.playbackSpeed)}×", style = MaterialTheme.typography.labelLarge)

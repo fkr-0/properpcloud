@@ -14,13 +14,20 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.runtime.mutableStateOf
+import dev.properpcloud.app.data.DirectoryBookmark
 import dev.properpcloud.app.data.SourceKind
 import dev.properpcloud.app.metadata.BatchFieldDraft
 import dev.properpcloud.app.playback.PlaybackUiState
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.AudiobookBookId
+import dev.properpcloud.core.model.AudioTabReducer
 import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.PlaybackQueue
+import dev.properpcloud.core.model.PlayerConnectivity
+import dev.properpcloud.core.model.PlayerPlaybackState
+import dev.properpcloud.core.model.PlayerTargetId
+import dev.properpcloud.core.model.PlayerTargetSnapshot
 import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.SearchMatchType
@@ -54,6 +61,89 @@ class ProperpcloudAppTest {
         compose.onNodeWithTag("library-list").assertIsDisplayed()
         compose.onNodeWithTag("library-list").performScrollToNode(hasText("A Door in the Rain"))
         compose.onNodeWithText("A Door in the Rain").assertIsDisplayed()
+        compose.onNodeWithText("Folder").assertIsDisplayed()
+        compose.onNodeWithText("Folder · stable source identity").assertDoesNotExist()
+    }
+
+    @Test
+    fun playFolderPrimaryActionRecursesIntoSubdirectories() {
+        val state = sampleState()
+        var request: Triple<AudioFolder, QueueOperation, Boolean>? = null
+        compose.setContent {
+            ProperpcloudApp(
+                state = state,
+                actions = noOpActions().copy(
+                    enqueueFolder = { folder, operation, recursive ->
+                        request = Triple(folder, operation, recursive)
+                    },
+                ),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithText("Play folder").performClick()
+
+        assertEquals(state.currentFolder, request?.first)
+        assertEquals(QueueOperation.REPLACE, request?.second)
+        assertTrue(request?.third == true)
+    }
+
+    @Test
+    fun queuePreviewHasProminentOpenActionAndBookmarksAreActionable() {
+        val state = samplePlayingState().copy(
+            directoryBookmarks = listOf(DirectoryBookmark(SourceId("pcloud"), NodeId("folder"), "Dub crates")),
+        )
+        var destination: AppDestination? = null
+        var opened: DirectoryBookmark? = null
+        compose.setContent {
+            ProperpcloudApp(
+                state = state,
+                actions = noOpActions().copy(
+                    selectDestination = { destination = it },
+                    openDirectoryBookmark = { opened = it },
+                ),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithText("Dub crates").performClick()
+        assertEquals(state.directoryBookmarks.single(), opened)
+        compose.onNodeWithTag("open-queue").performClick()
+        assertEquals(AppDestination.QUEUE, destination)
+    }
+
+    @Test
+    fun bitrateInspectionFormattingUsesHumanReadableKbitPerSecond() {
+        assertEquals("128 kbit/s", formatMetadataValue("bitrateKbps", "128"))
+        assertEquals("320 kbit/s", formatMetadataValue("audio_bitrate", "320000"))
+        assertEquals("44100", formatMetadataValue("sampleRate", "44100"))
+    }
+
+    @Test
+    fun disconnectedLibraryShowsExplicitEmptyState() {
+        compose.setContent {
+            ProperpcloudApp(
+                state = AppUiState(loading = false),
+                actions = noOpActions(),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithText("No library connected").assertIsDisplayed()
+    }
+
+    @Test
+    fun settingsDoNotOfferDemoMode() {
+        compose.setContent {
+            ProperpcloudApp(
+                state = AppUiState(destination = AppDestination.SETTINGS, loading = false),
+                actions = noOpActions(),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithText("No library is currently selected.").assertIsDisplayed()
+        compose.onNodeWithText("Use demo").assertDoesNotExist()
     }
 
     @Test
@@ -348,7 +438,7 @@ class ProperpcloudAppTest {
     }
 
     @Test
-    fun compactNavigationOpensSettingsAndShowsOAuthControl() {
+    fun compactNavigationOpensPolishedSettingsWithoutDeveloperControls() {
         val selected = mutableStateOf(AppDestination.LIBRARY)
         compose.setContent {
             ProperpcloudApp(
@@ -360,15 +450,11 @@ class ProperpcloudAppTest {
         compose.onNodeWithText("Settings").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("pCloud account").assertIsDisplayed()
-        compose.onNodeWithTag("settings-screen").performScrollToNode(hasText("Fallback direct sign-in"))
-        compose.onNodeWithText("Fallback direct sign-in").assertIsDisplayed()
-        if (compose.onAllNodesWithTag("client-id").fetchSemanticsNodes().isEmpty()) {
-            compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("toggle-advanced-oauth"))
-            compose.onNodeWithTag("toggle-advanced-oauth").performClick()
-            compose.waitForIdle()
-        }
-        compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("client-id"))
-        compose.onNodeWithTag("client-id").assertIsDisplayed()
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasText("Sign in with email and password"))
+        compose.onNodeWithText("Sign in with email and password").assertIsDisplayed()
+        compose.onNodeWithTag("toggle-advanced-oauth").assertDoesNotExist()
+        compose.onNodeWithTag("client-id").assertDoesNotExist()
+        compose.onNodeWithTag("open-pcloud-console").assertDoesNotExist()
         compose.onNodeWithTag("settings-screen").performScrollToNode(hasText("Metadata tools"))
         compose.onNodeWithText("Metadata tools").assertIsDisplayed()
     }
@@ -384,7 +470,7 @@ class ProperpcloudAppTest {
         }
 
         compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("direct-login-card"))
-        compose.onNodeWithText("Fallback direct sign-in").assertIsDisplayed()
+        compose.onNodeWithText("Sign in with email and password").assertIsDisplayed()
         if (compose.onAllNodesWithTag("direct-login-email").fetchSemanticsNodes().isEmpty()) {
             compose.onNodeWithTag("toggle-direct-login").performClick()
             compose.waitForIdle()
@@ -395,6 +481,33 @@ class ProperpcloudAppTest {
         compose.onNodeWithTag("direct-login-password").assertIsDisplayed()
         compose.onNodeWithTag("settings-screen").performScrollToNode(hasTestTag("direct-login-submit"))
         compose.onNodeWithText("Sign in directly").assertIsDisplayed()
+    }
+
+    @Test
+    fun connectedSettingsAvoidImplementationSecurityBanners() {
+        compose.setContent {
+            ProperpcloudApp(
+                state = sampleState().copy(
+                    destination = AppDestination.SETTINGS,
+                    pCloudConnected = true,
+                    serverConnected = true,
+                    serverBaseUrl = "https://library.example",
+                ),
+                actions = noOpActions(),
+                onAuthorizePCloud = {},
+            )
+        }
+
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasText("Connected to pCloud"))
+        compose.onNodeWithText("Ready to browse and play your library.").assertIsDisplayed()
+        compose.onNodeWithText(
+            "The session token is encrypted with Android Keystore and excluded from backup.",
+        ).assertDoesNotExist()
+        compose.onNodeWithTag("settings-screen").performScrollToNode(hasText("Remote servers must use HTTPS."))
+        compose.onNodeWithText("Remote servers must use HTTPS.").assertIsDisplayed()
+        compose.onNodeWithText(
+            "Remote servers must use HTTPS. The bearer token is encrypted with Android Keystore and is never used as queue or media identity.",
+        ).assertDoesNotExist()
     }
 
     @Test
@@ -438,6 +551,90 @@ class ProperpcloudAppTest {
         compose.onNodeWithTag("player-seek").performScrollTo().assertIsDisplayed()
     }
 
+    @Test
+    fun playersSurfaceShowsLocalAndRemoteTargetsWithExplicitAvailability() {
+        val localId = PlayerTargetId("local:media3")
+        val remoteId = PlayerTargetId("server:test:living-room")
+        val state = samplePlayingState().copy(
+            destination = AppDestination.PLAYERS,
+            activePlayerId = localId,
+            players = listOf(
+                PlayerTargetSnapshot(
+                    id = localId,
+                    providerId = "local",
+                    providerName = "This device",
+                    displayName = "ProperPCloud local player",
+                    connectivity = PlayerConnectivity.CONNECTED,
+                    playbackState = PlayerPlaybackState.PAUSED,
+                    controllable = true,
+                    local = true,
+                ),
+                PlayerTargetSnapshot(
+                    id = remoteId,
+                    providerId = "server:test",
+                    providerName = "Server",
+                    displayName = "Living room",
+                    connectivity = PlayerConnectivity.UNAVAILABLE,
+                    playbackState = PlayerPlaybackState.UNKNOWN,
+                    stale = true,
+                ),
+            ),
+        )
+
+        compose.setContent {
+            ProperpcloudApp(state, noOpActions(), onAuthorizePCloud = {})
+        }
+
+        compose.onNodeWithTag("players-screen").assertIsDisplayed()
+        compose.onNodeWithText("ProperPCloud local player").assertIsDisplayed()
+        compose.onNodeWithText("Living room").assertIsDisplayed()
+        compose.onNodeWithText("Server • Unavailable • stale").assertIsDisplayed()
+        compose.onNodeWithText("Controls unavailable while this target is offline.").assertIsDisplayed()
+    }
+
+    @Test
+    fun audiobookPlayerExposesModeContextAndDedicatedSkipControls() {
+        val base = samplePlayingState()
+        val localId = PlayerTargetId("local:media3")
+        val current = requireNotNull(base.queue.current?.track)
+        val tabs = AudioTabReducer.updateActive(base.audioTabs) { tab ->
+            tab.copy(
+                playbackSpeed = 1.5f,
+                activeAudiobookBookId = AudiobookBookId(current.sourceId, current.parentId),
+                stopAtChapterEnd = true,
+            )
+        }
+        val state = base.copy(
+            destination = AppDestination.PLAYER,
+            audioTabs = tabs,
+            players = listOf(
+                PlayerTargetSnapshot(
+                    id = localId,
+                    providerId = "local",
+                    providerName = "This device",
+                    displayName = "ProperPCloud local player",
+                    connectivity = PlayerConnectivity.CONNECTED,
+                    playbackState = PlayerPlaybackState.PAUSED,
+                    currentMediaTitle = current.taggedTitle,
+                    controllable = true,
+                    local = true,
+                ),
+            ),
+            activePlayerId = localId,
+            sleepTimerEndsAtEpochMillis = System.currentTimeMillis() + 60_000,
+        )
+
+        compose.setContent {
+            ProperpcloudApp(state, noOpActions(), onAuthorizePCloud = {})
+        }
+
+        compose.onNodeWithTag("playback-context").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Mode · Audiobook").assertIsDisplayed()
+        compose.onNodeWithText("Back skip · 15s").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Forward skip · 30s").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Shuffle").assertDoesNotExist()
+    }
+
     private fun sampleState(): AppUiState {
         val source = SourceId("pcloud")
         val root = AudioFolder(source, NodeId("root"), null, "pCloud")
@@ -464,6 +661,8 @@ class ProperpcloudAppTest {
         selectDestination = {},
         openFolder = {},
         navigateBreadcrumb = {},
+        toggleDirectoryBookmark = {},
+        openDirectoryBookmark = {},
         refresh = {},
         toggleLibrarySearch = {},
         updateLibrarySearchQuery = {},

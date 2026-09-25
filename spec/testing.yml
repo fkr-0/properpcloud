@@ -143,6 +143,8 @@ testing:
           expect: structured counts without credential data
         TEST-QUEUE-RECURSIVE:
           expect: deterministic path grouping and bounded source concurrency
+        TEST-ANDROID-PLAY-FOLDER-RECURSIVE:
+          expect: primary Android Play folder requests subtree traversal and reaches playable descendants when the selected folder has no direct audio
         TEST-QUEUE-CANCEL:
           expect: original generation unchanged at every cancellation point
         TEST-QUEUE-CONCURRENT-EDIT:

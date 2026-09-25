@@ -22,7 +22,7 @@ transfer.
 
 ## Network communication
 
-When the demo source is selected, no network is required.
+Android performs no provider network request while no library is connected. The Linux desktop generated-WAV verification source also requires no network.
 
 When pCloud is selected, the app communicates with pCloud's documented regional
 API host and temporary content hosts returned by pCloud. The app accepts only
@@ -91,11 +91,8 @@ properpcloud does not persist or centrally collect:
 
 ## User controls
 
-- **Use demo** switches to an entirely local source.
-- **Disconnect** removes the encrypted pCloud session from this device.
-- Clearing app storage removes preferences, queue/progress records, generated
-  demo media, optional playback history, metadata source copies and exports, and
-  local credential material.
+- **Disconnect** removes the encrypted pCloud session from this device; Android falls back to another connected library or the explicit disconnected state.
+- Clearing Android app storage removes preferences, queue/progress records, optional playback history, metadata source copies and exports, and local credential material. Generated WAV fixtures are test-only and are not part of the production Android library.
 
 ## External services
 

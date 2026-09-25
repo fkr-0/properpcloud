@@ -6,7 +6,10 @@ import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.AudioTabDefaults
 import dev.properpcloud.core.model.AudioTabReducer
 import dev.properpcloud.core.model.AudioTabId
+import dev.properpcloud.core.model.AudiobookBookId
+import dev.properpcloud.core.model.AudiobookResumePoint
 import dev.properpcloud.core.model.NodeId
+import dev.properpcloud.core.model.PlaybackContentMode
 import dev.properpcloud.core.model.PlaybackProgress
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueEntry
@@ -50,8 +53,24 @@ class AppPreferencesRepositoryTest {
                 playbackPositionMillis = 73_000,
                 playbackSpeed = 1.5f,
                 volume = 0.65f,
+                audiobookSkipBackMillis = 10_000,
+                audiobookSkipForwardMillis = 60_000,
+                stopAtChapterEnd = true,
+                sleepTimerEndsAtEpochMillis = 987_654_321,
+                activeAudiobookBookId = AudiobookBookId(track.sourceId, track.parentId),
             )
         }
+        tabs = AudioTabReducer.upsertAudiobookResume(
+            tabs,
+            AudiobookResumePoint(
+                bookId = AudiobookBookId(track.sourceId, track.parentId),
+                chapterNodeId = track.id,
+                positionMillis = 73_000,
+                durationMillis = 120_000,
+                playbackSpeed = 1.5f,
+                updatedAtEpochMillis = 123_456,
+            ),
+        )
         tabs = AudioTabReducer.savePlaylist(tabs, "Commute")
         tabs = AudioTabReducer.switch(tabs, AudioTabId("music"), 73_000)
 
@@ -62,7 +81,26 @@ class AppPreferencesRepositoryTest {
         val audiobook = restored.tabs.first { it.id == AudioTabId("audiobooks") }
         assertEquals(73_000, audiobook.playbackPositionMillis)
         assertEquals(NodeId("file:9001"), audiobook.queue.entries.single().nodeId)
+        assertEquals(PlaybackContentMode.AUDIOBOOK, audiobook.contentMode)
+        assertEquals(10_000, audiobook.audiobookSkipBackMillis)
+        assertEquals(60_000, audiobook.audiobookSkipForwardMillis)
+        assertEquals(987_654_321, audiobook.sleepTimerEndsAtEpochMillis)
+        assertEquals(NodeId("folder:44"), audiobook.activeAudiobookBookId?.bookNodeId)
+        assertEquals(NodeId("file:9001"), restored.audiobookResumes.single().chapterNodeId)
+        assertEquals(1.5f, restored.audiobookResumes.single().playbackSpeed)
         assertEquals("Commute", restored.playlists.single().name)
+    }
+
+    @Test
+    fun directoryBookmarksPersistStableSourceAndNodeIdentity() = runTest {
+        val bookmarks = listOf(
+            DirectoryBookmark(SourceId("pcloud"), NodeId("folder:42"), "Dub crates"),
+            DirectoryBookmark(SourceId("server"), NodeId("catalog:folder:9"), "Audiobooks"),
+        )
+
+        repository.saveDirectoryBookmarks(bookmarks + bookmarks.first())
+
+        assertEquals(bookmarks, repository.loadDirectoryBookmarks())
     }
 
     @Test

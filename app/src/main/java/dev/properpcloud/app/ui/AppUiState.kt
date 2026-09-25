@@ -1,6 +1,7 @@
 package dev.properpcloud.app.ui
 
 import dev.properpcloud.app.data.SourceKind
+import dev.properpcloud.app.data.DirectoryBookmark
 import dev.properpcloud.app.playback.PlaybackUiState
 import dev.properpcloud.core.model.AudioTabCollection
 import dev.properpcloud.core.model.AudioTabDefaults
@@ -11,6 +12,8 @@ import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.NodeInspection
 import dev.properpcloud.core.model.PlaybackProgress
 import dev.properpcloud.core.model.PlaybackQueue
+import dev.properpcloud.core.model.PlayerTargetId
+import dev.properpcloud.core.model.PlayerTargetSnapshot
 import dev.properpcloud.core.model.QueueBuildResult
 import dev.properpcloud.core.model.SearchMatchType
 import dev.properpcloud.core.model.TrackSortKey
@@ -18,6 +21,7 @@ import dev.properpcloud.core.model.TrackSortKey
 enum class AppDestination {
     LIBRARY,
     PLAYER,
+    PLAYERS,
     QUEUE,
     METADATA,
     SETTINGS,
@@ -45,6 +49,7 @@ data class AppUiState(
     val clientId: String = "",
     val currentFolder: AudioFolder? = null,
     val breadcrumbs: List<AudioFolder> = emptyList(),
+    val directoryBookmarks: List<DirectoryBookmark> = emptyList(),
     val nodes: List<MediaNode> = emptyList(),
     val loading: Boolean = true,
     val refreshing: Boolean = false,
@@ -58,6 +63,9 @@ data class AppUiState(
     val playbackHistoryEnabled: Boolean = false,
     val playbackHistoryRetention: Int = 100,
     val playback: PlaybackUiState = PlaybackUiState(),
+    val players: List<PlayerTargetSnapshot> = emptyList(),
+    val activePlayerId: PlayerTargetId? = null,
+    val playersRefreshing: Boolean = false,
     val progressByNodeId: Map<NodeId, PlaybackProgress> = emptyMap(),
     val sleepTimerEndsAtEpochMillis: Long? = null,
     val inspection: NodeInspection? = null,

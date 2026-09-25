@@ -10,6 +10,11 @@ import dev.properpcloud.core.model.LibraryFileKind
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.NodeInspection
+import dev.properpcloud.core.model.PlayerConnectivity
+import dev.properpcloud.core.model.PlayerPlaybackState
+import dev.properpcloud.core.model.PlayerTargetId
+import dev.properpcloud.core.model.PlayerTargetProvider
+import dev.properpcloud.core.model.PlayerTargetSnapshot
 import dev.properpcloud.core.model.SourceId
 import dev.properpcloud.core.model.StreamHandle
 import dev.properpcloud.core.model.StreamResolutionException
@@ -22,6 +27,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
+import java.util.UUID
 
 data class ServerCatalogSession(
     val baseUrl: String,
@@ -79,7 +85,11 @@ internal fun classifyServerStreamResolutionFailure(error: Exception): StreamReso
 class ServerCatalogAudioSource(
     private val session: ServerCatalogSession,
     override val id: SourceId = SourceId("server"),
-) : AudioSource {
+) : AudioSource, PlayerTargetProvider {
+    private val playerProviderFingerprint = UUID.nameUUIDFromBytes(session.normalizedBaseUrl.toByteArray()).toString()
+    override val providerId: String = "server:$playerProviderFingerprint"
+    override val providerName: String = "Server"
+
     override val root = AudioFolder(
         sourceId = id,
         id = NodeId("catalog:root"),
@@ -119,11 +129,23 @@ class ServerCatalogAudioSource(
         val fields = linkedMapOf<String, String>()
         listOf(
             "nodeId", "path", "name", "kind", "contentHash", "title", "artist", "album", "genre",
-            "durationMillis", "sampleRate", "channels", "bitDepth", "format", "metadataError",
+            "durationMillis", "sampleRate", "bitrateKbps", "channels", "bitDepth", "format", "metadataError",
         ).forEach { name ->
             entry.get(name)?.takeUnless { it.isJsonNull }?.let { fields[name] = it.asString }
         }
         NodeInspection(fields)
+    }
+
+    override suspend fun discoverPlayers(): List<PlayerTargetSnapshot> = withContext(Dispatchers.IO) {
+        val response = try {
+            requestJson("/api/v1/players")
+        } catch (error: ServerCatalogHttpException) {
+            if (error.statusCode == 404) return@withContext emptyList()
+            throw error
+        }
+        response.getAsJsonArray("players")
+            ?.mapNotNull { element -> element.takeIf { it.isJsonObject }?.asJsonObject?.let(::toPlayerTarget) }
+            .orEmpty()
     }
 
     private fun requestJson(path: String, method: String = "GET"): JsonObject {
@@ -203,6 +225,36 @@ class ServerCatalogAudioSource(
             else -> null
         }
     }
+
+    private fun toPlayerTarget(player: JsonObject): PlayerTargetSnapshot? {
+        val remoteId = player.get("id")?.takeUnless { it.isJsonNull }?.asString?.trim().orEmpty()
+        val displayName = player.get("name")?.takeUnless { it.isJsonNull }?.asString?.trim().orEmpty()
+        if (remoteId.isEmpty() || displayName.isEmpty()) return null
+        val media = player.getAsJsonObject("currentMedia")
+        return PlayerTargetSnapshot(
+            id = PlayerTargetId("$providerId:$remoteId"),
+            providerId = providerId,
+            providerName = providerName,
+            displayName = displayName,
+            connectivity = enumField(player, "connectivity", PlayerConnectivity.UNAVAILABLE),
+            playbackState = enumField(player, "playbackState", PlayerPlaybackState.UNKNOWN),
+            currentMediaId = media?.get("id")?.takeUnless { it.isJsonNull }?.asString,
+            currentMediaTitle = media?.get("title")?.takeUnless { it.isJsonNull }?.asString,
+            currentMediaSubtitle = media?.get("subtitle")?.takeUnless { it.isJsonNull }?.asString,
+            controllable = false,
+            local = false,
+            observedAtEpochMillis = System.currentTimeMillis(),
+        )
+    }
+
+    private inline fun <reified T : Enum<T>> enumField(player: JsonObject, name: String, fallback: T): T =
+        player.get(name)
+            ?.takeUnless { it.isJsonNull }
+            ?.asString
+            ?.trim()
+            ?.uppercase()
+            ?.let { encoded -> enumValues<T>().firstOrNull { it.name == encoded } }
+            ?: fallback
 
     private fun encode(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
 

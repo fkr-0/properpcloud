@@ -1,5 +1,6 @@
 package dev.properpcloud.app.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -26,6 +27,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
@@ -103,6 +106,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.properpcloud.app.BuildConfig
+import dev.properpcloud.app.data.DirectoryBookmark
 import dev.properpcloud.app.data.SourceKind
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioTabId
@@ -110,6 +114,7 @@ import dev.properpcloud.core.model.AudioTrack
 import dev.properpcloud.core.model.LibraryFile
 import dev.properpcloud.core.model.LibraryFileKind
 import dev.properpcloud.core.model.MediaNode
+import dev.properpcloud.core.model.PlaybackContentMode
 import dev.properpcloud.core.model.QueueOperation
 import dev.properpcloud.core.model.SearchMatchType
 import dev.properpcloud.core.model.TrackSortKey
@@ -123,6 +128,11 @@ fun ProperpcloudApp(
     actions: AppActions,
     onAuthorizePCloud: (String) -> Unit,
 ) {
+    BackHandler(
+        enabled = state.destination == AppDestination.LIBRARY && state.breadcrumbs.size > 1,
+    ) {
+        actions.navigateBreadcrumb(state.breadcrumbs.lastIndex - 1)
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(state.message) {
         state.message?.let {
@@ -164,6 +174,7 @@ fun ProperpcloudApp(
                         when (state.destination) {
                             AppDestination.LIBRARY -> LibraryScreen(state, actions, expanded)
                             AppDestination.PLAYER -> NowPlayingScreen(state, actions)
+                            AppDestination.PLAYERS -> PlayersScreen(state, actions)
                             AppDestination.QUEUE -> QueueScreen(state, actions)
                             AppDestination.METADATA -> MetadataEditorScreen(state, actions)
                             AppDestination.SETTINGS -> SettingsScreen(state, actions, onAuthorizePCloud)
@@ -177,6 +188,25 @@ fun ProperpcloudApp(
                 name = state.inspectedNodeName ?: "Metadata",
                 fields = inspection.fields,
                 onDismiss = actions.closeInspection,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DirectoryBookmarks(bookmarks: List<DirectoryBookmark>, actions: AppActions) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        bookmarks.forEach { bookmark ->
+            AssistChip(
+                onClick = { actions.openDirectoryBookmark(bookmark) },
+                label = { Text(bookmark.name, maxLines = 1) },
+                leadingIcon = { Icon(Icons.Default.Bookmark, contentDescription = null, Modifier.size(18.dp)) },
             )
         }
     }
@@ -429,7 +459,7 @@ private fun ServerCatalogSettings(state: AppUiState, actions: AppActions) {
             }
         }
         Text(
-            "Remote servers must use HTTPS. The bearer token is encrypted with Android Keystore and is never used as queue or media identity.",
+            "Remote servers must use HTTPS.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -544,10 +574,12 @@ private fun LibraryScreen(state: AppUiState, actions: AppActions, expanded: Bool
             }
         }
         Breadcrumbs(state, actions)
+        if (state.directoryBookmarks.isNotEmpty()) DirectoryBookmarks(state.directoryBookmarks, actions)
+        if (!expanded && state.queue.entries.isNotEmpty()) CompactQueueLauncher(state, actions)
         if (expanded) {
             Row(Modifier.fillMaxSize()) {
-                FolderContent(state, actions, Modifier.weight(1.45f))
-                VerticalQueuePreview(state, actions, Modifier.weight(0.8f))
+                FolderContent(state, actions, Modifier.weight(1.2f))
+                VerticalQueuePreview(state, actions, Modifier.weight(1f))
             }
         } else {
             FolderContent(state, actions, Modifier.fillMaxSize())
@@ -610,6 +642,34 @@ private fun Breadcrumbs(state: AppUiState, actions: AppActions) {
 }
 
 @Composable
+private fun CompactQueueLauncher(state: AppUiState, actions: AppActions) {
+    Surface(
+        tonalElevation = 2.dp,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null)
+            Column(Modifier.weight(1f)) {
+                Text("Queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "${state.queue.entries.size} item${if (state.queue.entries.size == 1) "" else "s"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Button(
+                onClick = { actions.selectDestination(AppDestination.QUEUE) },
+                modifier = Modifier.testTag("open-queue"),
+            ) { Text("Open queue") }
+        }
+    }
+}
+
+@Composable
 private fun FolderContent(state: AppUiState, actions: AppActions, modifier: Modifier) {
     val searchActive = state.search.expanded && state.search.query.trim().length >= 3
     val visibleNodes = if (searchActive) state.search.results else state.nodes
@@ -632,9 +692,7 @@ private fun FolderContent(state: AppUiState, actions: AppActions, modifier: Modi
                 if (state.metadataSelection.isNotEmpty()) {
                     item { MetadataSelectionBar(state, actions) }
                 }
-                item {
-                    FolderQuickActions(state.currentFolder, actions)
-                }
+                item { FolderQuickActions(state.currentFolder, state, actions) }
                 items(visibleNodes, key = { it.sourceId.value + ":" + it.id.value }) { node ->
                     MediaNodeRow(node, state, actions)
                     HorizontalDivider(Modifier.padding(start = 72.dp))
@@ -645,13 +703,14 @@ private fun FolderContent(state: AppUiState, actions: AppActions, modifier: Modi
 }
 
 @Composable
-private fun FolderQuickActions(folder: AudioFolder?, actions: AppActions) {
+private fun FolderQuickActions(folder: AudioFolder?, state: AppUiState, actions: AppActions) {
     if (folder == null) return
+    val bookmarked = state.directoryBookmarks.any { it.sourceId == folder.sourceId && it.nodeId == folder.id }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Button(onClick = { actions.enqueueFolder(folder, QueueOperation.REPLACE, false) }) {
+        Button(onClick = { actions.enqueueFolder(folder, QueueOperation.REPLACE, true) }) {
             Icon(Icons.Default.PlayArrow, null)
             Spacer(Modifier.width(6.dp))
             Text("Play folder")
@@ -660,6 +719,12 @@ private fun FolderQuickActions(folder: AudioFolder?, actions: AppActions) {
             Icon(Icons.Default.SubdirectoryArrowRight, null)
             Spacer(Modifier.width(6.dp))
             Text("Append subtree")
+        }
+        IconButton(onClick = { actions.toggleDirectoryBookmark(folder) }) {
+            Icon(
+                if (bookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                contentDescription = if (bookmarked) "Remove folder bookmark" else "Bookmark folder",
+            )
         }
     }
 }
@@ -729,10 +794,8 @@ private fun MediaNodeRow(node: MediaNode, state: AppUiState, actions: AppActions
                         )
                     }
                 }
-                is AudioFolder -> Text("Folder · stable source identity")
-                is LibraryFile -> Text(
-                    if (node.kind == LibraryFileKind.PLAYLIST) "Playlist file · stable source identity" else "File · stable source identity",
-                )
+                is AudioFolder -> Text("Folder")
+                is LibraryFile -> Text(if (node.kind == LibraryFileKind.PLAYLIST) "Playlist file" else "File")
             }
         },
         leadingContent = {
@@ -768,15 +831,15 @@ private fun MediaNodeRow(node: MediaNode, state: AppUiState, actions: AppActions
                             leadingIcon = { Icon(Icons.Default.PlayArrow, null) },
                             onClick = {
                                 menuOpen = false
-                                actions.enqueueFolder(node, QueueOperation.REPLACE, false)
+                                actions.enqueueFolder(node, QueueOperation.REPLACE, true)
                             },
                         )
                         DropdownMenuItem(
-                            text = { Text("Play subtree") },
+                            text = { Text("Play direct files") },
                             leadingIcon = { Icon(Icons.Default.SubdirectoryArrowRight, null) },
                             onClick = {
                                 menuOpen = false
-                                actions.enqueueFolder(node, QueueOperation.REPLACE, true)
+                                actions.enqueueFolder(node, QueueOperation.REPLACE, false)
                             },
                         )
                         DropdownMenuItem(
@@ -866,24 +929,27 @@ private fun VerticalQueuePreview(state: AppUiState, actions: AppActions, modifie
     Column(
         modifier.fillMaxHeight().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
     ) {
-        Text(
-            "Queue · ${state.queue.entries.size}",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(16.dp),
-        )
+        Row(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "Queue · ${state.queue.entries.size}",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f),
+            )
+            Button(
+                onClick = { actions.selectDestination(AppDestination.QUEUE) },
+                modifier = Modifier.testTag("open-queue"),
+            ) { Text("Open queue") }
+        }
         if (state.queue.entries.isEmpty()) {
             Text("Play a track or folder to build the queue.", Modifier.padding(16.dp))
         } else {
             LazyColumn {
                 items(state.queue.entries.take(12).withIndex().toList(), key = { it.value.track.id.value }) { indexed ->
                     QueueRow(indexed.index, indexed.value.track, state, actions, compact = true)
-                }
-                if (state.queue.entries.size > 12) {
-                    item {
-                        TextButton(onClick = { actions.selectDestination(AppDestination.QUEUE) }) {
-                            Text("Open full queue")
-                        }
-                    }
                 }
             }
         }
@@ -1131,7 +1197,7 @@ private fun SettingsScreen(state: AppUiState, actions: AppActions, onAuthorizePC
         item {
             SettingsSection("Privacy and resilience") {
                 Bullet("No mandatory properpcloud backend or analytics")
-                Bullet("OAuth token encrypted locally and excluded from backup")
+                Bullet("Connection credentials stay on this device and are excluded from backup")
                 Bullet("Signed media links are resolved just in time and never persisted")
                 Bullet("Empty or cancelled scans preserve the previous queue")
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1206,10 +1272,24 @@ private fun MiniPlayer(state: AppUiState, actions: AppActions) {
     val current = state.queue.current?.track ?: return
     val duration = state.playback.durationMillis.takeIf { it > 0 } ?: current.durationMillis ?: 0L
     val progress = if (duration > 0) state.playback.positionMillis.toFloat() / duration else 0f
+    val tab = state.audioTabs.active
+    val playerName = state.players.firstOrNull { it.id == state.activePlayerId }?.displayName ?: "Local player"
+    val audiobookMode = tab.definition.contentMode == PlaybackContentMode.AUDIOBOOK
+    val compactContext = if (audiobookMode) {
+        "$playerName. Audiobook chapter ${state.playback.title.ifBlank { current.taggedTitle ?: current.filenameStem }}. " +
+            "Speed ${trimCompactFloat(tab.playbackSpeed)} times. Resume ${formatDuration(state.playback.positionMillis)}. " +
+            "Sleep timer ${if (state.sleepTimerEndsAtEpochMillis == null) "off" else "active"}."
+    } else {
+        "$playerName. ${state.playback.title.ifBlank { current.taggedTitle ?: current.filenameStem }}."
+    }
     Surface(
         tonalElevation = 4.dp,
         shadowElevation = 4.dp,
-        modifier = Modifier.fillMaxWidth().clickable { actions.selectDestination(AppDestination.PLAYER) }.testTag("mini-player"),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { actions.selectDestination(AppDestination.PLAYER) }
+            .testTag("mini-player")
+            .semantics { contentDescription = compactContext },
     ) {
         Column {
             if (duration > 0) {
@@ -1227,6 +1307,18 @@ private fun MiniPlayer(state: AppUiState, actions: AppActions) {
                 Column(Modifier.weight(1f)) {
                     Text(state.playback.title.ifBlank { current.taggedTitle ?: current.filenameStem }, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(current.name, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        if (audiobookMode) {
+                            "$playerName • Audiobook • ${trimCompactFloat(tab.playbackSpeed)}×" +
+                                if (state.sleepTimerEndsAtEpochMillis != null) " • timer" else ""
+                        } else {
+                            playerName
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 IconButton(onClick = actions.playPause) {
                     Icon(if (state.playback.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (state.playback.isPlaying) "Pause" else "Play")
@@ -1269,7 +1361,7 @@ private fun MetadataInspectionSheet(
                 items(entries) { (key, value) ->
                     Column(Modifier.fillMaxWidth()) {
                         Text(key, style = MaterialTheme.typography.labelMedium)
-                        Text(value.ifBlank { "—" }, style = MaterialTheme.typography.bodyMedium)
+                        Text(formatMetadataValue(key, value), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
@@ -1284,9 +1376,27 @@ private fun MetadataInspectionSheet(
 private fun metadataGroup(key: String): String = when {
     key.contains("id", ignoreCase = true) || key.contains("hash", ignoreCase = true) -> "Identity"
     key.contains("created", ignoreCase = true) || key.contains("modified", ignoreCase = true) -> "Timeline"
-    key.contains("size", ignoreCase = true) || key.contains("content", ignoreCase = true) -> "Media file"
+    key.contains("size", ignoreCase = true) || key.contains("content", ignoreCase = true) || key.contains("bitrate", ignoreCase = true) -> "Media file"
     key.startsWith("can") || key.startsWith("is") -> "Access"
     else -> "Provider"
+}
+
+internal fun formatMetadataValue(key: String, value: String): String {
+    if (value.isBlank()) return "—"
+    if (!key.contains("bitrate", ignoreCase = true)) return value
+    val numeric = Regex("[0-9]+(?:\\.[0-9]+)?").find(value)?.value?.toDoubleOrNull() ?: return value
+    val normalizedKey = key.lowercase()
+    val kbitPerSecond = when {
+        "kbps" in normalizedKey || "kbit" in normalizedKey -> numeric
+        numeric >= 10_000 -> numeric / 1_000.0
+        else -> numeric
+    }
+    val rendered = if (kbitPerSecond % 1.0 == 0.0) {
+        kbitPerSecond.toLong().toString()
+    } else {
+        "%.1f".format(kbitPerSecond)
+    }
+    return "$rendered kbit/s"
 }
 
 @Composable
@@ -1371,7 +1481,7 @@ private fun EmptyFolderState(folder: AudioFolder?, actions: AppActions, modifier
         Text("No playable audio directly in this folder", style = MaterialTheme.typography.titleMedium)
         folder?.let {
             TextButton(onClick = { actions.enqueueFolder(it, QueueOperation.REPLACE, true) }) {
-                Text("Play subtree")
+                Text("Play folder")
             }
         }
     }
@@ -1381,6 +1491,7 @@ private data class DestinationItem(val destination: AppDestination, val label: S
 
 private val destinations = listOf(
     DestinationItem(AppDestination.LIBRARY, "Library", Icons.Default.LibraryMusic),
+    DestinationItem(AppDestination.PLAYERS, "Players", Icons.Default.PlayArrow),
     DestinationItem(AppDestination.QUEUE, "Queue", Icons.AutoMirrored.Filled.QueueMusic),
     DestinationItem(AppDestination.SETTINGS, "Settings", Icons.Default.Settings),
 )
@@ -1400,6 +1511,9 @@ private fun sortLabel(key: TrackSortKey): String = when (key) {
     TrackSortKey.SIZE -> "Size"
 }
 
+private fun trimCompactFloat(value: Float): String =
+    if (value % 1f == 0f) value.toInt().toString() else value.toString().trimEnd('0').trimEnd('.')
+
 private fun formatDuration(milliseconds: Long): String {
     val totalSeconds = (milliseconds.coerceAtLeast(0) / 1_000)
     val hours = totalSeconds / 3_600
@@ -1412,6 +1526,8 @@ data class AppActions(
     val selectDestination: (AppDestination) -> Unit,
     val openFolder: (AudioFolder) -> Unit,
     val navigateBreadcrumb: (Int) -> Unit,
+    val toggleDirectoryBookmark: (AudioFolder) -> Unit,
+    val openDirectoryBookmark: (DirectoryBookmark) -> Unit,
     val refresh: () -> Unit,
     val toggleLibrarySearch: () -> Unit,
     val updateLibrarySearchQuery: (String) -> Unit,

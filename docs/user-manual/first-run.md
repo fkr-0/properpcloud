@@ -1,15 +1,10 @@
 # First run
 
-## Verify the application before connecting an account
+## Choose a library
 
-The application starts with the deterministic **Demo library**. It contains nested audiobook, field-recording, and numbered-track folders backed by generated WAV files.
+On Android, first run shows **No library connected**. Connect pCloud directly or configure the optional server catalog before browsing; the production Android app no longer contains a fabricated demo library.
 
-1. Open **Audiobooks** and then **The Badger and the City**.
-2. Play the folder.
-3. Pause, seek, reorder the queue, and restart the application.
-4. Confirm that the queue and resume position are restored.
-
-This isolates local UI, storage, and playback problems from provider authentication or network issues.
+On Linux, the deterministic generated-WAV source remains available for credential-free host verification. It can still be used to isolate local UI, storage, mpv, and persistence problems from provider authentication or network issues.
 
 ## Connect pCloud
 

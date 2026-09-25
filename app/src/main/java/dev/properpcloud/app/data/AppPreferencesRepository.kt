@@ -11,7 +11,10 @@ import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.AudioTabCollection
 import dev.properpcloud.core.model.AudioTabColor
 import dev.properpcloud.core.model.AudioTabId
+import dev.properpcloud.core.model.AudiobookBookId
+import dev.properpcloud.core.model.AudiobookResumePoint
 import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.PlaybackContentMode
 import dev.properpcloud.core.model.PlayerRepeatMode
 import dev.properpcloud.core.model.PlaybackHistoryEntry
 import dev.properpcloud.core.model.PlaybackHistoryPolicy
@@ -35,6 +38,12 @@ data class StoredSettings(
     val playbackHistoryRetention: Int = PlaybackHistoryPolicy.DEFAULT_RETENTION,
 )
 
+data class DirectoryBookmark(
+    val sourceId: SourceId,
+    val nodeId: NodeId,
+    val name: String,
+)
+
 data class StoredAudioTab(
     val id: AudioTabId,
     val name: String,
@@ -48,6 +57,12 @@ data class StoredAudioTab(
     val volume: Float,
     val shuffle: Boolean,
     val repeatMode: PlayerRepeatMode,
+    val contentMode: PlaybackContentMode,
+    val audiobookSkipBackMillis: Long,
+    val audiobookSkipForwardMillis: Long,
+    val stopAtChapterEnd: Boolean,
+    val sleepTimerEndsAtEpochMillis: Long?,
+    val activeAudiobookBookId: AudiobookBookId?,
 )
 
 data class StoredNamedPlaylist(
@@ -59,6 +74,7 @@ data class StoredAudioTabs(
     val tabs: List<StoredAudioTab>,
     val activeTabId: AudioTabId,
     val playlists: List<StoredNamedPlaylist>,
+    val audiobookResumes: List<AudiobookResumePoint>,
 )
 
 data class StoredQueueReference(
@@ -87,6 +103,13 @@ class AppPreferencesRepository(context: Context) {
 
     suspend fun loadAudioTabs(): StoredAudioTabs? =
         AppPersistenceCodec.decodeAudioTabs(dataStore.data.first()[AUDIO_TABS_JSON].orEmpty())
+
+    suspend fun saveDirectoryBookmarks(bookmarks: List<DirectoryBookmark>) {
+        dataStore.edit { it[DIRECTORY_BOOKMARKS_JSON] = AppPersistenceCodec.encodeDirectoryBookmarks(bookmarks) }
+    }
+
+    suspend fun loadDirectoryBookmarks(): List<DirectoryBookmark> =
+        AppPersistenceCodec.decodeDirectoryBookmarks(dataStore.data.first()[DIRECTORY_BOOKMARKS_JSON].orEmpty())
 
     internal suspend fun clearAudioTabsForTests() {
         dataStore.edit { it.remove(AUDIO_TABS_JSON) }
@@ -188,6 +211,7 @@ class AppPreferencesRepository(context: Context) {
         val HISTORY_RETENTION = intPreferencesKey("playback_history_retention")
         val HISTORY_JSON = stringPreferencesKey("playback_history_json")
         val AUDIO_TABS_JSON = stringPreferencesKey("audio_tabs_json_v1")
+        val DIRECTORY_BOOKMARKS_JSON = stringPreferencesKey("directory_bookmarks_json_v1")
     }
 }
 

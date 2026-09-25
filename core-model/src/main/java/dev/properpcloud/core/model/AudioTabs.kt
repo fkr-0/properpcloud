@@ -28,6 +28,7 @@ data class AudioTabDefinition(
     val rootPath: String,
     val icon: String? = null,
     val color: AudioTabColor? = null,
+    val contentMode: PlaybackContentMode = PlaybackContentMode.MUSIC,
 ) {
     init {
         require(name.isNotBlank()) { "audio tab name must not be blank" }
@@ -45,11 +46,22 @@ data class AudioTabSession(
     val volume: Float = 1f,
     val shuffle: Boolean = false,
     val repeatMode: PlayerRepeatMode = PlayerRepeatMode.OFF,
+    val audiobookSkipBackMillis: Long = AudiobookPlaybackPolicy.DEFAULT_BACK_SKIP_MILLIS,
+    val audiobookSkipForwardMillis: Long = AudiobookPlaybackPolicy.DEFAULT_FORWARD_SKIP_MILLIS,
+    val stopAtChapterEnd: Boolean = true,
+    val sleepTimerEndsAtEpochMillis: Long? = null,
+    val activeAudiobookBookId: AudiobookBookId? = null,
 ) {
     init {
         require(playbackPositionMillis >= 0) { "tab playback position must not be negative" }
         require(playbackSpeed in MIN_PLAYBACK_SPEED..MAX_PLAYBACK_SPEED) { "tab playback speed out of range" }
         require(volume in 0f..1f) { "tab volume out of range" }
+        require(audiobookSkipBackMillis in AudiobookPlaybackPolicy.MIN_SKIP_MILLIS..AudiobookPlaybackPolicy.MAX_SKIP_MILLIS) {
+            "audiobook back skip out of range"
+        }
+        require(audiobookSkipForwardMillis in AudiobookPlaybackPolicy.MIN_SKIP_MILLIS..AudiobookPlaybackPolicy.MAX_SKIP_MILLIS) {
+            "audiobook forward skip out of range"
+        }
     }
 }
 
@@ -67,6 +79,7 @@ data class AudioTabCollection(
     val tabs: List<AudioTabSession>,
     val activeTabId: AudioTabId,
     val playlists: List<NamedAudioPlaylist> = emptyList(),
+    val audiobookResumes: List<AudiobookResumePoint> = emptyList(),
 ) {
     init {
         require(tabs.isNotEmpty()) { "at least one audio tab is required" }
@@ -74,6 +87,9 @@ data class AudioTabCollection(
         require(tabs.map { it.definition.id }.distinct().size == tabs.size) { "audio tab ids must be unique" }
         require(tabs.any { it.definition.id == activeTabId }) { "active audio tab must exist" }
         require(playlists.map { it.name.lowercase() }.distinct().size == playlists.size) { "playlist names must be unique" }
+        require(audiobookResumes.map { it.bookId }.distinct().size == audiobookResumes.size) {
+            "audiobook resume book ids must be unique"
+        }
     }
 
     val active: AudioTabSession
@@ -82,13 +98,21 @@ data class AudioTabCollection(
 
 object AudioTabDefaults {
     val definitions: List<AudioTabDefinition> = listOf(
-        AudioTabDefinition(AudioTabId("audiobooks"), "Hörbücher", "hb", "🎧", AudioTabColor.BLUE),
+        AudioTabDefinition(AudioTabId("audiobooks"), "Hörbücher", "hb", "🎧", AudioTabColor.BLUE, PlaybackContentMode.AUDIOBOOK),
         AudioTabDefinition(AudioTabId("music"), "Musik", "musik", "♫", AudioTabColor.GREEN),
         AudioTabDefinition(AudioTabId("dj"), "DJ/Auflege", "dj", "◉", AudioTabColor.ORANGE),
-        AudioTabDefinition(AudioTabId("sci-fi"), "Sci-Fi", "hb/Sci-Fi", "✦", AudioTabColor.PURPLE),
-        AudioTabDefinition(AudioTabId("crime"), "Krimi", "hb/Krimi", "◆", AudioTabColor.RED),
-        AudioTabDefinition(AudioTabId("fantasy"), "Fantasy", "hb/Fantasy", "✧", AudioTabColor.TEAL),
+        AudioTabDefinition(AudioTabId("sci-fi"), "Sci-Fi", "hb/Sci-Fi", "✦", AudioTabColor.PURPLE, PlaybackContentMode.AUDIOBOOK),
+        AudioTabDefinition(AudioTabId("crime"), "Krimi", "hb/Krimi", "◆", AudioTabColor.RED, PlaybackContentMode.AUDIOBOOK),
+        AudioTabDefinition(AudioTabId("fantasy"), "Fantasy", "hb/Fantasy", "✧", AudioTabColor.TEAL, PlaybackContentMode.AUDIOBOOK),
     )
+
+    fun contentModeFor(id: AudioTabId, rootPath: String): PlaybackContentMode =
+        definitions.firstOrNull { it.id == id }?.contentMode
+            ?: if (normalizeAudioRootPath(rootPath).let { it == "hb" || it.startsWith("hb/") }) {
+                PlaybackContentMode.AUDIOBOOK
+            } else {
+                PlaybackContentMode.MUSIC
+            }
 
     fun collection(): AudioTabCollection = AudioTabCollection(
         tabs = definitions.map(::AudioTabSession),
@@ -162,7 +186,13 @@ object AudioTabReducer {
         updateDefinition(collection, tabId) { it.copy(name = name.trim()) }
 
     fun updateRoot(collection: AudioTabCollection, tabId: AudioTabId, rootPath: String): AudioTabCollection =
-        updateDefinition(collection, tabId) { it.copy(rootPath = normalizeAudioRootPath(rootPath)) }
+        updateDefinition(collection, tabId) {
+            val normalizedRoot = normalizeAudioRootPath(rootPath)
+            it.copy(
+                rootPath = normalizedRoot,
+                contentMode = AudioTabDefaults.contentModeFor(it.id, normalizedRoot),
+            )
+        }
 
     fun savePlaylist(collection: AudioTabCollection, name: String): AudioTabCollection {
         val normalized = name.trim()
@@ -186,6 +216,18 @@ object AudioTabReducer {
             )
         }
     }
+
+    fun upsertAudiobookResume(
+        collection: AudioTabCollection,
+        resume: AudiobookResumePoint,
+    ): AudioTabCollection = collection.copy(
+        audiobookResumes = collection.audiobookResumes.filterNot { it.bookId == resume.bookId } + resume,
+    )
+
+    fun audiobookResume(
+        collection: AudioTabCollection,
+        bookId: AudiobookBookId,
+    ): AudiobookResumePoint? = collection.audiobookResumes.firstOrNull { it.bookId == bookId }
 
     private fun updateDefinition(
         collection: AudioTabCollection,

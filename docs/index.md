@@ -66,9 +66,9 @@ The release also includes [machine-readable evidence]({{LATEST_EVIDENCE_URL}}), 
 
 ## Current clients
 
-- **Android:** Jetpack Compose UI with Media3 playback and encrypted local session storage.
-- **Linux desktop:** Compose Desktop UI, mpv JSON IPC playback, SQLite state, Secret Service credentials, XDG paths, and MPRIS media controls.
-- **Deterministic demo source:** local generated WAV files for verification without network access or credentials.
+- **Android:** Jetpack Compose UI with Media3 playback, encrypted local session storage, and an explicit disconnected state until pCloud or the optional server catalog is selected.
+- **Linux desktop:** Compose Desktop UI, mpv JSON IPC playback, SQLite state, Secret Service credentials, XDG paths, MPRIS media controls, and a deterministic generated-WAV verification source.
+- **Android test fixtures:** deterministic generated WAV files remain test-only for credential-free playback and metadata verification.
 
 ## Core promises
 

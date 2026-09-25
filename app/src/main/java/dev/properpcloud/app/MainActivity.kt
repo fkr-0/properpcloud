@@ -72,6 +72,8 @@ class MainActivity : ComponentActivity() {
                     selectDestination = viewModel::selectDestination,
                     openFolder = viewModel::openFolder,
                     navigateBreadcrumb = viewModel::navigateBreadcrumb,
+                    toggleDirectoryBookmark = viewModel::toggleDirectoryBookmark,
+                    openDirectoryBookmark = viewModel::openDirectoryBookmark,
                     refresh = viewModel::refresh,
                     toggleLibrarySearch = viewModel::toggleLibrarySearch,
                     updateLibrarySearchQuery = viewModel::updateLibrarySearchQuery,

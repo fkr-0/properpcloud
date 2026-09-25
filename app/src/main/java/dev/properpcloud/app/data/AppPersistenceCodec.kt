@@ -4,6 +4,11 @@ import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.AudioTabCollection
 import dev.properpcloud.core.model.AudioTabColor
 import dev.properpcloud.core.model.AudioTabId
+import dev.properpcloud.core.model.AudioTabDefaults
+import dev.properpcloud.core.model.AudiobookBookId
+import dev.properpcloud.core.model.AudiobookPlaybackPolicy
+import dev.properpcloud.core.model.AudiobookResumePoint
+import dev.properpcloud.core.model.PlaybackContentMode
 import dev.properpcloud.core.model.PlayerRepeatMode
 import dev.properpcloud.core.model.PlaybackHistoryEntry
 import dev.properpcloud.core.model.PlaybackHistoryPolicy
@@ -20,6 +25,33 @@ internal data class StoredQueuePayload(
 )
 
 internal object AppPersistenceCodec {
+    fun encodeDirectoryBookmarks(bookmarks: List<DirectoryBookmark>): String = JSONArray().also { array ->
+        bookmarks.distinctBy { it.sourceId to it.nodeId }.forEach { bookmark ->
+            array.put(
+                JSONObject()
+                    .put("source", bookmark.sourceId.value)
+                    .put("node", bookmark.nodeId.value)
+                    .put("name", bookmark.name),
+            )
+        }
+    }.toString()
+
+    fun decodeDirectoryBookmarks(json: String): List<DirectoryBookmark> {
+        val array = runCatching { JSONArray(json.ifBlank { "[]" }) }.getOrElse { JSONArray() }
+        return buildList {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                runCatching {
+                    DirectoryBookmark(
+                        sourceId = SourceId(item.getString("source")),
+                        nodeId = NodeId(item.getString("node")),
+                        name = item.getString("name").trim().also { require(it.isNotEmpty()) },
+                    )
+                }.getOrNull()?.let(::add)
+            }
+        }.distinctBy { it.sourceId to it.nodeId }
+    }
+
     fun encodeQueue(queue: PlaybackQueue): StoredQueuePayload {
         val array = JSONArray()
         queue.entries.forEach { entry ->
@@ -54,7 +86,14 @@ internal object AppPersistenceCodec {
                             .put("speed", tab.playbackSpeed.toDouble())
                             .put("volume", tab.volume.toDouble())
                             .put("shuffle", tab.shuffle)
-                            .put("repeat", tab.repeatMode.name),
+                            .put("repeat", tab.repeatMode.name)
+                            .put("contentMode", tab.definition.contentMode.name)
+                            .put("audiobookSkipBackMillis", tab.audiobookSkipBackMillis)
+                            .put("audiobookSkipForwardMillis", tab.audiobookSkipForwardMillis)
+                            .put("stopAtChapterEnd", tab.stopAtChapterEnd)
+                            .put("sleepTimerEndsAt", tab.sleepTimerEndsAtEpochMillis ?: JSONObject.NULL)
+                            .put("bookSource", tab.activeAudiobookBookId?.sourceId?.value ?: JSONObject.NULL)
+                            .put("bookNode", tab.activeAudiobookBookId?.bookNodeId?.value ?: JSONObject.NULL),
                     )
                 }
             },
@@ -67,6 +106,23 @@ internal object AppPersistenceCodec {
                         JSONObject()
                             .put("name", playlist.name)
                             .put("entries", encodeQueueReferences(playlist.entries)),
+                    )
+                }
+            },
+        )
+        root.put(
+            "audiobookResumes",
+            JSONArray().also { resumes ->
+                collection.audiobookResumes.forEach { resume ->
+                    resumes.put(
+                        JSONObject()
+                            .put("source", resume.bookId.sourceId.value)
+                            .put("bookNode", resume.bookId.bookNodeId.value)
+                            .put("chapterNode", resume.chapterNodeId.value)
+                            .put("position", resume.positionMillis)
+                            .put("duration", resume.durationMillis ?: JSONObject.NULL)
+                            .put("speed", resume.playbackSpeed.toDouble())
+                            .put("updated", resume.updatedAtEpochMillis),
                     )
                 }
             },
@@ -101,6 +157,25 @@ internal object AppPersistenceCodec {
                         shuffle = item.optBoolean("shuffle", false),
                         repeatMode = PlayerRepeatMode.entries.firstOrNull { it.name == item.optString("repeat") }
                             ?: PlayerRepeatMode.OFF,
+                        contentMode = PlaybackContentMode.entries.firstOrNull { it.name == item.optString("contentMode") }
+                            ?: AudioTabDefaults.contentModeFor(id, rootPath),
+                        audiobookSkipBackMillis = AudiobookPlaybackPolicy.normalizeSkipMillis(
+                            item.optLong("audiobookSkipBackMillis", AudiobookPlaybackPolicy.DEFAULT_BACK_SKIP_MILLIS),
+                            AudiobookPlaybackPolicy.DEFAULT_BACK_SKIP_MILLIS,
+                        ),
+                        audiobookSkipForwardMillis = AudiobookPlaybackPolicy.normalizeSkipMillis(
+                            item.optLong("audiobookSkipForwardMillis", AudiobookPlaybackPolicy.DEFAULT_FORWARD_SKIP_MILLIS),
+                            AudiobookPlaybackPolicy.DEFAULT_FORWARD_SKIP_MILLIS,
+                        ),
+                        stopAtChapterEnd = item.optBoolean("stopAtChapterEnd", true),
+                        sleepTimerEndsAtEpochMillis = if (item.isNull("sleepTimerEndsAt")) null else {
+                            item.optLong("sleepTimerEndsAt").takeIf { it > 0 }
+                        },
+                        activeAudiobookBookId = item.optStringOrNull("bookSource")?.let { source ->
+                            item.optStringOrNull("bookNode")?.let { node ->
+                                AudiobookBookId(SourceId(source), NodeId(node))
+                            }
+                        },
                     )
                 }.getOrNull()?.let(::add)
             }
@@ -116,7 +191,26 @@ internal object AppPersistenceCodec {
                 if (name.isNotEmpty()) add(StoredNamedPlaylist(name, decodeQueueReferences(item.optJSONArray("entries"))))
             }
         }.distinctBy { it.name.lowercase() }
-        return StoredAudioTabs(tabs, active, playlists)
+        val audiobookResumes = buildList {
+            val resumeArray = root.optJSONArray("audiobookResumes") ?: JSONArray()
+            for (index in 0 until resumeArray.length()) {
+                val item = resumeArray.optJSONObject(index) ?: continue
+                runCatching {
+                    AudiobookResumePoint(
+                        bookId = AudiobookBookId(
+                            SourceId(item.getString("source")),
+                            NodeId(item.getString("bookNode")),
+                        ),
+                        chapterNodeId = NodeId(item.getString("chapterNode")),
+                        positionMillis = item.optLong("position", 0).coerceAtLeast(0),
+                        durationMillis = if (item.isNull("duration")) null else item.optLong("duration").coerceAtLeast(0),
+                        playbackSpeed = item.optDouble("speed", 1.0).toFloat().coerceIn(0.5f, 3f),
+                        updatedAtEpochMillis = item.optLong("updated", 0).coerceAtLeast(0),
+                    )
+                }.getOrNull()?.let(::add)
+            }
+        }.groupBy { it.bookId }.values.mapNotNull { entries -> entries.maxByOrNull { it.updatedAtEpochMillis } }
+        return StoredAudioTabs(tabs, active, playlists, audiobookResumes)
     }
 
     fun decodeQueue(json: String, currentIndex: Int): StoredQueue {

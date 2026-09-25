@@ -8,13 +8,21 @@ ux:
       primary_destinations:
         - browser
         - saved_roots
+        - players
         - queue
         - settings
+      settings_surface:
+        user_facing_only: true
+        hides:
+          - OAuth developer/client-ID setup
+          - provider developer-console affordances
+          - token-encryption and Keystore implementation banners
+        connection_copy: concise status and actionable errors instead of credential-storage implementation details
       persistent_surface:
         mini_player:
           visible_when: a selected media item exists
           actions: [play_pause, open_now_playing]
-          content: [title_or_filename, containing_folder, progress]
+          content: [title_or_filename, containing_folder, progress, active_player, playback_mode_state]
       contextual_destinations:
         now_playing:
           entry: tap mini-player
@@ -126,7 +134,7 @@ ux:
         filtered: No files match current filter
         offline_uncached: Folder has no cached snapshot
         actions:
-          no_audio: [Play subtree, Show all files]
+          no_audio: [Play folder, Show all files]
           filtered: [Clear filter]
     queue:
       header:
@@ -152,6 +160,17 @@ ux:
         condition: queue build omitted one or more candidates
         content: counts by unsupported, inaccessible, failed, duplicate
         action: Open report
+    players_overview:
+      identity: provider_stable_player_id
+      source_neutral: true
+      rows:
+        content: [display_name, provider, connectivity, playback_state, current_media, active_state]
+        deduplication: reconnect and rediscovery update one stable row rather than append another
+        stale_behavior: retain the row and label degraded or unavailable explicitly
+      controls:
+        local: route through the existing playback/controller authority
+        remote: show transport controls only when the provider exposes a controller authority
+        forbidden: create a second Media3 player/session stack for this surface
     tabbed_audio_player:
       defaults:
         - {name: Hörbücher, root: hb}
@@ -199,6 +218,15 @@ ux:
           - shuffle
           - repeat_off_all_one
           - sleep_timer
+        audiobook_mode:
+          music_semantics_disabled: [shuffle, repeat_off_all_one]
+          previous: restart_current_chapter_after_threshold_else_previous_chapter
+          next: next_chapter
+          seek_intervals: independently_configurable_back_and_forward
+          resume_identity: [stable_source_id, book_folder_id]
+          resume_payload: [chapter_id, position, duration, speed, updated_at]
+          chapter_end_stop: pause after automatic transition when enabled
+          restoration: restore queue, chapter, position, speed, and timer paused; never autoplay
         desktop_shortcuts:
           Space: play_pause
           Left_or_Right: seek_30_seconds
@@ -211,7 +239,7 @@ ux:
           close_behavior: hide the window while the supported tray remains available; otherwise close exits normally
           notification: announce a newly audible stable track identity once, never merely because it was preloaded paused
       durability:
-        persisted: [stable_source_id, stable_node_id, folder_id, queue_order, position, speed, volume, shuffle, repeat, tab_definition, named_playlist]
+        persisted: [stable_source_id, stable_node_id, folder_id, queue_order, position, speed, volume, shuffle, repeat, tab_definition, named_playlist, audiobook_book_id, audiobook_chapter_id, audiobook_resume_position, audiobook_skip_intervals, audiobook_stop_at_chapter_end, sleep_timer_deadline]
         forbidden: [signed_stream_url, bearer_token, provider_password]
         disconnect: preserve stable unresolved queue references for later reconnect
     now_playing:
@@ -368,7 +396,8 @@ ux:
   interaction_patterns:
     folder_quick_actions:
       compact:
-        default_visible: play folder button when folder contains known direct audio
+        default_visible: play folder button for the selected folder
+        primary_play_folder: recursively enumerate the selected folder so descendant audio plays even when the top level has no playable files
         overflow: all other operations
       desktop:
         toolbar: play, append, play next, subtree menu, pin

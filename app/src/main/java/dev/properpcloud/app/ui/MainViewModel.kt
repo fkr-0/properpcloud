@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import dev.properpcloud.app.AppContainer
 import dev.properpcloud.app.data.SourceKind
+import dev.properpcloud.app.data.DirectoryBookmark
 import dev.properpcloud.app.data.StoredAudioTab
 import dev.properpcloud.app.data.StoredAudioTabs
 import dev.properpcloud.app.data.StoredQueue
@@ -16,7 +17,9 @@ import dev.properpcloud.app.metadata.MetadataBundleItem
 import dev.properpcloud.app.metadata.MetadataDraftPlanner
 import dev.properpcloud.app.metadata.MetadataExportArtifact
 import dev.properpcloud.app.playback.PlaybackController
+import dev.properpcloud.app.playback.PlayerRegistry
 import dev.properpcloud.core.model.AudioTabCollection
+import dev.properpcloud.core.model.AudioTabDefaults
 import dev.properpcloud.core.model.AudioTabDefinition
 import dev.properpcloud.core.model.AudioTabId
 import dev.properpcloud.core.model.AudioTabReducer
@@ -24,10 +27,14 @@ import dev.properpcloud.core.model.AudioTabSession
 import dev.properpcloud.core.model.AudioFolder
 import dev.properpcloud.core.model.AudioSource
 import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.AudiobookBookId
+import dev.properpcloud.core.model.AudiobookPlaybackPolicy
+import dev.properpcloud.core.model.AudiobookResumePoint
 import dev.properpcloud.core.model.FolderQueueAssembler
 import dev.properpcloud.core.model.FolderQueueBuilder
 import dev.properpcloud.core.model.LibrarySearch
 import dev.properpcloud.core.model.LibrarySearchRequest
+import dev.properpcloud.core.model.MediaIdentity
 import dev.properpcloud.core.model.MediaIdentity
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.NamedAudioPlaylist
@@ -35,7 +42,9 @@ import dev.properpcloud.core.model.NodeId
 import dev.properpcloud.core.model.PlaybackCheckpointCursor
 import dev.properpcloud.core.model.PlaybackCheckpointPolicy
 import dev.properpcloud.core.model.PlaybackObservation
+import dev.properpcloud.core.model.PlaybackContentMode
 import dev.properpcloud.core.model.PlayerRepeatMode
+import dev.properpcloud.core.model.PlayerTargetProvider
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.QueueRestoration
@@ -83,6 +92,8 @@ class MainViewModel(
     private var queuePersistenceJob: Job? = null
     private var tabPersistenceJob: Job? = null
     private var sleepTimerJob: Job? = null
+    private var playersRefreshJob: Job? = null
+    private var audiobookManualChapterNavigation: dev.properpcloud.core.model.AudiobookManualNavigationIntent? = null
     private var queueMutationRevision: Long = 0
     private val checkpointPolicy = PlaybackCheckpointPolicy()
     private var checkpointCursor = PlaybackCheckpointCursor()
@@ -94,6 +105,11 @@ class MainViewModel(
     private var singleMetadataItem: LoadedMetadataItem? = null
     private val batchMetadataItems = linkedMapOf<String, LoadedMetadataItem>()
     private var metadataExportArtifact: MetadataExportArtifact? = null
+    private val playerRegistry = PlayerRegistry {
+        listOfNotNull(
+            container.sources.source(SourceId(SourceKind.SERVER.id)) as? PlayerTargetProvider,
+        )
+    }
 
     init {
         val startupQueueMutationRevision = queueMutationRevision
@@ -106,6 +122,7 @@ class MainViewModel(
             } ?: SourceKind.NONE
             container.sources.select(selected)
             val serverSession = container.serverCatalogVault.read()
+            val directoryBookmarks = container.preferences.loadDirectoryBookmarks()
             _state.value = _state.value.copy(
                 sourceKind = selected,
                 clientId = settings.clientId,
@@ -116,16 +133,41 @@ class MainViewModel(
                 pCloudConnected = container.sources.hasPCloudSession(),
                 serverConnected = container.sources.hasServerSession(),
                 serverBaseUrl = serverSession?.normalizedBaseUrl.orEmpty(),
+                directoryBookmarks = directoryBookmarks,
+                players = playerRegistry.observeLocal(_state.value.playback),
+                activePlayerId = PlayerRegistry.LOCAL_PLAYER_ID,
             )
             restoreQueue(startupQueueMutationRevision)
+            refreshPlayers()
             openRoot()
         }
         viewModelScope.launch {
             playbackConnection.state.collect { playback ->
                 val previous = _state.value
-                if (previous.playback.mediaId != null && previous.playback.mediaId != playback.mediaId) {
+                val mediaChanged = previous.playback.mediaId != null && previous.playback.mediaId != playback.mediaId
+                val manualNavigation = if (mediaChanged) {
+                    val pending = audiobookManualChapterNavigation
+                    audiobookManualChapterNavigation = null
+                    AudiobookPlaybackPolicy.matchesManualTransition(
+                        intent = pending,
+                        previousMediaId = previous.playback.mediaId,
+                        nextMediaId = playback.mediaId,
+                        nowEpochMillis = System.currentTimeMillis(),
+                    )
+                } else {
+                    false
+                }
+                if (mediaChanged) {
                     persistPlaybackProgress(previous.queue, previous.playback, force = true, scope = container.applicationScope)
                 }
+                val shouldStopAtChapterBoundary = AudiobookPlaybackPolicy.shouldStopAtChapterBoundary(
+                    enabled = previous.audioTabs.active.definition.contentMode == PlaybackContentMode.AUDIOBOOK &&
+                        previous.audioTabs.active.stopAtChapterEnd,
+                    wasPlaying = previous.playback.isPlaying,
+                    previousMediaId = previous.playback.mediaId,
+                    nextMediaId = playback.mediaId,
+                    manualNavigation = manualNavigation,
+                )
                 val queue = synchronizeQueueSelection(
                     previous.queue,
                     playback.mediaId,
@@ -144,8 +186,11 @@ class MainViewModel(
                     playback = playback,
                     queue = queue,
                     audioTabs = tabs,
+                    players = playerRegistry.observeLocal(playback),
+                    activePlayerId = PlayerRegistry.LOCAL_PLAYER_ID,
                     message = newError?.let { "Playback controller reported: $it" } ?: previous.message,
                 )
+                if (shouldStopAtChapterBoundary) playbackConnection.pause()
                 if (queueChanged) {
                     container.preferences.saveQueue(queue)
                     container.preferences.saveAudioTabs(tabs)
@@ -172,8 +217,26 @@ class MainViewModel(
     private fun applyActivePlaybackSettings(tab: AudioTabSession) {
         playbackConnection.setPlaybackSpeed(tab.playbackSpeed)
         playbackConnection.setVolume(tab.volume)
-        playbackConnection.setShuffle(tab.shuffle)
-        playbackConnection.setRepeatMode(tab.repeatMode)
+        if (tab.definition.contentMode == PlaybackContentMode.AUDIOBOOK) {
+            playbackConnection.setShuffle(false)
+            playbackConnection.setRepeatMode(PlayerRepeatMode.OFF)
+        } else {
+            playbackConnection.setShuffle(tab.shuffle)
+            playbackConnection.setRepeatMode(tab.repeatMode)
+        }
+    }
+
+    fun refreshPlayers() {
+        playersRefreshJob?.cancel()
+        _state.value = _state.value.copy(playersRefreshing = true)
+        playersRefreshJob = viewModelScope.launch {
+            val players = playerRegistry.refresh(_state.value.playback)
+            _state.value = _state.value.copy(
+                players = players,
+                activePlayerId = PlayerRegistry.LOCAL_PLAYER_ID,
+                playersRefreshing = false,
+            )
+        }
     }
 
     fun useServerSource() {
@@ -211,6 +274,7 @@ class MainViewModel(
                     message = "Server library connected. Catalog browsing and playback now use server-generated metadata.",
                 )
                 container.preferences.updateSource(SourceKind.SERVER)
+                refreshPlayers()
                 openRoot()
             } catch (_: CancellationException) {
                 Unit
@@ -245,6 +309,7 @@ class MainViewModel(
                 "Server library disconnected from this device."
             },
         )
+        refreshPlayers()
         viewModelScope.launch {
             container.preferences.updateSource(fallbackKind)
             openRoot()
@@ -329,6 +394,7 @@ class MainViewModel(
         } else {
             current.copy(destination = destination)
         }
+        if (destination == AppDestination.PLAYERS) refreshPlayers()
     }
 
     fun openMetadataEditor(track: AudioTrack) {
@@ -823,9 +889,11 @@ class MainViewModel(
         val tabs = AudioTabReducer.switch(snapshot, tabId, current.playback.positionMillis)
         val next = tabs.active
         queueMutationRevision += 1
+        sleepTimerJob?.cancel()
         _state.value = current.copy(
             audioTabs = tabs,
             queue = next.queue,
+            sleepTimerEndsAtEpochMillis = next.sleepTimerEndsAtEpochMillis,
             search = current.search.copy(query = "", results = emptyList(), searching = false),
             errorMessage = null,
         )
@@ -837,6 +905,7 @@ class MainViewModel(
             playbackConnection.setQueue(next.queue, play = false, startPositionMillis = next.playbackPositionMillis)
         }
         applyActivePlaybackSettings(next)
+        restoreSleepTimer(next)
         if (container.sources.select(SourceKind.PCLOUD)) {
             _state.value = _state.value.copy(sourceKind = SourceKind.PCLOUD, sourceName = "pCloud")
             viewModelScope.launch { container.preferences.updateSource(SourceKind.PCLOUD) }
@@ -855,10 +924,13 @@ class MainViewModel(
     fun addAudioTab(name: String, rootPath: String) {
         val normalizedName = name.trim()
         val definition = runCatching {
+            val id = AudioTabId("tab-${System.currentTimeMillis().toString(36)}")
+            val normalizedRoot = normalizeAudioRootPath(rootPath)
             AudioTabDefinition(
-                id = AudioTabId("tab-${System.currentTimeMillis().toString(36)}"),
+                id = id,
                 name = normalizedName,
-                rootPath = normalizeAudioRootPath(rootPath),
+                rootPath = normalizedRoot,
+                contentMode = AudioTabDefaults.contentModeFor(id, normalizedRoot),
             )
         }.getOrElse { error ->
             _state.value = _state.value.copy(message = error.userMessage("Could not add tab"))
@@ -958,6 +1030,7 @@ class MainViewModel(
     }
 
     fun playTrack(track: AudioTrack) {
+        markActiveAudiobook(track.sourceId, track.parentId)
         val queue = QueueReducer.apply(
             _state.value.queue,
             QueueOperation.REPLACE,
@@ -974,6 +1047,7 @@ class MainViewModel(
                 playTrack(track)
                 return@launch
             }
+            markActiveAudiobook(track.sourceId, track.parentId)
             val queue = QueueReducer.apply(
                 _state.value.queue,
                 QueueOperation.REPLACE,
@@ -991,11 +1065,12 @@ class MainViewModel(
     }
 
     fun enqueueTrack(track: AudioTrack, operation: QueueOperation) {
+        if (operation == QueueOperation.REPLACE) markActiveAudiobook(track.sourceId, track.parentId)
         val queue = QueueReducer.apply(_state.value.queue, operation, listOf(QueueEntry(track)))
         applyQueue(queue, play = operation == QueueOperation.REPLACE)
     }
 
-    fun enqueueFolder(folder: AudioFolder, operation: QueueOperation, recursive: Boolean) {
+    fun enqueueFolder(folder: AudioFolder, operation: QueueOperation, recursive: Boolean = true) {
         queueJob?.cancel()
         _state.value = _state.value.copy(
             queueBuilding = true,
@@ -1025,7 +1100,38 @@ class MainViewModel(
                         "Queued ${result.entries.size} items."
                     },
                 )
-                applyQueue(queue, play = operation == QueueOperation.REPLACE)
+                if (
+                    operation == QueueOperation.REPLACE &&
+                    _state.value.audioTabs.active.definition.contentMode == PlaybackContentMode.AUDIOBOOK
+                ) {
+                    val bookId = AudiobookBookId(folder.sourceId, folder.id)
+                    val resume = AudioTabReducer.audiobookResume(_state.value.audioTabs, bookId)
+                    val resumeIndex = resume?.let { point ->
+                        queue.entries.indexOfFirst {
+                            it.track.sourceId == folder.sourceId && it.track.id == point.chapterNodeId
+                        }
+                    } ?: -1
+                    val restoredQueue = if (resumeIndex >= 0) queue.copy(currentIndex = resumeIndex) else queue
+                    val startAt = if (resumeIndex >= 0) {
+                        resume?.clampedPositionMillis(restoredQueue.current?.track?.durationMillis) ?: 0
+                    } else {
+                        0
+                    }
+                    flushPlaybackProgress()
+                    val tabs = AudioTabReducer.updateActive(_state.value.audioTabs) { tab ->
+                        tab.copy(
+                            activeAudiobookBookId = bookId,
+                            playbackSpeed = resume?.playbackSpeed ?: tab.playbackSpeed,
+                        )
+                    }
+                    _state.value = _state.value.copy(audioTabs = tabs)
+                    persistAudioTabs(tabs)
+                    commitQueue(restoredQueue)
+                    playbackConnection.setPlaybackSpeed(tabs.active.playbackSpeed)
+                    playbackConnection.setQueue(restoredQueue, play = true, startPositionMillis = startAt)
+                } else {
+                    applyQueue(queue, play = operation == QueueOperation.REPLACE)
+                }
             } catch (_: CancellationException) {
                 _state.value = _state.value.copy(
                     queueBuilding = false,
@@ -1047,6 +1153,7 @@ class MainViewModel(
 
     fun selectQueueItem(index: Int) {
         flushPlaybackProgress()
+        markAudiobookManualChapterNavigation(index)
         val queue = QueueReducer.select(_state.value.queue, index)
         commitQueue(queue)
         playbackConnection.select(index)
@@ -1077,6 +1184,42 @@ class MainViewModel(
             val folder = source.load(track.parentId) as? AudioFolder ?: return@launch
             SourceKind.entries.firstOrNull { it.id == track.sourceId.value }
                 ?.let(container.sources::select)
+            _state.value = _state.value.copy(destination = AppDestination.LIBRARY)
+            loadFolder(folder, replaceHistory = true)
+        }
+    }
+
+    fun toggleDirectoryBookmark(folder: AudioFolder) {
+        val current = _state.value.directoryBookmarks
+        val exists = current.any { it.sourceId == folder.sourceId && it.nodeId == folder.id }
+        val updated = if (exists) {
+            current.filterNot { it.sourceId == folder.sourceId && it.nodeId == folder.id }
+        } else {
+            current + DirectoryBookmark(folder.sourceId, folder.id, folder.name)
+        }
+        _state.value = _state.value.copy(
+            directoryBookmarks = updated,
+            message = if (exists) "Bookmark removed." else "Bookmarked ${folder.name}.",
+        )
+        container.applicationScope.launch { container.preferences.saveDirectoryBookmarks(updated) }
+    }
+
+    fun openDirectoryBookmark(bookmark: DirectoryBookmark) {
+        viewModelScope.launch {
+            val source = container.sources.source(bookmark.sourceId)
+            if (source == null) {
+                _state.value = _state.value.copy(message = "${bookmark.name} is unavailable until its source reconnects.")
+                return@launch
+            }
+            val folder = runCatching { source.load(bookmark.nodeId) as? AudioFolder }.getOrNull()
+            if (folder == null) {
+                _state.value = _state.value.copy(message = "Bookmarked folder ${bookmark.name} is no longer available.")
+                return@launch
+            }
+            SourceKind.entries.firstOrNull { it.id == bookmark.sourceId.value }?.let { kind ->
+                container.sources.select(kind)
+                container.preferences.updateSource(kind)
+            }
             _state.value = _state.value.copy(destination = AppDestination.LIBRARY)
             loadFolder(folder, replaceHistory = true)
         }
@@ -1136,7 +1279,7 @@ class MainViewModel(
                 when (result) {
                     is PCloudDirectLoginResult.Connected -> installPCloudSession(
                         result.session,
-                        "pCloud connected through fallback direct sign-in. The password was not stored; the temporary auth token is encrypted on this device.",
+                        "Connected to pCloud with email and password.",
                     )
                     PCloudDirectLoginResult.InvalidInput -> {
                         _state.value = _state.value.copy(message = "Enter a valid pCloud email and password.")
@@ -1180,7 +1323,7 @@ class MainViewModel(
         pCloudLoginJob?.cancel()
         installPCloudSession(
             session,
-            "pCloud connected through OAuth. The access token is encrypted on this device.",
+            "Connected to pCloud.",
         )
     }
 
@@ -1250,11 +1393,20 @@ class MainViewModel(
     fun playPause() = playbackConnection.playPause()
     fun skipNext() {
         flushPlaybackProgress()
+        markAudiobookManualChapterNavigation(_state.value.queue.currentIndex + 1)
         playbackConnection.skipNext()
     }
 
     fun skipPrevious() {
         flushPlaybackProgress()
+        val state = _state.value
+        if (state.audioTabs.active.definition.contentMode == PlaybackContentMode.AUDIOBOOK) {
+            if (AudiobookPlaybackPolicy.previousRestartsChapter(state.playback.positionMillis)) {
+                playbackConnection.seekTo(0)
+                return
+            }
+            markAudiobookManualChapterNavigation(state.queue.currentIndex - 1)
+        }
         playbackConnection.skipPrevious()
     }
     fun seekBy(deltaMillis: Long) = playbackConnection.seekBy(deltaMillis)
@@ -1273,12 +1425,20 @@ class MainViewModel(
     }
 
     fun toggleShuffle() {
+        if (_state.value.audioTabs.active.definition.contentMode == PlaybackContentMode.AUDIOBOOK) {
+            _state.value = _state.value.copy(message = "Shuffle is disabled in audiobook mode.")
+            return
+        }
         val enabled = !_state.value.audioTabs.active.shuffle
         playbackConnection.setShuffle(enabled)
         updateActiveTab { it.copy(shuffle = enabled) }
     }
 
     fun cycleRepeatMode() {
+        if (_state.value.audioTabs.active.definition.contentMode == PlaybackContentMode.AUDIOBOOK) {
+            _state.value = _state.value.copy(message = "Music repeat modes are disabled in audiobook mode.")
+            return
+        }
         val mode = when (_state.value.audioTabs.active.repeatMode) {
             PlayerRepeatMode.OFF -> PlayerRepeatMode.ALL
             PlayerRepeatMode.ALL -> PlayerRepeatMode.ONE
@@ -1289,9 +1449,13 @@ class MainViewModel(
     }
 
     fun setSleepTimer(minutes: Int?) {
-        sleepTimerJob?.cancel()
         if (minutes == null) {
-            _state.value = _state.value.copy(sleepTimerEndsAtEpochMillis = null, message = "Sleep timer cancelled.")
+            sleepTimerJob?.cancel()
+            updateActiveTab { it.copy(sleepTimerEndsAtEpochMillis = null) }
+            _state.value = _state.value.copy(
+                sleepTimerEndsAtEpochMillis = null,
+                message = "Sleep timer cancelled.",
+            )
             return
         }
         if (minutes !in 1..720) {
@@ -1299,13 +1463,60 @@ class MainViewModel(
             return
         }
         val endsAt = System.currentTimeMillis() + minutes * 60_000L
-        _state.value = _state.value.copy(sleepTimerEndsAtEpochMillis = endsAt, message = "Sleep timer set for $minutes minutes.")
+        updateActiveTab { it.copy(sleepTimerEndsAtEpochMillis = endsAt) }
+        _state.value = _state.value.copy(
+            sleepTimerEndsAtEpochMillis = endsAt,
+            message = "Sleep timer set for $minutes minutes.",
+        )
+        armSleepTimer(endsAt)
+    }
+
+    private fun armSleepTimer(endsAtEpochMillis: Long) {
+        sleepTimerJob?.cancel()
+        val remaining = endsAtEpochMillis - System.currentTimeMillis()
+        if (remaining <= 0) {
+            updateActiveTab { it.copy(sleepTimerEndsAtEpochMillis = null) }
+            _state.value = _state.value.copy(sleepTimerEndsAtEpochMillis = null)
+            return
+        }
         sleepTimerJob = viewModelScope.launch {
-            delay(minutes * 60_000L)
+            delay(remaining)
             playbackConnection.pause()
             flushPlaybackProgress()
-            _state.value = _state.value.copy(sleepTimerEndsAtEpochMillis = null, message = "Sleep timer paused playback.")
+            updateActiveTab { it.copy(sleepTimerEndsAtEpochMillis = null) }
+            _state.value = _state.value.copy(
+                sleepTimerEndsAtEpochMillis = null,
+                message = "Sleep timer paused playback.",
+            )
         }
+    }
+
+    private fun restoreSleepTimer(tab: AudioTabSession) {
+        val endsAt = tab.sleepTimerEndsAtEpochMillis
+        if (endsAt == null) {
+            sleepTimerJob?.cancel()
+            _state.value = _state.value.copy(sleepTimerEndsAtEpochMillis = null)
+        } else {
+            _state.value = _state.value.copy(sleepTimerEndsAtEpochMillis = endsAt)
+            armSleepTimer(endsAt)
+        }
+    }
+
+    private fun markActiveAudiobook(sourceId: SourceId, bookNodeId: NodeId) {
+        if (_state.value.audioTabs.active.definition.contentMode != PlaybackContentMode.AUDIOBOOK) return
+        updateActiveTab { it.copy(activeAudiobookBookId = AudiobookBookId(sourceId, bookNodeId)) }
+    }
+
+    private fun markAudiobookManualChapterNavigation(targetIndex: Int) {
+        val state = _state.value
+        if (state.audioTabs.active.definition.contentMode != PlaybackContentMode.AUDIOBOOK) return
+        val target = state.queue.entries.getOrNull(targetIndex)?.track
+        val targetMediaId = target?.let { MediaIdentity.encode(it.sourceId, it.id) }
+        audiobookManualChapterNavigation = AudiobookPlaybackPolicy.manualNavigationIntent(
+            fromMediaId = state.playback.mediaId,
+            targetMediaId = targetMediaId,
+            nowEpochMillis = System.currentTimeMillis(),
+        )
     }
 
     private fun loadFolder(folder: AudioFolder, replaceHistory: Boolean, refreshing: Boolean = false) {
@@ -1411,6 +1622,7 @@ class MainViewModel(
             _state.value = _state.value.copy(
                 audioTabs = restoration.collection,
                 queue = active.queue,
+                sleepTimerEndsAtEpochMillis = active.sleepTimerEndsAtEpochMillis,
                 message = when {
                     restoration.unavailableSourceCount > 0 ->
                         "Some saved tab queues are waiting for their source to reconnect; their stable references were preserved."
@@ -1427,6 +1639,7 @@ class MainViewModel(
                 playbackConnection.setQueue(active.queue, play = false, startPositionMillis = active.playbackPositionMillis)
             }
             applyActivePlaybackSettings(active)
+            restoreSleepTimer(active)
             return
         }
 
@@ -1484,7 +1697,14 @@ class MainViewModel(
             unavailableSourceCount += restored.unavailableSourceCount
             requiresRewrite = requiresRewrite || restored.requiresRewrite
             AudioTabSession(
-                definition = AudioTabDefinition(tab.id, tab.name, tab.rootPath, tab.icon, tab.color),
+                definition = AudioTabDefinition(
+                    tab.id,
+                    tab.name,
+                    tab.rootPath,
+                    tab.icon,
+                    tab.color,
+                    tab.contentMode,
+                ),
                 queue = restored.queue,
                 currentFolderId = tab.currentFolderId,
                 playbackPositionMillis = tab.playbackPositionMillis,
@@ -1492,6 +1712,11 @@ class MainViewModel(
                 volume = tab.volume,
                 shuffle = tab.shuffle,
                 repeatMode = tab.repeatMode,
+                audiobookSkipBackMillis = tab.audiobookSkipBackMillis,
+                audiobookSkipForwardMillis = tab.audiobookSkipForwardMillis,
+                stopAtChapterEnd = tab.stopAtChapterEnd,
+                sleepTimerEndsAtEpochMillis = tab.sleepTimerEndsAtEpochMillis,
+                activeAudiobookBookId = tab.activeAudiobookBookId,
             )
         }
         val playlists = stored.playlists.map { playlist ->
@@ -1507,7 +1732,12 @@ class MainViewModel(
             NamedAudioPlaylist(playlist.name, restored.queue.entries)
         }
         return RestoredAudioTabs(
-            collection = AudioTabCollection(sessions, stored.activeTabId, playlists),
+            collection = AudioTabCollection(
+                sessions,
+                stored.activeTabId,
+                playlists,
+                stored.audiobookResumes,
+            ),
             omittedCount = omittedCount,
             unavailableSourceCount = unavailableSourceCount,
             requiresRewrite = requiresRewrite,
@@ -1639,8 +1869,25 @@ class MainViewModel(
         checkpointCursor = decision.cursor
         return decision.progress?.let { progress ->
             val current = _state.value
-            val tabs = AudioTabReducer.updateActive(current.audioTabs) { tab ->
+            var tabs = AudioTabReducer.updateActive(current.audioTabs) { tab ->
                 tab.copy(playbackPositionMillis = progress.positionMillis, playbackSpeed = progress.playbackSpeed)
+            }
+            val active = tabs.active
+            if (
+                active.definition.contentMode == PlaybackContentMode.AUDIOBOOK &&
+                active.activeAudiobookBookId != null
+            ) {
+                tabs = AudioTabReducer.upsertAudiobookResume(
+                    tabs,
+                    AudiobookResumePoint(
+                        bookId = active.activeAudiobookBookId,
+                        chapterNodeId = progress.nodeId,
+                        positionMillis = progress.positionMillis,
+                        durationMillis = progress.durationMillis,
+                        playbackSpeed = active.playbackSpeed,
+                        updatedAtEpochMillis = progress.observedAtEpochMillis,
+                    ),
+                )
             }
             _state.value = current.copy(
                 audioTabs = tabs,
@@ -1660,6 +1907,7 @@ class MainViewModel(
         pCloudLoginJob?.cancel()
         serverConnectJob?.cancel()
         sleepTimerJob?.cancel()
+        playersRefreshJob?.cancel()
         discardMetadataSources()
     }
 
