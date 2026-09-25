@@ -1,0 +1,53 @@
+version: 0.2.0-rc.7
+tag: v0.2.0-rc.7
+status: release_candidate_for_hands_on_testing
+base_release: v0.2.0-rc.6
+final_target: v0.2.0
+date: 2026-09-25
+objective: >-
+  extend the rc.6 playback-liveness tranche with the reviewed Players overview, audiobook-specific
+  playback state, Android folder/bookmark UX fixes, and user-facing settings/documentation polish,
+  while retaining the rc.6 release-runner discovery repair and without claiming the remaining stable
+  0.2.0 protected-provider, physical-device, accessibility, or post-tag promotion gates
+included_work:
+  - stable source-neutral Players overview with deduplicated local/server targets, explicit connectivity/playback/current-media state, and safe controls routed through the existing playback authority
+  - audiobook mode with durable per-book resume, chapter-aware navigation, speed control, configurable skip intervals, sleep/end-of-chapter behavior, and restore without unexpected autoplay
+  - Android directory bookmarks plus recursive primary Play-folder behavior so nested-only folders still produce playable queues
+  - simplified normal pCloud/server settings that remove developer client-ID and credential-implementation copy while preserving existing OAuth, direct sign-in, vault, and controller behavior
+  - Android disconnected-state documentation aligned with production behavior; generated WAV media remains Android-test-only and available for Linux host verification
+  - bounded Android Media3 recovery from item-scoped terminal decode, format, missing-media, and provider-proven unavailable failures with monotonic forward advancement and clean all-bad termination
+  - source-neutral direct-pCloud and server-catalog stream-resolution classification that preserves queue state across transient network, authentication, 5xx, and temporary capability failures
+  - manual Next, Previous, selection, and explicit retry recovery that re-prepares from stable source/node identity after player error
+  - Media3 timeline to durable/UI queue reconciliation after terminal-item compaction and controller disconnect/rebind, preserving paused restore semantics and stable current identity
+  - removal of the Android production demo source and fallback mode, replaced by an explicit disconnected state while keeping deterministic generated WAV media test-only
+  - host release-check discovery now runs exactly the 40 stdlib unittest modules and does not import the separate pytest-only music-ingest suite, preserving the 136 executed unittest cases without an accidental pytest dependency
+rc6_release_run_evidence:
+  run_id: 35109783272
+  head_sha: 8a77130b43a8c546ba37ab8f23b918adf238b579
+  result: failed_before_artifact_generation
+  failure: pytest-only test_music_ingest.py was imported by stdlib unittest discovery on the clean GitHub runner, where pytest is intentionally absent
+verification_required_before_tag:
+  - make doctor
+  - make test
+  - make lint
+  - make build
+  - make ci
+  - make release-check
+  - git diff --check
+final_0_2_0_blockers_not_claimed_by_this_candidate:
+  - physical power-cut filesystem durability evidence
+  - supported Linux screen-reader/accessibility bridge or explicit maintainer exception where still required
+  - physical media-key behavior
+  - physical suspend/resume cycle
+  - GNOME and KDE Plasma session observations
+  - protected Europe and United States pCloud account validation
+  - retained protected-provider soak with real capability expiry and suspend/resume
+  - exact immutable v0.2.0 Arch archive rebuild after final stable tag creation
+stable_promotion_policy: >-
+  the canonical 0.2.0 promotion evidence remains authoritative; pending, blocked, manual,
+  protected, external-session, and post-tag stable-release states are not converted to success
+  for this release candidate
+publication_scope: >-
+  operator-authorized tagged prerelease: push main and the signed v0.2.0-rc.7 tag, allowing the
+  repository release workflow to publish its normal GitHub Release and release artifacts
+warning: this prerelease is for hands-on testing; final v0.2.0 promotion remains fail-closed

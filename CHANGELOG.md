@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.7] - 2026-09-25
+
+### Added
+
+- Added a stable, source-neutral **Players** overview that deduplicates known playback targets across reconnect/discovery and exposes connectivity, playback state, current media, and safe local controls through the existing controller authority.
+- Added audiobook playback state with durable per-book resume, chapter-aware navigation, playback speed, configurable skip intervals, sleep/end-of-chapter stopping behavior, and restore-without-autoplay semantics isolated from normal music queue modes.
+- Added persistent directory bookmarks to the Android folder browser for quick return to known library locations.
+
+### Changed
+
+- Simplified Android pCloud/server settings copy by removing developer-oriented OAuth/client-ID controls and credential-storage implementation banners from the normal user surface while preserving the existing authentication and vault behavior.
+- Updated Android first-run/privacy/user documentation to reflect the production **No library connected** state; deterministic generated WAV media remains test-only on Android and available as a Linux verification source.
+
+### Fixed
+
+- Android **Play folder** now queues the recursive subtree, so folders whose top level contains only subdirectories still reach playable descendants; direct-only playback remains an explicit secondary action.
+- Folder and generic-file rows no longer expose the internal “stable source identity” wording in visible labels.
+- Reissued the rc.6 playback-liveness hardening after closing a release-runner-only test discovery defect: the stdlib host gate runs exactly its 40 unittest modules instead of importing the separate pytest-only music-ingest suite. The executed unittest count remains 136, so clean GitHub runners do not require an accidental host `pytest` installation before tag metadata validation.
+- Carries forward rc.6's bounded Media3 terminal-item skipping, source-neutral terminal-vs-transient stream-resolution classification, stable queue/timeline reconciliation across controller rebind, manual post-error recovery, and removal of the Android production demo source.
+
+### Testing
+
+- The Players/audiobook implementation and subsequent settings-polish pass were independently reviewed; focused core-model/source-server tests and the 136-test local host gate are green before release-candidate packaging.
+- Reproduced the rc.6 GitHub failure on exact tag/SHA and verified it was `ModuleNotFoundError: pytest` during stdlib discovery rather than a playback regression.
+
 ## [0.2.0-rc.6] - 2026-09-16
 
 ### Fixed
