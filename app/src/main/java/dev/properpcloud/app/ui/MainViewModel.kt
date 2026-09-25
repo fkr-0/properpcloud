@@ -35,7 +35,6 @@ import dev.properpcloud.core.model.FolderQueueBuilder
 import dev.properpcloud.core.model.LibrarySearch
 import dev.properpcloud.core.model.LibrarySearchRequest
 import dev.properpcloud.core.model.MediaIdentity
-import dev.properpcloud.core.model.MediaIdentity
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.NamedAudioPlaylist
 import dev.properpcloud.core.model.NodeId
@@ -1873,14 +1872,15 @@ class MainViewModel(
                 tab.copy(playbackPositionMillis = progress.positionMillis, playbackSpeed = progress.playbackSpeed)
             }
             val active = tabs.active
+            val activeAudiobookBookId = active.activeAudiobookBookId
             if (
                 active.definition.contentMode == PlaybackContentMode.AUDIOBOOK &&
-                active.activeAudiobookBookId != null
+                activeAudiobookBookId != null
             ) {
                 tabs = AudioTabReducer.upsertAudiobookResume(
                     tabs,
                     AudiobookResumePoint(
-                        bookId = active.activeAudiobookBookId,
+                        bookId = activeAudiobookBookId,
                         chapterNodeId = progress.nodeId,
                         positionMillis = progress.positionMillis,
                         durationMillis = progress.durationMillis,
