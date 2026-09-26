@@ -77,6 +77,31 @@ internal fun shouldPrepareAfterManualSeek(playbackState: Int, hasPlayerError: Bo
     hasPlayerError || playbackState == Player.STATE_IDLE
 
 @UnstableApi
+internal fun playbackErrorUserMessage(error: PlaybackException): String =
+    playbackErrorUserMessage(error.errorCode, error.findHttpResponseCode(), error.errorCodeName)
+
+internal fun playbackErrorUserMessage(
+    errorCode: Int,
+    responseCode: Int?,
+    errorCodeName: String,
+): String = when {
+    errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+        errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
+        "Playback was interrupted by a network problem. Reconnect and press play to retry."
+    errorCode == PlaybackException.ERROR_CODE_IO_NO_PERMISSION ->
+        "Playback cannot access this media. Check the source permission and reconnect."
+    errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND || responseCode == 404 ->
+        "This media item is no longer available at its source."
+    responseCode == 401 || responseCode == 403 ->
+        "Playback access expired or was denied. Reconnect and press play to retry."
+    errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
+        errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
+        errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ->
+        "This media file could not be decoded. It may be corrupt or unsupported."
+    else -> "Playback failed ($errorCodeName)."
+}
+
+@UnstableApi
 class PlaybackConnection(context: Context) : PlaybackController, Player.Listener {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val controllerFuture = MediaController.Builder(
@@ -210,7 +235,7 @@ class PlaybackConnection(context: Context) : PlaybackController, Player.Listener
 
     override fun onPlayerError(error: PlaybackException) {
         explicitRecoveryEligible = isRetriablePlaybackFailure(error.errorCode, error.findHttpResponseCode())
-        _state.value = _state.value.copy(error = error.errorCodeName)
+        _state.value = _state.value.copy(error = playbackErrorUserMessage(error))
     }
 
     private fun withController(action: (MediaController) -> Unit) {
@@ -271,7 +296,7 @@ class PlaybackConnection(context: Context) : PlaybackController, Player.Listener
             },
             playbackState = player.playbackState,
             timelineMediaIds = timelineMediaIds,
-            error = player.playerError?.errorCodeName,
+            error = player.playerError?.let(::playbackErrorUserMessage),
         )
     }
 

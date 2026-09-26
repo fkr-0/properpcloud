@@ -280,7 +280,7 @@ class MainViewModel(
             } catch (error: Throwable) {
                 _state.value = _state.value.copy(
                     serverConnectInProgress = false,
-                    message = error.userMessage("Could not connect server library"),
+                    message = error.sourceUserMessage("Could not connect server library"),
                 )
             }
         }
@@ -869,7 +869,7 @@ class MainViewModel(
                 ?: runCatching { source.resolveFolderPath(tab.definition.rootPath) }.getOrElse { error ->
                     _state.value = _state.value.copy(
                         loading = false,
-                        errorMessage = error.userMessage("Tab root '${tab.definition.rootPath}' is unavailable"),
+                        errorMessage = error.sourceUserMessage("Tab root '${tab.definition.rootPath}' is unavailable"),
                     )
                     return@launch
                 }
@@ -1139,7 +1139,7 @@ class MainViewModel(
             } catch (error: Exception) {
                 _state.value = _state.value.copy(
                     queueBuilding = false,
-                    message = error.userMessage("Could not build queue"),
+                    message = error.sourceUserMessage("Could not build queue"),
                 )
             }
         }
@@ -1179,8 +1179,25 @@ class MainViewModel(
 
     fun openContainingFolder(track: AudioTrack) {
         viewModelScope.launch {
-            val source = container.sources.source(track.sourceId) ?: return@launch
-            val folder = source.load(track.parentId) as? AudioFolder ?: return@launch
+            val source = container.sources.source(track.sourceId)
+            if (source == null) {
+                _state.value = _state.value.copy(message = "The source for this media is not connected.")
+                return@launch
+            }
+            val folder = try {
+                source.load(track.parentId) as? AudioFolder
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _state.value = _state.value.copy(
+                    message = error.sourceUserMessage("Could not open containing folder"),
+                )
+                return@launch
+            }
+            if (folder == null) {
+                _state.value = _state.value.copy(message = "The containing folder is no longer available.")
+                return@launch
+            }
             SourceKind.entries.firstOrNull { it.id == track.sourceId.value }
                 ?.let(container.sources::select)
             _state.value = _state.value.copy(destination = AppDestination.LIBRARY)
@@ -1210,7 +1227,16 @@ class MainViewModel(
                 _state.value = _state.value.copy(message = "${bookmark.name} is unavailable until its source reconnects.")
                 return@launch
             }
-            val folder = runCatching { source.load(bookmark.nodeId) as? AudioFolder }.getOrNull()
+            val folder = try {
+                source.load(bookmark.nodeId) as? AudioFolder
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _state.value = _state.value.copy(
+                    message = error.sourceUserMessage("Could not open bookmarked folder"),
+                )
+                return@launch
+            }
             if (folder == null) {
                 _state.value = _state.value.copy(message = "Bookmarked folder ${bookmark.name} is no longer available.")
                 return@launch
@@ -1567,7 +1593,7 @@ class MainViewModel(
                 _state.value = _state.value.copy(
                     loading = false,
                     refreshing = false,
-                    errorMessage = error.userMessage("Could not load folder"),
+                    errorMessage = error.sourceUserMessage("Could not load folder"),
                 )
             }
         }
@@ -1800,7 +1826,7 @@ class MainViewModel(
                 if (latest.search.query == request.query) {
                     _state.value = latest.copy(
                         search = latest.search.copy(results = emptyList(), searching = false),
-                        message = error.userMessage("Tab search failed"),
+                        message = error.sourceUserMessage("Tab search failed"),
                     )
                 }
             }
@@ -1859,6 +1885,7 @@ class MainViewModel(
                 mediaId = playback.mediaId,
                 positionMillis = playback.positionMillis,
                 durationMillis = playback.durationMillis.takeIf { it > 0 },
+                playbackSpeed = playback.playbackSpeed,
                 isPlaying = playback.isPlaying,
             ),
             cursor = checkpointCursor,
@@ -1958,6 +1985,31 @@ private fun MetadataExportArtifact.toUi() = MetadataArtifactUi(
     itemCount = itemCount,
     sha256 = sha256,
 )
+
+internal fun Throwable.sourceUserMessage(prefix: String): String {
+    var current: Throwable? = this
+    val visited = mutableSetOf<Throwable>()
+    while (current != null && visited.add(current)) {
+        when (current) {
+            is SecurityException ->
+                return "$prefix: permission denied. Check source access and retry."
+            is java.net.ConnectException,
+            is java.net.SocketTimeoutException,
+            is java.net.UnknownHostException,
+            is java.io.IOException ->
+                return "$prefix: source is temporarily unavailable. Check the connection and retry."
+            is dev.properpcloud.core.model.StreamResolutionException ->
+                return when (current.kind) {
+                    dev.properpcloud.core.model.StreamResolutionFailureKind.ITEM_UNAVAILABLE ->
+                        "$prefix: the media item is no longer available at its source."
+                    dev.properpcloud.core.model.StreamResolutionFailureKind.TRANSIENT ->
+                        "$prefix: source is temporarily unavailable. Reconnect and retry."
+                }
+        }
+        current = current.cause
+    }
+    return "$prefix. Retry, reconnect the source, or check its permissions."
+}
 
 private fun Throwable.userMessage(prefix: String): String =
     "$prefix: ${message?.takeIf { it.isNotBlank() } ?: this::class.simpleName.orEmpty()}"

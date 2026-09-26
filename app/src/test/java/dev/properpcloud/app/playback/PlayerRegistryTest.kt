@@ -20,7 +20,8 @@ class PlayerRegistryTest {
                 remote(remoteId, PlayerConnectivity.CONNECTED, observedAt = 2),
             ),
         )
-        val registry = PlayerRegistry { listOf(provider) }
+        val providerSet = ProviderSet(listOf(provider))
+        val registry = PlayerRegistry(providerSet::snapshot)
         val local = PlaybackUiState(
             connected = true,
             mediaId = "pcloud:chapter:1",
@@ -30,8 +31,8 @@ class PlayerRegistryTest {
 
         val first = registry.refresh(local)
         assertEquals(2, first.size)
-        assertEquals(1, first.count { it.id == remoteId })
-        assertEquals(PlayerConnectivity.CONNECTED, first.first { it.id == remoteId }.connectivity)
+        assertEquals(1, playerCount(first, remoteId))
+        assertEquals(PlayerConnectivity.CONNECTED, playerById(first, remoteId).connectivity)
 
         provider.snapshots = listOf(
             remote(
@@ -43,18 +44,41 @@ class PlayerRegistryTest {
         )
         val reconnected = registry.refresh(local)
         assertEquals(2, reconnected.size)
-        assertEquals(PlayerPlaybackState.PAUSED, reconnected.first { it.id == remoteId }.playbackState)
+        assertEquals(PlayerPlaybackState.PAUSED, playerById(reconnected, remoteId).playbackState)
 
         provider.fail = true
         val degraded = registry.refresh(local)
-        val stale = degraded.first { it.id == remoteId }
+        val stale = playerById(degraded, remoteId)
         assertEquals(PlayerConnectivity.DEGRADED, stale.connectivity)
         assertTrue(stale.stale)
     }
 
     @Test
+    fun `provider removal marks remembered remote target unavailable while preserving local authority`() = runTest {
+        val remoteId = PlayerTargetId("fake:bedroom")
+        val provider = FakeProvider(
+            snapshots = listOf(remote(remoteId, PlayerConnectivity.CONNECTED, observedAt = 1)),
+        )
+        val providerSet = ProviderSet(listOf(provider))
+        val registry = PlayerRegistry(providerSet::snapshot)
+        val local = PlaybackUiState(connected = true, title = "Local")
+
+        val discovered = registry.refresh(local)
+        assertEquals(PlayerConnectivity.CONNECTED, playerById(discovered, remoteId).connectivity)
+
+        providerSet.providers = emptyList()
+        val unavailable = registry.refresh(local)
+        val rememberedRemote = playerById(unavailable, remoteId)
+
+        assertEquals(PlayerConnectivity.UNAVAILABLE, rememberedRemote.connectivity)
+        assertTrue(rememberedRemote.stale)
+        assertEquals(1, playerCount(unavailable, PlayerRegistry.LOCAL_PLAYER_ID))
+        assertTrue(playerById(unavailable, PlayerRegistry.LOCAL_PLAYER_ID).controllable)
+    }
+
+    @Test
     fun `local media3 authority is always represented exactly once`() {
-        val registry = PlayerRegistry { emptyList() }
+        val registry = PlayerRegistry(::noProviders)
 
         val players = registry.observeLocal(
             PlaybackUiState(
@@ -69,6 +93,29 @@ class PlayerRegistryTest {
         assertEquals(PlayerRegistry.LOCAL_PLAYER_ID, players.single().id)
         assertTrue(players.single().controllable)
         assertTrue(players.single().local)
+    }
+
+    private fun noProviders(): List<PlayerTargetProvider> = emptyList()
+
+    private fun playerById(
+        players: List<PlayerTargetSnapshot>,
+        id: PlayerTargetId,
+    ): PlayerTargetSnapshot {
+        for (player in players) {
+            if (player.id == id) return player
+        }
+        error("player $id not found")
+    }
+
+    private fun playerCount(
+        players: List<PlayerTargetSnapshot>,
+        id: PlayerTargetId,
+    ): Int {
+        var count = 0
+        for (player in players) {
+            if (player.id == id) count += 1
+        }
+        return count
     }
 
     private fun remote(
@@ -86,6 +133,12 @@ class PlayerRegistryTest {
         currentMediaTitle = "Book",
         observedAtEpochMillis = observedAt,
     )
+
+    private class ProviderSet(
+        var providers: List<PlayerTargetProvider>,
+    ) {
+        fun snapshot(): List<PlayerTargetProvider> = providers
+    }
 
     private class FakeProvider(
         var snapshots: List<PlayerTargetSnapshot>,

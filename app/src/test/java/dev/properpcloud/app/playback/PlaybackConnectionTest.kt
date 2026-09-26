@@ -56,6 +56,34 @@ class PlaybackConnectionTest {
     }
 
     @Test
+    fun playbackFailuresExposeActionableRedactedMessages() {
+        assertEquals(
+            "Playback was interrupted by a network problem. Reconnect and press play to retry.",
+            playbackErrorUserMessage(
+                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+                responseCode = null,
+                errorCodeName = "ERROR_CODE_IO_NETWORK_CONNECTION_FAILED",
+            ),
+        )
+        assertEquals(
+            "Playback cannot access this media. Check the source permission and reconnect.",
+            playbackErrorUserMessage(
+                PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
+                responseCode = null,
+                errorCodeName = "ERROR_CODE_IO_NO_PERMISSION",
+            ),
+        )
+        assertEquals(
+            "This media file could not be decoded. It may be corrupt or unsupported.",
+            playbackErrorUserMessage(
+                PlaybackException.ERROR_CODE_DECODING_FAILED,
+                responseCode = null,
+                errorCodeName = "ERROR_CODE_DECODING_FAILED",
+            ),
+        )
+    }
+
+    @Test
     fun terminalItemFailuresSkipButTransientNetworkFailuresDoNotCascadeThroughQueue() {
         assertEquals(
             PlaybackFailureAction.SKIP_TO_NEXT,

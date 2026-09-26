@@ -11,16 +11,21 @@ import dev.properpcloud.app.data.GeneratedTestAudioSource
 import dev.properpcloud.app.playback.PlaybackController
 import dev.properpcloud.app.playback.PlaybackUiState
 import dev.properpcloud.core.model.AudioFolder
+import dev.properpcloud.core.model.AudioSource
 import dev.properpcloud.core.model.AudioTabDefaults
 import dev.properpcloud.core.model.AudioTabId
 import dev.properpcloud.core.model.AudioTabReducer
 import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.AudiobookBookId
 import dev.properpcloud.core.model.MediaIdentity
+import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.NodeId
+import dev.properpcloud.core.model.NodeInspection
 import dev.properpcloud.core.model.PlaybackProgress
 import dev.properpcloud.core.model.PlaybackQueue
 import dev.properpcloud.core.model.QueueEntry
 import dev.properpcloud.core.model.SourceId
+import dev.properpcloud.core.model.StreamHandle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +38,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -472,6 +478,157 @@ class MainViewModelTest {
         }
     }
 
+    @Test
+    fun audiobookProgressFlushPersistsResumePointAndPlaybackSpeed() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val playback = FakePlaybackController()
+        val container = AppContainer(
+            context.applicationContext as Application,
+            applicationScope = this,
+            disconnectedSource = GeneratedTestAudioSource(context),
+        )
+        val source = container.sources.current.value
+        val audiobookRoot = source.list(source.root.id)
+            .filterIsInstance<AudioFolder>()
+            .first { it.name == "Audiobooks" }
+        val book = source.list(audiobookRoot.id).filterIsInstance<AudioFolder>().single()
+        val track = source.list(book.id).filterIsInstance<AudioTrack>().first()
+        val bookId = AudiobookBookId(track.sourceId, book.id)
+        val tabs = AudioTabReducer.updateActive(AudioTabDefaults.collection()) { tab ->
+            tab.copy(
+                queue = PlaybackQueue(entries = listOf(QueueEntry(track)), currentIndex = 0),
+                playbackSpeed = 1.35f,
+                activeAudiobookBookId = bookId,
+            )
+        }
+        container.preferences.saveAudioTabs(tabs)
+
+        withViewModel(container, playback) { viewModel ->
+            for (attempt in 0 until 200) {
+                advanceUntilIdle()
+                if (viewModel.state.value.queue.current?.track?.id == track.id) break
+                Thread.sleep(10)
+            }
+            val mediaId = MediaIdentity.encode(track.sourceId, track.id)
+            playback.emit(
+                PlaybackUiState(
+                    connected = true,
+                    mediaId = mediaId,
+                    positionMillis = 4_250,
+                    durationMillis = 30_000,
+                    playbackSpeed = 1.35f,
+                    isPlaying = true,
+                ),
+            )
+            advanceUntilIdle()
+            requireNotNull(viewModel.flushPlaybackProgress()).join()
+
+            var resume = container.preferences.loadAudioTabs()
+                ?.audiobookResumes
+                ?.firstOrNull { it.bookId == bookId }
+            for (attempt in 0 until 200) {
+                if (resume?.positionMillis == 4_250L) break
+                advanceUntilIdle()
+                Thread.sleep(10)
+                resume = container.preferences.loadAudioTabs()
+                    ?.audiobookResumes
+                    ?.firstOrNull { it.bookId == bookId }
+            }
+
+            val stored = requireNotNull(resume)
+            assertEquals(track.id, stored.chapterNodeId)
+            assertEquals(4_250L, stored.positionMillis)
+            assertEquals(30_000L, stored.durationMillis)
+            assertEquals(1.35f, stored.playbackSpeed)
+        }
+    }
+
+    @Test
+    fun libraryRefreshFailurePreservesVisibleNodesAndRedactsProviderDetails() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val source = FailingTestAudioSource()
+        val track = AudioTrack(
+            sourceId = source.id,
+            id = NodeId("none:track:one"),
+            parentId = source.root.id,
+            name = "chapter.m4b",
+        )
+        source.children = listOf(track)
+        val container = AppContainer(
+            context.applicationContext as Application,
+            applicationScope = this,
+            disconnectedSource = source,
+        )
+
+        withViewModel(container, FakePlaybackController()) { viewModel ->
+            for (attempt in 0 until 200) {
+                advanceUntilIdle()
+                if (viewModel.state.value.nodes.any { it.id == track.id }) break
+                Thread.sleep(10)
+            }
+            assertEquals(listOf(track.id), viewModel.state.value.nodes.map { it.id })
+
+            source.listFailure = SecurityException("/private/library/token=secret")
+            viewModel.refresh()
+            for (attempt in 0 until 200) {
+                advanceUntilIdle()
+                if (!viewModel.state.value.refreshing && viewModel.state.value.errorMessage != null) break
+                Thread.sleep(10)
+            }
+
+            assertEquals(listOf(track.id), viewModel.state.value.nodes.map { it.id })
+            assertFalse(viewModel.state.value.refreshing)
+            assertEquals(
+                "Could not load folder: permission denied. Check source access and retry.",
+                viewModel.state.value.errorMessage,
+            )
+            assertFalse(viewModel.state.value.errorMessage.orEmpty().contains("/private"))
+            assertFalse(viewModel.state.value.errorMessage.orEmpty().contains("token=secret"))
+        }
+    }
+
+    @Test
+    fun openContainingFolderTurnsProviderFailureIntoRecoverableUiMessage() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val source = FailingTestAudioSource()
+        val container = AppContainer(
+            context.applicationContext as Application,
+            applicationScope = this,
+            disconnectedSource = source,
+        )
+        val track = AudioTrack(
+            sourceId = source.id,
+            id = NodeId("none:track:book"),
+            parentId = source.root.id,
+            name = "book.m4b",
+        )
+
+        withViewModel(container, FakePlaybackController()) { viewModel ->
+            advanceUntilIdle()
+            source.loadFailure = SecurityException("/private/book/path")
+            viewModel.openContainingFolder(track)
+            advanceUntilIdle()
+
+            assertEquals(
+                "Could not open containing folder: permission denied. Check source access and retry.",
+                viewModel.state.value.message,
+            )
+            assertFalse(viewModel.state.value.message.orEmpty().contains("/private"))
+        }
+    }
+
+    @Test
+    fun sourceFailureMessagesClassifyOfflineAndUnavailableWithoutRawDetails() {
+        assertEquals(
+            "Could not load folder: source is temporarily unavailable. Check the connection and retry.",
+            java.net.ConnectException("host=private.example").sourceUserMessage("Could not load folder"),
+        )
+        assertEquals(
+            "Could not load folder. Retry, reconnect the source, or check its permissions.",
+            IllegalStateException("token=secret").sourceUserMessage("Could not load folder"),
+        )
+    }
+
     private suspend fun withViewModel(
         container: AppContainer,
         playback: PlaybackController,
@@ -488,6 +645,32 @@ class MainViewModelTest {
         } finally {
             store.clear()
         }
+    }
+
+    private class FailingTestAudioSource : AudioSource {
+        override val id = SourceId("none")
+        override val root = AudioFolder(id, NodeId("none:folder:root"), null, "Test source")
+        var children: List<MediaNode> = emptyList()
+        var listFailure: Throwable? = null
+        var loadFailure: Throwable? = null
+
+        override suspend fun list(folderId: NodeId): List<MediaNode> {
+            listFailure?.let { throw it }
+            require(folderId == root.id)
+            return children
+        }
+
+        override suspend fun load(nodeId: NodeId): MediaNode {
+            loadFailure?.let { throw it }
+            if (nodeId == root.id) return root
+            return children.first { it.id == nodeId }
+        }
+
+        override suspend fun resolveStream(trackId: NodeId): StreamHandle =
+            error("not used by this test source")
+
+        override suspend fun inspect(nodeId: NodeId): NodeInspection =
+            NodeInspection(mapOf("test" to "true"))
     }
 
     private class FakePlaybackController : PlaybackController {
