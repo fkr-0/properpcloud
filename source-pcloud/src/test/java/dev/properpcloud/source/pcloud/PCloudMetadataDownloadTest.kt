@@ -33,6 +33,26 @@ class PCloudMetadataDownloadTest {
     }
 
     @Test
+    fun deletesPartialCandidateWhenDownloadIsInterrupted() {
+        val bytes = "partial-metadata-source".toByteArray()
+        val source = PCloudAudioSource(
+            client = unsupportedClient(),
+            metadataTransport = FakeMetadataTransport(
+                bytes,
+                listOf(snapshot(bytes, modified = 100)),
+                downloadFailure = java.io.IOException("connection dropped"),
+            ),
+        )
+        val destination = File(temporary.newFolder("interrupted"), "track.mp3")
+
+        assertThrows(java.io.IOException::class.java) {
+            runTest { source.prepareMetadataSource(NodeId("pcloud:file:7"), destination) }
+        }
+
+        assertFalse(destination.exists())
+    }
+
+    @Test
     fun deletesCandidateWhenRevisionChangesDuringDownload() {
         val bytes = "metadata-source".toByteArray()
         val source = PCloudAudioSource(
@@ -63,6 +83,7 @@ class PCloudMetadataDownloadTest {
     private class FakeMetadataTransport(
         private val bytes: ByteArray,
         snapshots: List<PCloudMetadataSnapshot>,
+        private val downloadFailure: Throwable? = null,
     ) : PCloudMetadataTransport {
         private val remaining = ArrayDeque(snapshots)
 
@@ -70,6 +91,7 @@ class PCloudMetadataDownloadTest {
 
         override fun download(fileId: Long, destinationFile: File) {
             destinationFile.writeBytes(bytes)
+            downloadFailure?.let { throw it }
         }
     }
 
