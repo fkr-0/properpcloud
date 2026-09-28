@@ -65,6 +65,8 @@ import dev.properpcloud.source.pcloud.PCloudDirectLoginResult
 import dev.properpcloud.source.pcloud.PCloudDirectLoginRejectionReason
 import dev.properpcloud.source.pcloud.PCloudRevocationResult
 import dev.properpcloud.source.server.ServerCatalogAudioSource
+import dev.properpcloud.source.server.ServerCatalogFailureKind
+import dev.properpcloud.source.server.ServerCatalogRequestException
 import dev.properpcloud.source.server.ServerCatalogSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -1993,6 +1995,23 @@ internal fun Throwable.sourceUserMessage(prefix: String): String {
         when (current) {
             is SecurityException ->
                 return "$prefix: permission denied. Check source access and retry."
+            is ServerCatalogRequestException ->
+                return when (current.kind) {
+                    ServerCatalogFailureKind.AUTHENTICATION ->
+                        "$prefix: server credentials were rejected. Check the API token and retry."
+                    ServerCatalogFailureKind.PERMISSION ->
+                        "$prefix: server credentials do not permit this operation."
+                    ServerCatalogFailureKind.NOT_FOUND ->
+                        "$prefix: the requested server catalog resource is unavailable."
+                    ServerCatalogFailureKind.RATE_LIMITED ->
+                        "$prefix: server is rate limiting requests. Retry shortly."
+                    ServerCatalogFailureKind.CLIENT_REQUEST ->
+                        "$prefix: server rejected the catalog request. Check the server configuration."
+                    ServerCatalogFailureKind.SERVER_UNAVAILABLE ->
+                        "$prefix: server is temporarily unavailable. Retry shortly."
+                    ServerCatalogFailureKind.INVALID_RESPONSE ->
+                        "$prefix: server returned invalid catalog data. Check server compatibility."
+                }
             is java.net.ConnectException,
             is java.net.SocketTimeoutException,
             is java.net.UnknownHostException,

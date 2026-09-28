@@ -51,13 +51,37 @@ data class ServerCatalogSession(
     }
 }
 
-internal class ServerCatalogHttpException(
+enum class ServerCatalogFailureKind {
+    AUTHENTICATION,
+    PERMISSION,
+    NOT_FOUND,
+    RATE_LIMITED,
+    CLIENT_REQUEST,
+    SERVER_UNAVAILABLE,
+    INVALID_RESPONSE,
+}
+
+class ServerCatalogRequestException(
+    val kind: ServerCatalogFailureKind,
     val statusCode: Int,
 ) : IOException("server catalog request failed with HTTP $statusCode")
 
+private fun serverCatalogHttpFailure(statusCode: Int): ServerCatalogRequestException =
+    ServerCatalogRequestException(
+        kind = when (statusCode) {
+            401 -> ServerCatalogFailureKind.AUTHENTICATION
+            403 -> ServerCatalogFailureKind.PERMISSION
+            404, 410 -> ServerCatalogFailureKind.NOT_FOUND
+            429 -> ServerCatalogFailureKind.RATE_LIMITED
+            in 400..499 -> ServerCatalogFailureKind.CLIENT_REQUEST
+            else -> ServerCatalogFailureKind.SERVER_UNAVAILABLE
+        },
+        statusCode = statusCode,
+    )
+
 internal fun classifyServerStreamResolutionFailure(error: Exception): StreamResolutionException = when (error) {
     is StreamResolutionException -> error
-    is ServerCatalogHttpException -> StreamResolutionException(
+    is ServerCatalogRequestException -> StreamResolutionException(
         kind = if (error.statusCode in setOf(404, 410)) {
             StreamResolutionFailureKind.ITEM_UNAVAILABLE
         } else {
@@ -139,7 +163,7 @@ class ServerCatalogAudioSource(
     override suspend fun discoverPlayers(): List<PlayerTargetSnapshot> = withContext(Dispatchers.IO) {
         val response = try {
             requestJson("/api/v1/players")
-        } catch (error: ServerCatalogHttpException) {
+        } catch (error: ServerCatalogRequestException) {
             if (error.statusCode == 404) return@withContext emptyList()
             throw error
         }
@@ -165,8 +189,15 @@ class ServerCatalogAudioSource(
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
             val body = stream?.use(::readBoundedUtf8).orEmpty()
-            if (status !in 200..299) throw ServerCatalogHttpException(status)
-            return JsonParser.parseString(body).asJsonObject
+            if (status !in 200..299) throw serverCatalogHttpFailure(status)
+            return try {
+                JsonParser.parseString(body).asJsonObject
+            } catch (error: RuntimeException) {
+                throw ServerCatalogRequestException(
+                    kind = ServerCatalogFailureKind.INVALID_RESPONSE,
+                    statusCode = status,
+                ).also { it.initCause(error) }
+            }
         } finally {
             connection.disconnect()
         }

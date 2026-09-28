@@ -21,20 +21,65 @@ class ServerCatalogAudioSourceTest {
     fun `missing catalog item is terminal while auth and server failures remain transient`() = runTest {
         assertEquals(
             StreamResolutionFailureKind.ITEM_UNAVAILABLE,
-            classifyServerStreamResolutionFailure(ServerCatalogHttpException(404)).kind,
+            classifyServerStreamResolutionFailure(ServerCatalogRequestException(ServerCatalogFailureKind.NOT_FOUND, 404)).kind,
         )
         assertEquals(
             StreamResolutionFailureKind.ITEM_UNAVAILABLE,
-            classifyServerStreamResolutionFailure(ServerCatalogHttpException(410)).kind,
+            classifyServerStreamResolutionFailure(ServerCatalogRequestException(ServerCatalogFailureKind.NOT_FOUND, 410)).kind,
         )
         assertEquals(
             StreamResolutionFailureKind.TRANSIENT,
-            classifyServerStreamResolutionFailure(ServerCatalogHttpException(401)).kind,
+            classifyServerStreamResolutionFailure(ServerCatalogRequestException(ServerCatalogFailureKind.AUTHENTICATION, 401)).kind,
         )
         assertEquals(
             StreamResolutionFailureKind.TRANSIENT,
-            classifyServerStreamResolutionFailure(ServerCatalogHttpException(503)).kind,
+            classifyServerStreamResolutionFailure(ServerCatalogRequestException(ServerCatalogFailureKind.SERVER_UNAVAILABLE, 503)).kind,
         )
+    }
+
+    @Test
+    fun `browse failures retain safe HTTP failure typing without response bodies`() = runTest {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            val bytes = "secret provider detail".toByteArray(Charsets.UTF_8)
+            exchange.sendResponseHeaders(401, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            val source = ServerCatalogAudioSource(ServerCatalogSession("http://127.0.0.1:${server.address.port}"))
+            val failure = runCatching { source.list(source.root.id) }.exceptionOrNull()
+
+            assertTrue(failure is ServerCatalogRequestException)
+            failure as ServerCatalogRequestException
+            assertEquals(ServerCatalogFailureKind.AUTHENTICATION, failure.kind)
+            assertEquals(401, failure.statusCode)
+            assertFalse(failure.message.orEmpty().contains("secret provider detail"))
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `invalid success payload is typed as invalid response`() = runTest {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            val bytes = "not-json".toByteArray(Charsets.UTF_8)
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            val source = ServerCatalogAudioSource(ServerCatalogSession("http://127.0.0.1:${server.address.port}"))
+            val failure = runCatching { source.list(source.root.id) }.exceptionOrNull()
+
+            assertTrue(failure is ServerCatalogRequestException)
+            failure as ServerCatalogRequestException
+            assertEquals(ServerCatalogFailureKind.INVALID_RESPONSE, failure.kind)
+            assertEquals(200, failure.statusCode)
+        } finally {
+            server.stop(0)
+        }
     }
 
     @Test
