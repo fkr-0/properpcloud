@@ -84,6 +84,26 @@ class PlaybackConnectionTest {
     }
 
     @Test
+    fun playbackHttpFailuresDistinguishExpiredAccessFromMissingMedia() {
+        assertEquals(
+            "Playback access expired or was denied. Reconnect and press play to retry.",
+            playbackErrorUserMessage(
+                PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+                responseCode = 403,
+                errorCodeName = "ERROR_CODE_IO_BAD_HTTP_STATUS",
+            ),
+        )
+        assertEquals(
+            "This media item is no longer available at its source.",
+            playbackErrorUserMessage(
+                PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+                responseCode = 404,
+                errorCodeName = "ERROR_CODE_IO_BAD_HTTP_STATUS",
+            ),
+        )
+    }
+
+    @Test
     fun terminalItemFailuresSkipButTransientNetworkFailuresDoNotCascadeThroughQueue() {
         assertEquals(
             PlaybackFailureAction.SKIP_TO_NEXT,

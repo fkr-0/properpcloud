@@ -77,6 +77,28 @@ class PlayerRegistryTest {
     }
 
     @Test
+    fun `repeated discovery failure keeps already unavailable target unavailable`() = runTest {
+        val remoteId = PlayerTargetId("fake:offline")
+        val provider = FakeProvider(
+            snapshots = listOf(remote(remoteId, PlayerConnectivity.CONNECTED, observedAt = 1)),
+        )
+        val providerSet = ProviderSet(listOf(provider))
+        val registry = PlayerRegistry(providerSet::snapshot)
+        val local = PlaybackUiState(connected = true)
+
+        registry.refresh(local)
+        providerSet.providers = emptyList()
+        assertEquals(PlayerConnectivity.UNAVAILABLE, playerById(registry.refresh(local), remoteId).connectivity)
+
+        providerSet.providers = listOf(provider)
+        provider.fail = true
+        val stillUnavailable = playerById(registry.refresh(local), remoteId)
+
+        assertEquals(PlayerConnectivity.UNAVAILABLE, stillUnavailable.connectivity)
+        assertTrue(stillUnavailable.stale)
+    }
+
+    @Test
     fun `local media3 authority is always represented exactly once`() {
         val registry = PlayerRegistry(::noProviders)
 
