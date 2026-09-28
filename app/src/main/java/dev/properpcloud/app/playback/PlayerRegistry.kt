@@ -31,15 +31,19 @@ class PlayerRegistry(
             runCatching { provider.discoverPlayers() }
                 .onSuccess { discovered ->
                     val normalized = PlayerTargetMergePolicy.merge(
-                        discovered.map { target ->
-                            target.copy(
-                                providerId = provider.providerId,
-                                providerName = provider.providerName,
-                                observedAtEpochMillis = target.observedAtEpochMillis.takeIf { it > 0 }
-                                    ?: System.currentTimeMillis(),
-                                stale = false,
-                            )
-                        },
+                        discovered
+                            .asSequence()
+                            .filterNot { target -> target.id == LOCAL_PLAYER_ID }
+                            .map { target ->
+                                target.copy(
+                                    providerId = provider.providerId,
+                                    providerName = provider.providerName,
+                                    observedAtEpochMillis = target.observedAtEpochMillis.takeIf { it > 0 }
+                                        ?: System.currentTimeMillis(),
+                                    stale = false,
+                                )
+                            }
+                            .asIterable(),
                     )
                     val discoveredIds = normalized.mapTo(mutableSetOf()) { it.id }
                     previous.filterNot { it.id in discoveredIds }.forEach { missing ->

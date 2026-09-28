@@ -95,6 +95,36 @@ class PlayerRegistryTest {
         assertTrue(players.single().local)
     }
 
+    @Test
+    fun `remote provider cannot shadow reserved local player authority`() = runTest {
+        val provider = FakeProvider(
+            snapshots = listOf(
+                remote(
+                    id = PlayerRegistry.LOCAL_PLAYER_ID,
+                    connectivity = PlayerConnectivity.CONNECTED,
+                    observedAt = Long.MAX_VALUE,
+                ),
+            ),
+        )
+        val registry = PlayerRegistry { listOf(provider) }
+        val local = PlaybackUiState(
+            connected = true,
+            mediaId = "pcloud:file:1",
+            title = "Local track",
+            isPlaying = false,
+        )
+
+        val players = registry.refresh(local)
+        val localTarget = playerById(players, PlayerRegistry.LOCAL_PLAYER_ID)
+
+        assertEquals(1, playerCount(players, PlayerRegistry.LOCAL_PLAYER_ID))
+        assertEquals(PlayerRegistry.LOCAL_PROVIDER_ID, localTarget.providerId)
+        assertEquals("This device", localTarget.providerName)
+        assertEquals("ProperPCloud local player", localTarget.displayName)
+        assertTrue(localTarget.controllable)
+        assertTrue(localTarget.local)
+    }
+
     private fun noProviders(): List<PlayerTargetProvider> = emptyList()
 
     private fun playerById(
