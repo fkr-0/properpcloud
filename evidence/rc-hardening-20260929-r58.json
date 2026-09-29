@@ -1,0 +1,181 @@
+{
+  "recorded_at": "2026-09-29T21:55:30+02:00",
+  "task": "ProperPCloud RC improvements and release candidate hardening",
+  "version": "0.2.0-rc.9",
+  "verified_head": "6ae57c979eb5cf09b8ce67f159c3b7112407c77f",
+  "branch": "main",
+  "remote_delta": "ahead 22 of origin/main",
+  "unrelated_dirty_work_preserved": [
+    "bridge.yml"
+  ],
+  "rc_health": {
+    "build_stability": "pass",
+    "test_stability": "pass",
+    "lint": "pass",
+    "release_metadata": "pass",
+    "open_github_issues": 0,
+    "reproduced_code_blockers_after_fix": 0,
+    "note": "Player/audiobook/library failure hardening already present at baseline remained green; this pass found and closed a release-signing upgrade blocker."
+  },
+  "blocker_closed": {
+    "id": "android-ephemeral-release-signer",
+    "severity": "high",
+    "reproduction": {
+      "consecutive_apks": [
+        "a315f271694c5075064b8f3810fa61b24994a404f83d172d3db10ac440b3cdc7",
+        "d23d5699a610c0eaf98dc9dbdde07c55d9fb2367a4082ad57323759263b37e82"
+      ],
+      "zip_entries": 270,
+      "payload_entry_differences": 0,
+      "signer_certificate_sha256": [
+        "d1e853a5e991f28e3657f344694a5685bad24f631e4f05ebb85ac079bdba3e93",
+        "51ccac1c2139a2e0742f3d03e806d81958b00e367b09ac75633583acbcc1975b"
+      ],
+      "conclusion": "The Docker-backed debug build generated a fresh Android debug keystore per container, making published evaluation APKs non-upgradeable across runs."
+    },
+    "remediation": "Publishable Android artifacts now require an externally supplied stable keystore/password/alias/key password; release packaging and Gradle fail closed when required authority is absent or incomplete. Local debug builds remain available without release credentials.",
+    "stable_signer_proof": {
+      "temporary_test_keystore_committed": false,
+      "apk_sha256_both_builds": "47e8025ae399791ff55f393890a75816c57287a4fee91eec060ab07a79d3d90a",
+      "signer_certificate_sha256_both_builds": "5759273b3038974330b8ddc1af3ceffc819158bf7dd1ca4cfa4f083e4bfe32f5",
+      "byte_identical": true,
+      "key_material_deleted_after_test": true
+    },
+    "migration_note": "Older RC signing keys were ephemeral and are not recoverable from the repository/workflow. The first release under the stable signer requires a one-time uninstall/reinstall from those RCs."
+  },
+  "tests": {
+    "jvm_robolectric": {
+      "tests": 306,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "xml_files": 60,
+      "breakdown": {
+        "app": 84,
+        "core-model": 57,
+        "desktop-app": 48,
+        "metadata-online": 6,
+        "metadata-tags": 67,
+        "server": 7,
+        "source-pcloud": 28,
+        "source-server": 9
+      }
+    },
+    "host": {
+      "tests": 139,
+      "failures": 0
+    },
+    "documentation": {
+      "tests": 3,
+      "failures": 0,
+      "astro": {
+        "errors": 0,
+        "warnings": 0,
+        "hints": 0,
+        "pages": 59
+      }
+    },
+    "total_named_tests": 448,
+    "targeted_release_policy_tests": {
+      "tests": 5,
+      "failures": 0
+    },
+    "fail_closed_gradle_signing_probe": "pass (expected non-zero build with PROPERPCLOUD_REQUIRE_STABLE_SIGNING=true and no credentials)",
+    "fail_closed_release_packaging_probe": "pass (expected non-zero prepare-release without stable signing authority)",
+    "coverage_percent": null,
+    "coverage_delta": null,
+    "coverage_note": "No JaCoCo/Kover percentage report or gate is configured, so percentage coverage and percentage delta are not asserted."
+  },
+  "gates": [
+    {
+      "command": "make doctor",
+      "result": "pass"
+    },
+    {
+      "command": "make test",
+      "result": "pass"
+    },
+    {
+      "command": "make lint",
+      "result": "pass"
+    },
+    {
+      "command": "make build",
+      "result": "pass"
+    },
+    {
+      "command": "make ci",
+      "result": "pass"
+    },
+    {
+      "command": "make release-check",
+      "result": "pass",
+      "specs": "14 documents, 21 requirements, 22 use cases"
+    },
+    {
+      "command": "git diff --check",
+      "result": "pass"
+    }
+  ],
+  "artifact": {
+    "path": "app/build/outputs/apk/debug/app-debug.apk",
+    "bytes": 25117625,
+    "sha256": "e00dc690431ee3430fb03d9d5c8edc5301fbe2017503ebfe8ab5727137621dd9",
+    "local_debug_signer_sha256": "55acbc7da39ecad556330936a30151798b4023158778ac1868b49d8eaf3b038c",
+    "publishable": false,
+    "note": "Ordinary local debug output intentionally remains debug-signed; release packaging rejects it unless stable signing mode and authority are supplied."
+  },
+  "edge_case_coverage": {
+    "network_disconnected_and_transient_playback": "covered by existing PlaybackConnectionTest hardening and requalified",
+    "interrupted_metadata_download": "covered by existing PCloudMetadataDownloadTest cleanup/recovery and requalified",
+    "corrupt_or_unsupported_media": "covered by existing terminal media classification tests and requalified",
+    "permission_denied": "covered by existing PlaybackConnectionTest/MainViewModelTest actionable redacted error paths and requalified",
+    "library_refresh_and_queue_restore": "covered by existing MainViewModel tests and requalified",
+    "audiobook_progress": "covered by AppPreferencesRepositoryTest/MainViewModelTest and requalified",
+    "remote_controls_and_reconnect": "covered by PlayerRegistryTest/ProperpcloudAppTest and requalified"
+  },
+  "changed_files": [
+    ".github/workflows/release.yml",
+    "CHANGELOG.md",
+    "app/build.gradle.kts",
+    "docs/user-manual/android-installation.md",
+    "scripts/docker-run.sh",
+    "scripts/prepare-release.py",
+    "tests/test_ci_delegation_policy.py"
+  ],
+  "remaining_known_issues": [
+    {
+      "severity": "high",
+      "issue": "A real stable Android signing authority has not yet been configured in GitHub Actions secrets; a future tag release now fails closed until the four required signing secrets are provisioned."
+    },
+    {
+      "severity": "high",
+      "issue": "Stable 0.2.0 still requires physical power-cut filesystem durability evidence."
+    },
+    {
+      "severity": "high",
+      "issue": "Stable 0.2.0 still requires physical media-key and suspend/resume observations."
+    },
+    {
+      "severity": "high",
+      "issue": "Stable 0.2.0 still requires GNOME/KDE session evidence and protected EU/US pCloud validation/soak."
+    },
+    {
+      "severity": "high",
+      "issue": "Stable 0.2.0 still requires a supported Linux screen-reader/accessibility bridge or explicit maintainer exception."
+    },
+    {
+      "severity": "high",
+      "issue": "Exact immutable stable v0.2.0 Arch rebuild remains a post-tag gate."
+    },
+    {
+      "severity": "low",
+      "issue": "Astro build continues to warn that the i18n collection is empty and docs→404 content entry is absent; 59 pages still build and smoke successfully."
+    }
+  ],
+  "publication_actions": {
+    "push": false,
+    "tag": false,
+    "release_publish": false
+  }
+}
