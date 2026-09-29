@@ -84,6 +84,32 @@ class PlaybackConnectionTest {
     }
 
     @Test
+    fun malformedAndUnsupportedMediaExposeCorruptMediaMessage() {
+        val expected = "This media file could not be decoded. It may be corrupt or unsupported."
+        listOf(
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
+            PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+        ).forEach { errorCode ->
+            assertEquals(
+                expected,
+                playbackErrorUserMessage(errorCode, responseCode = null, errorCodeName = "fixture"),
+            )
+        }
+    }
+
+    @Test
+    fun missingPlaybackSourceIsTransientSoReconnectCanRecoverQueue() {
+        val failure = missingPlaybackSourceFailure()
+
+        assertEquals(StreamResolutionFailureKind.TRANSIENT, failure.kind)
+        assertEquals("playback source is not connected", failure.message)
+    }
+
+    @Test
     fun playbackHttpFailuresDistinguishExpiredAccessFromMissingMedia() {
         assertEquals(
             "Playback access expired or was denied. Reconnect and press play to retry.",

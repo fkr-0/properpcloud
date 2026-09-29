@@ -79,6 +79,12 @@ internal data class ResolvedMediaItems(
     val startPositionMs: Long,
 )
 
+internal fun missingPlaybackSourceFailure(): StreamResolutionException =
+    StreamResolutionException(
+        StreamResolutionFailureKind.TRANSIENT,
+        "playback source is not connected",
+    )
+
 internal suspend fun resolveMediaItemsSkippingFailures(
     mediaItems: List<MediaItem>,
     startIndex: Int = 0,
@@ -256,7 +262,7 @@ class PlaybackService : MediaSessionService() {
         if (!force && item.localConfiguration?.uri != null) return item
         val (sourceId, nodeId) = MediaIdentity.decode(item.mediaId)
         val source = (application as ProperpcloudApplication).container.sources.source(sourceId)
-            ?: error("source ${sourceId.value} is not available")
+            ?: throw missingPlaybackSourceFailure()
         val handle = source.resolveStream(nodeId)
         return item.buildUpon()
             .setUri(handle.url)

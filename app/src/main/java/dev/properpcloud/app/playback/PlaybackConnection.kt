@@ -96,7 +96,13 @@ internal fun playbackErrorUserMessage(
         "Playback access expired or was denied. Reconnect and press play to retry."
     errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
         errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ||
-        errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ->
+        errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ||
+        errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
+        errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ||
+        errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+        errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED ||
+        errorCode == PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ||
+        errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ->
         "This media file could not be decoded. It may be corrupt or unsupported."
     else -> "Playback failed ($errorCodeName)."
 }
