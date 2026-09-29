@@ -1,0 +1,86 @@
+{
+  "schema": "properpcloud.rc-hardening-evidence/v1",
+  "audited_at": "2026-09-29T13:50:00+02:00",
+  "branch": "main",
+  "head_before_commit": "1605616e8697db4d223bf47efada6091e1f8310e",
+  "candidate": {
+    "version": "0.2.0-rc.9",
+    "tag_contract": "v0.2.0-rc.9",
+    "publication_authorized": false
+  },
+  "repository_state": {
+    "ahead_of_upstream_before_commit": 9,
+    "behind_upstream": 0,
+    "preserved_unrelated_untracked": ["bridge.yml"],
+    "open_github_issues": 0,
+    "open_github_pull_requests": 10
+  },
+  "findings": {
+    "release_blockers_reproduced": [],
+    "runtime_regressions_reproduced": [],
+    "fixed_release_metadata_defects": [
+      "CHANGELOG.md [Unreleased] comparison still started at v0.2.0-rc.5 and omitted rc.6-rc.9 reference links."
+    ],
+    "product_source_change_required": false,
+    "release_metadata_change_required": true
+  },
+  "changes": [
+    "CHANGELOG.md: advance Unreleased comparison to v0.2.0-rc.9 and restore rc.6-rc.9 release reference links.",
+    "tests/test_release_changelog_links.py: verify VERSION, release manifest base/tag, and changelog comparison links remain aligned."
+  ],
+  "verification": [
+    {"command": "python -m unittest tests.test_release_changelog_links", "exit_code": 0, "tests": 1},
+    {"command": "make release-check", "exit_code": 0, "host_tests": 137},
+    {"command": "make doctor", "exit_code": 0},
+    {"command": "make test", "exit_code": 0, "jvm_robolectric_tests": 305, "failures": 0, "errors": 0, "skipped": 0},
+    {"command": "make lint", "exit_code": 0},
+    {"command": "make build", "exit_code": 0},
+    {"command": "make ci", "exit_code": 0, "host_tests": 137, "documentation_node_tests": 3},
+    {"command": "git diff --check", "exit_code": 0}
+  ],
+  "test_inventory": {
+    "host_python_and_contract_tests": 137,
+    "documentation_node_tests": 3,
+    "jvm_and_robolectric_tests": 305,
+    "modules": {
+      "app": 83,
+      "core-model": 57,
+      "desktop-app": 48,
+      "metadata-online": 6,
+      "metadata-tags": 67,
+      "server": 7,
+      "source-pcloud": 28,
+      "source-server": 9
+    },
+    "coverage_percentage": null,
+    "coverage_delta": null,
+    "coverage_note": "No JaCoCo/Kover percentage report or gate is configured."
+  },
+  "artifact": {
+    "path": "app/build/outputs/apk/debug/app-debug.apk",
+    "bytes": 25117625,
+    "sha256": "63ef5151ba292ce7f00d97c3d2a8fc18a5d4ac584a00fb92cb529d4ef3331909"
+  },
+  "remaining_release_risk": [
+    {
+      "severity": "high",
+      "area": "stable 0.2.0 promotion",
+      "status": "manual_or_external_evidence_still_required",
+      "items": [
+        "physical power-cut filesystem durability evidence",
+        "physical media-key behavior",
+        "physical suspend/resume cycle",
+        "GNOME and KDE Plasma session observations",
+        "protected Europe and United States pCloud account validation",
+        "retained protected-provider soak with real capability expiry and suspend/resume",
+        "supported Linux screen-reader/accessibility bridge or explicit maintainer exception",
+        "exact immutable v0.2.0 Arch archive rebuild after final stable tag"
+      ]
+    }
+  ],
+  "side_effects": {
+    "tag_created_or_moved": false,
+    "pushed": false,
+    "published": false
+  }
+}
