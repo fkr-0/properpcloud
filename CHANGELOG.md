@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Testing
 
-- Re-ran the release/debug verification sequence (`make doctor`, `make test`, `make lint`, `make build`, and `make ci`) before preparing this metadata correction; all gates were green, with 222 Gradle/JUnit tests and 136 host/spec tests passing.
+- Re-ran the release/debug verification sequence (`make doctor`, `make test`, `make lint`, `make build`, and `make ci`) before preparing this metadata correction; all gates were green, with 303 Gradle/JUnit tests and 136 host/spec tests passing.
 
 ## [0.2.0-rc.7] - 2026-09-25
 
