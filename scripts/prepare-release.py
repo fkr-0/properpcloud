@@ -41,9 +41,38 @@ def download_verified(url: str, destination: Path, expected_sha256: str) -> None
         )
 
 
+def require_stable_android_signing(root: Path) -> None:
+    required = os.environ.get("PROPERPCLOUD_REQUIRE_STABLE_SIGNING", "").strip().lower()
+    if required not in {"1", "true"}:
+        raise SystemExit(
+            "release error: publishable Android artifacts require "
+            "PROPERPCLOUD_REQUIRE_STABLE_SIGNING=true"
+        )
+
+    values = {
+        "PROPERPCLOUD_ANDROID_KEYSTORE_PATH": os.environ.get("PROPERPCLOUD_ANDROID_KEYSTORE_PATH", "").strip(),
+        "PROPERPCLOUD_ANDROID_KEYSTORE_PASSWORD": os.environ.get("PROPERPCLOUD_ANDROID_KEYSTORE_PASSWORD", ""),
+        "PROPERPCLOUD_ANDROID_KEY_ALIAS": os.environ.get("PROPERPCLOUD_ANDROID_KEY_ALIAS", "").strip(),
+        "PROPERPCLOUD_ANDROID_KEY_PASSWORD": os.environ.get("PROPERPCLOUD_ANDROID_KEY_PASSWORD", ""),
+    }
+    missing = [name for name, value in values.items() if not value]
+    if missing:
+        raise SystemExit(
+            "release error: stable Android signing configuration is incomplete; missing "
+            + ", ".join(missing)
+        )
+
+    keystore = Path(values["PROPERPCLOUD_ANDROID_KEYSTORE_PATH"])
+    if not keystore.is_absolute():
+        keystore = root / keystore
+    if not keystore.is_file():
+        raise SystemExit("release error: configured Android signing keystore is missing")
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
     version = (root / "VERSION").read_text(encoding="utf-8").strip()
+    require_stable_android_signing(root)
     source = root / "app/build/outputs/apk/debug/app-debug.apk"
     if not source.is_file():
         raise SystemExit("release error: debug APK is missing; run make ci first")
@@ -92,7 +121,10 @@ def main() -> int:
         "toolchain_image_id": image_id,
         "compile_sdk": 37,
         "target_sdk": 36,
-        "distribution_note": "Installable debug-signed demo build; production signing is intentionally external.",
+        "distribution_note": (
+            "Installable evaluation APK signed by an externally supplied stable release authority; "
+            "signing key material is not stored in the repository."
+        ),
         "authentication": {
             "oauth_client_id_bundled": bool(os.environ.get("PCLOUD_CLIENT_ID", "").strip()),
             "fallback_direct_login_available": True,
@@ -120,8 +152,9 @@ def main() -> int:
     notes = changelog[start : next_section if next_section >= 0 else len(changelog)].strip()
     notes += (
         "\n\n## Artifact status\n\n"
-        "The attached APK is an installable debug-signed demo build produced by the pinned "
-        "Docker toolchain. Production signing remains an external maintainer boundary.\n\n"
+        "The attached APK is an installable evaluation build produced by the pinned Docker "
+        "toolchain and signed with the externally supplied stable Android release authority. "
+        "Signing key material is not stored in the repository.\n\n"
         "The deterministic demo source is fully exercised in public CI. Protected live pCloud OAuth, "
         "fallback direct-login, and regional-account validation require maintainer-provided sandbox credentials and are "
         "reported separately rather than simulated.\n\n"

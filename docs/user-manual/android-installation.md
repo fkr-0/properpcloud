@@ -4,7 +4,7 @@
 
 [Download properpcloud {{LATEST_RELEASE_TAG}} for Android]({{LATEST_APK_URL}}) from the verified GitHub release. The same release provides [SHA-256 checksums]({{LATEST_CHECKSUMS_URL}}) and [commit-bound build evidence]({{LATEST_EVIDENCE_URL}}).
 
-The current APK is an installable **debug-signed evaluation build**, not a Google Play production package. Existing data normally survives an upgrade when the package identity and signing key match, but keep normal backups of important provider data and playlists.
+The currently published rc.9 and earlier APKs are installable evaluation builds, but their CI jobs used ephemeral debug signing keys. Those keys are not recoverable, so the first release produced with the hardened stable signer requires a one-time uninstall/reinstall from an older RC; back up important provider data and playlists first. After that transition, later release APKs are required to use the same externally managed signing authority so normal Android upgrades can preserve application data.
 
 ## Requirements
 

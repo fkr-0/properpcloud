@@ -25,6 +25,12 @@ jobs:
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
       PCLOUD_CLIENT_ID: ${{ vars.PCLOUD_CLIENT_ID }}
+      PROPERPCLOUD_REQUIRE_STABLE_SIGNING: "true"
+      PROPERPCLOUD_ANDROID_KEYSTORE_PATH: .cache/release-signing/properpcloud.jks
+      PROPERPCLOUD_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+      PROPERPCLOUD_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+      PROPERPCLOUD_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+      ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
     timeout-minutes: 60
 
     steps:
@@ -49,6 +55,19 @@ jobs:
           printf 'release_tag=%s\n' "$RELEASE_TAG"
           printf 'release_commit=%s\n' "$(git rev-parse HEAD)"
           git tag --points-at HEAD | grep --fixed-strings --line-regexp "$RELEASE_TAG"
+
+      - name: Materialize stable Android release signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${ANDROID_RELEASE_KEYSTORE_BASE64:?missing ANDROID_RELEASE_KEYSTORE_BASE64 secret}"
+          : "${PROPERPCLOUD_ANDROID_KEYSTORE_PASSWORD:?missing ANDROID_RELEASE_KEYSTORE_PASSWORD secret}"
+          : "${PROPERPCLOUD_ANDROID_KEY_ALIAS:?missing ANDROID_RELEASE_KEY_ALIAS secret}"
+          : "${PROPERPCLOUD_ANDROID_KEY_PASSWORD:?missing ANDROID_RELEASE_KEY_PASSWORD secret}"
+          mkdir -p "$(dirname "$PROPERPCLOUD_ANDROID_KEYSTORE_PATH")"
+          printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$PROPERPCLOUD_ANDROID_KEYSTORE_PATH"
+          chmod 600 "$PROPERPCLOUD_ANDROID_KEYSTORE_PATH"
+          test -s "$PROPERPCLOUD_ANDROID_KEYSTORE_PATH"
 
       - name: Validate optional bundled pCloud OAuth identity
         run: make release-client-id-check
@@ -134,6 +153,11 @@ jobs:
           if-no-files-found: error
           path: .release-inputs/properpcloud-desktop-image.tar.gz
           retention-days: 1
+
+      - name: Remove Android release signing key
+        if: always()
+        shell: bash
+        run: rm -f "$PROPERPCLOUD_ANDROID_KEYSTORE_PATH"
 
   appimage:
     needs: android

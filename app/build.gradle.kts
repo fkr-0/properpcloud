@@ -17,6 +17,30 @@ val pCloudClientId = providers
     .getOrElse("")
     .trim()
 
+val requireStableAndroidSigning = providers
+    .environmentVariable("PROPERPCLOUD_REQUIRE_STABLE_SIGNING")
+    .map { value -> value.equals("true", ignoreCase = true) || value == "1" }
+    .getOrElse(false)
+val stableSigningKeystorePath = providers.environmentVariable("PROPERPCLOUD_ANDROID_KEYSTORE_PATH").getOrElse("").trim()
+val stableSigningStorePassword = providers.environmentVariable("PROPERPCLOUD_ANDROID_KEYSTORE_PASSWORD").getOrElse("")
+val stableSigningKeyAlias = providers.environmentVariable("PROPERPCLOUD_ANDROID_KEY_ALIAS").getOrElse("").trim()
+val stableSigningKeyPassword = providers.environmentVariable("PROPERPCLOUD_ANDROID_KEY_PASSWORD").getOrElse("")
+val stableSigningValues = listOf(
+    stableSigningKeystorePath,
+    stableSigningStorePassword,
+    stableSigningKeyAlias,
+    stableSigningKeyPassword,
+)
+val anyStableSigningValue = stableSigningValues.any(String::isNotEmpty)
+val stableSigningConfigured = stableSigningValues.all(String::isNotEmpty)
+
+require(!anyStableSigningValue || stableSigningConfigured) {
+    "stable Android signing requires keystore path, store password, key alias, and key password together"
+}
+require(!requireStableAndroidSigning || stableSigningConfigured) {
+    "stable Android signing is required but release signing configuration is incomplete"
+}
+
 require(pCloudClientId.none(Char::isISOControl)) {
     "pCloud client ID must not contain control characters"
 }
@@ -46,6 +70,21 @@ android {
     compileSdk = libs.versions.compile.sdk.get().toInt()
     buildToolsVersion = libs.versions.build.tools.get()
 
+    signingConfigs {
+        getByName("debug") {
+            if (stableSigningConfigured) {
+                val configuredKeystore = rootProject.file(stableSigningKeystorePath)
+                require(configuredKeystore.isFile) {
+                    "configured Android signing keystore is missing"
+                }
+                storeFile = configuredKeystore
+                storePassword = stableSigningStorePassword
+                keyAlias = stableSigningKeyAlias
+                keyPassword = stableSigningKeyPassword
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "dev.properpcloud.app"
         minSdk = libs.versions.min.sdk.get().toInt()
@@ -53,6 +92,12 @@ android {
         versionCode = androidVersionCode(appVersion)
         versionName = appVersion
         buildConfigField("String", "PCLOUD_CLIENT_ID", buildConfigString(pCloudClientId))
+    }
+
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     compileOptions {
