@@ -1,0 +1,162 @@
+{
+  "schema": "properpcloud.rc-hardening-evidence/v1",
+  "audited_at": "2026-09-29T12:08:00+02:00",
+  "branch": "main",
+  "head_before_evidence_commit": "f98c98731a43d9253983aa8e441e0ccdad5cec9d",
+  "candidate": {
+    "version": "0.2.0-rc.9",
+    "tag_contract": "v0.2.0-rc.9",
+    "status": "post_rc9_hardening_verified_locally",
+    "publication_authorized": false
+  },
+  "repository_state": {
+    "ahead_of_upstream_before_evidence_commit": 5,
+    "behind_upstream": 0,
+    "preserved_unrelated_untracked": ["bridge.yml"],
+    "open_github_issues": 0,
+    "open_github_pull_requests": 10,
+    "open_pull_request_character": "Dependabot dependency/action updates; no open PR is treated as RC regression evidence."
+  },
+  "health_assessment": {
+    "build_stability": "green",
+    "test_stability": "green",
+    "lint": "green",
+    "release_metadata": "green_with_unreleased_hardening_recorded",
+    "reproduced_rc_blockers": [],
+    "known_runtime_regressions_reproduced": [],
+    "product_code_change_required_in_this_round": false,
+    "test_source_change_required_in_this_round": false,
+    "reason": "The latest product commit already hardens transient network/access failures, corrupt-media classification, and bounded queue recovery. Fresh verification reproduced no remaining compile, test, lint, build, playback, audiobook, library-refresh, interrupted-download, permission-guidance, corrupt-media, or remote-player failure."
+  },
+  "latest_hardening_commit": {
+    "commit": "f98c98731a43d9253983aa8e441e0ccdad5cec9d",
+    "summary": "fix(playback): harden transient and corrupt media failures",
+    "files": [
+      "app/src/main/java/dev/properpcloud/app/playback/PlaybackConnection.kt",
+      "app/src/main/java/dev/properpcloud/app/playback/PlaybackService.kt",
+      "app/src/test/java/dev/properpcloud/app/playback/PlaybackConnectionTest.kt"
+    ]
+  },
+  "edge_case_evidence": {
+    "network_disconnected_playback": [
+      "PlaybackConnectionTest covers network connection/timeout failures, retry guidance, and non-destructive transient handling.",
+      "PlaybackService keeps transient/source-wide failures recoverable instead of cascade-skipping later queue entries."
+    ],
+    "interrupted_download": [
+      "PCloudMetadataDownloadTest deletes partial candidates when downloads are interrupted.",
+      "PCloudMetadataDownloadTest deletes candidates when source revision changes during download."
+    ],
+    "corrupt_or_unsupported_media": [
+      "PlaybackConnectionTest covers decoding, malformed/unsupported container/manifest, invalid content type, and out-of-range reads with explicit corrupt/unsupported guidance."
+    ],
+    "permission_denied": [
+      "PlaybackConnectionTest maps media permission failures to actionable redacted guidance.",
+      "MainViewModelTest preserves visible library state on failed refresh and redacts provider details.",
+      "ServerCatalogUserMessageTest maps authentication/permission failures without leaking raw status codes."
+    ],
+    "library_refresh": [
+      "MainViewModelTest verifies failed refresh preserves visible nodes, clears refreshing state, and exposes a recoverable message."
+    ],
+    "audiobook_progress": [
+      "AppPreferencesRepositoryTest round-trips progress with stable identity.",
+      "MainViewModelTest flushes audiobook resume chapter, position, duration, and playback speed."
+    ],
+    "remote_player_controls": [
+      "PlayerRegistryTest covers discovery deduplication, degradation, provider removal/reconnect, local-authority protection, and offline targets.",
+      "ProperpcloudAppTest covers the Players surface with local and remote targets and explicit availability."
+    ]
+  },
+  "verification": [
+    {
+      "command": "make doctor",
+      "exit_code": 0,
+      "evidence": "Gradle wrapper checksum OK; Docker-backed Gradle 9.6.1 / JDK 21.0.11 environment available."
+    },
+    {
+      "command": "make test",
+      "exit_code": 0,
+      "evidence": "305 Gradle/JVM/Robolectric tests across 60 XML result files; 0 failures, 0 errors, 0 skipped."
+    },
+    {
+      "command": "make lint",
+      "exit_code": 0,
+      "evidence": "Android lint BUILD SUCCESSFUL."
+    },
+    {
+      "command": "make build",
+      "exit_code": 0,
+      "evidence": "Debug APK assembly BUILD SUCCESSFUL."
+    },
+    {
+      "command": "make ci",
+      "exit_code": 0,
+      "evidence": "136 host tests; 14 spec documents / 21 requirements / 22 use cases; 3 Node documentation tests; npm audit 0 vulnerabilities; Astro diagnostics 0 errors/0 warnings/0 hints; Gradle tests/lint/APK and desktop distributable passed."
+    }
+  ],
+  "test_inventory": {
+    "host_python_and_contract_tests": 136,
+    "documentation_node_tests": 3,
+    "jvm_and_robolectric_tests": 305,
+    "jvm_xml_files": 60,
+    "modules": {
+      "app": 83,
+      "core-model": 57,
+      "desktop-app": 48,
+      "metadata-online": 6,
+      "metadata-tags": 67,
+      "server": 7,
+      "source-pcloud": 28,
+      "source-server": 9
+    },
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "test_count_delta_vs_r20": 2,
+    "coverage_percentage": null,
+    "coverage_delta": null,
+    "coverage_note": "No project JaCoCo/Kover percentage report or gate is configured; percentage coverage and percentage delta are therefore not asserted."
+  },
+  "artifact": {
+    "path": "app/build/outputs/apk/debug/app-debug.apk",
+    "bytes": 25117625,
+    "sha256": "ce5eb00981c7bdbc23ea2cf5e46ab0d8705b71a49fab80ba1233283a089a16c7"
+  },
+  "remaining_release_risk": [
+    {
+      "severity": "high",
+      "area": "stable 0.2.0 promotion",
+      "status": "manual_or_external_evidence_still_required",
+      "items": [
+        "physical power-cut filesystem durability evidence",
+        "physical media-key behavior",
+        "physical suspend/resume cycle",
+        "GNOME and KDE Plasma session observations",
+        "protected Europe and United States pCloud account validation",
+        "retained protected-provider soak with real capability expiry and suspend/resume",
+        "supported Linux screen-reader/accessibility bridge or explicit maintainer exception",
+        "exact immutable v0.2.0 Arch archive rebuild after final stable tag"
+      ]
+    },
+    {
+      "severity": "informational",
+      "area": "coverage reporting",
+      "status": "not_configured",
+      "items": ["No JaCoCo/Kover line or branch percentage gate exists."]
+    },
+    {
+      "severity": "informational",
+      "area": "documentation build",
+      "status": "non_blocking_warning",
+      "items": ["Astro static build emits warnings for the empty i18n collection and missing docs -> 404 entry; astro check itself reports 0 errors, 0 warnings, and 0 hints."]
+    }
+  ],
+  "changes": {
+    "product_source_changed_in_this_round": false,
+    "test_source_changed_in_this_round": false,
+    "changelog_changed": true,
+    "evidence_changed": true,
+    "tag_created_or_moved": false,
+    "pushed": false,
+    "published": false
+  }
+}
