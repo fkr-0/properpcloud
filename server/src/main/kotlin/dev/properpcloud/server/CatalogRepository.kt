@@ -28,6 +28,7 @@ data class CatalogEntry(
     val discNumber: Int? = null,
     val durationMillis: Long? = null,
     val sampleRate: Int? = null,
+    val bitrateKbps: Int? = null,
     val channels: Int? = null,
     val bitDepth: Int? = null,
     val format: String? = null,
@@ -75,11 +76,17 @@ class CatalogRepository(database: Path) : AutoCloseable {
                     provider_file_id INTEGER, provider_folder_id INTEGER, content_type TEXT,
                     title TEXT, artist TEXT, album TEXT, album_artist TEXT, genre TEXT, year TEXT,
                     track_number INTEGER, disc_number INTEGER, duration_ms INTEGER, sample_rate INTEGER,
-                    channels INTEGER, bit_depth INTEGER, format TEXT, metadata_error TEXT,
+                    bitrate_kbps INTEGER, channels INTEGER, bit_depth INTEGER, format TEXT, metadata_error TEXT,
                     scan_generation INTEGER NOT NULL
                 )
                 """.trimIndent(),
             )
+            val columns = statement.executeQuery("PRAGMA table_info(library_entries)").use { rows ->
+                buildSet { while (rows.next()) add(rows.getString("name")) }
+            }
+            if ("bitrate_kbps" !in columns) {
+                statement.execute("ALTER TABLE library_entries ADD COLUMN bitrate_kbps INTEGER")
+            }
             statement.execute("CREATE INDEX IF NOT EXISTS idx_library_parent ON library_entries(parent_node_id, kind, name)")
             statement.execute("CREATE INDEX IF NOT EXISTS idx_library_hash ON library_entries(content_hash) WHERE content_hash IS NOT NULL")
             statement.execute("CREATE INDEX IF NOT EXISTS idx_library_artist_album ON library_entries(artist, album)")
@@ -182,8 +189,8 @@ class CatalogRepository(database: Path) : AutoCloseable {
             INSERT INTO library_entries(
               node_id,parent_node_id,path,name,kind,size_bytes,modified_ms,content_hash,provider_file_id,provider_folder_id,
               content_type,title,artist,album,album_artist,genre,year,track_number,disc_number,duration_ms,sample_rate,
-              channels,bit_depth,format,metadata_error,scan_generation
-            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              bitrate_kbps,channels,bit_depth,format,metadata_error,scan_generation
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(path) DO UPDATE SET
               node_id=excluded.node_id,parent_node_id=excluded.parent_node_id,name=excluded.name,kind=excluded.kind,
               size_bytes=excluded.size_bytes,modified_ms=excluded.modified_ms,content_hash=excluded.content_hash,
@@ -191,7 +198,7 @@ class CatalogRepository(database: Path) : AutoCloseable {
               content_type=excluded.content_type,title=excluded.title,artist=excluded.artist,album=excluded.album,
               album_artist=excluded.album_artist,genre=excluded.genre,year=excluded.year,track_number=excluded.track_number,
               disc_number=excluded.disc_number,duration_ms=excluded.duration_ms,sample_rate=excluded.sample_rate,
-              channels=excluded.channels,bit_depth=excluded.bit_depth,format=excluded.format,
+              bitrate_kbps=excluded.bitrate_kbps,channels=excluded.channels,bit_depth=excluded.bit_depth,format=excluded.format,
               metadata_error=excluded.metadata_error,scan_generation=excluded.scan_generation
             """.trimIndent(),
         ).use { statement ->
@@ -292,7 +299,7 @@ class CatalogRepository(database: Path) : AutoCloseable {
         nodeId = getString("node_id"), parentNodeId = getString("parent_node_id"), path = getString("path"), name = getString("name"), kind = getString("kind"),
         sizeBytes = nullableLong("size_bytes"), modifiedAtEpochMillis = nullableLong("modified_ms"), contentHash = getString("content_hash"), providerFileId = nullableLong("provider_file_id"), providerFolderId = nullableLong("provider_folder_id"),
         contentType = getString("content_type"), title = getString("title"), artist = getString("artist"), album = getString("album"), albumArtist = getString("album_artist"), genre = getString("genre"), year = getString("year"),
-        trackNumber = nullableInt("track_number"), discNumber = nullableInt("disc_number"), durationMillis = nullableLong("duration_ms"), sampleRate = nullableInt("sample_rate"), channels = nullableInt("channels"), bitDepth = nullableInt("bit_depth"),
+        trackNumber = nullableInt("track_number"), discNumber = nullableInt("disc_number"), durationMillis = nullableLong("duration_ms"), sampleRate = nullableInt("sample_rate"), bitrateKbps = nullableInt("bitrate_kbps"), channels = nullableInt("channels"), bitDepth = nullableInt("bit_depth"),
         format = getString("format"), metadataError = getString("metadata_error"), scanGeneration = getLong("scan_generation"),
     )
 
@@ -300,8 +307,8 @@ class CatalogRepository(database: Path) : AutoCloseable {
         statement.setString(1, nodeId); statement.setString(2, parentNodeId); statement.setString(3, path); statement.setString(4, name); statement.setString(5, kind)
         statement.setNullableLong(6, sizeBytes); statement.setNullableLong(7, modifiedAtEpochMillis); statement.setString(8, contentHash); statement.setNullableLong(9, providerFileId); statement.setNullableLong(10, providerFolderId)
         statement.setString(11, contentType); statement.setString(12, title); statement.setString(13, artist); statement.setString(14, album); statement.setString(15, albumArtist); statement.setString(16, genre); statement.setString(17, year)
-        statement.setNullableInt(18, trackNumber); statement.setNullableInt(19, discNumber); statement.setNullableLong(20, durationMillis); statement.setNullableInt(21, sampleRate); statement.setNullableInt(22, channels); statement.setNullableInt(23, bitDepth)
-        statement.setString(24, format); statement.setString(25, metadataError); statement.setLong(26, scanGeneration)
+        statement.setNullableInt(18, trackNumber); statement.setNullableInt(19, discNumber); statement.setNullableLong(20, durationMillis); statement.setNullableInt(21, sampleRate); statement.setNullableInt(22, bitrateKbps); statement.setNullableInt(23, channels); statement.setNullableInt(24, bitDepth)
+        statement.setString(25, format); statement.setString(26, metadataError); statement.setLong(27, scanGeneration)
     }
 
     private fun <T> transaction(block: () -> T): T {

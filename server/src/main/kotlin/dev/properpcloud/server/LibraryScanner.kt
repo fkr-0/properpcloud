@@ -157,6 +157,7 @@ class LibraryScanner(
             discNumber = parseLeadingInt(field(TagField.DISC_NUMBER)),
             durationMillis = snapshot.durationMillis,
             sampleRate = technical.sampleRate,
+            bitrateKbps = technical.bitrateKbps,
             channels = technical.channels,
             bitDepth = technical.bitDepth,
             format = snapshot.format,
@@ -219,7 +220,12 @@ class LibraryScanner(
         .digest(value.toByteArray(Charsets.UTF_8))
         .toHex()
 
-    private data class TechnicalAudioHeader(val sampleRate: Int?, val channels: Int?, val bitDepth: Int?)
+    private data class TechnicalAudioHeader(
+        val sampleRate: Int?,
+        val bitrateKbps: Int?,
+        val channels: Int?,
+        val bitDepth: Int?,
+    )
 
     private fun readTechnicalAudioHeader(file: File): TechnicalAudioHeader {
         return runCatching {
@@ -238,6 +244,7 @@ class LibraryScanner(
             }?.takeIf { it > 0 }
             TechnicalAudioHeader(
                 sampleRate = invokeNumber("getSampleRateAsNumber", "getSampleRate"),
+                bitrateKbps = invokeNumber("getBitRateAsNumber", "getBitRate"),
                 channels = invokeNumber("getChannelNumber", "getChannels"),
                 bitDepth = invokeNumber("getBitsPerSample", "getBitDepth"),
             )
@@ -246,10 +253,11 @@ class LibraryScanner(
                 val format = javax.sound.sampled.AudioSystem.getAudioFileFormat(file).format
                 TechnicalAudioHeader(
                     sampleRate = format.sampleRate.toInt().takeIf { it > 0 },
+                    bitrateKbps = null,
                     channels = format.channels.takeIf { it > 0 },
                     bitDepth = format.sampleSizeInBits.takeIf { it > 0 },
                 )
-            }.getOrDefault(TechnicalAudioHeader(null, null, null))
+            }.getOrDefault(TechnicalAudioHeader(null, null, null, null))
         }
     }
 
