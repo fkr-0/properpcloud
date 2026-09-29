@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.9] - 2026-09-29
+
+### Added
+
+- Server catalog responses now expose `bitrateKbps`, with an additive migration for existing catalog databases.
+
+### Fixed
+
+- Repaired the release-candidate metadata lineage after immutable tag `v0.2.0-rc.8` was created from a tree whose canonical `VERSION`, changelog, release manifest, and AppStream metadata still identified rc.7. The existing tag is not rewritten; rc.9 is the corrective candidate.
+
+### Testing
+
+- Re-ran the release/debug verification sequence (`make doctor`, `make test`, `make lint`, `make build`, and `make ci`) before preparing this metadata correction; all gates were green, with 222 Gradle/JUnit tests and 136 host/spec tests passing.
+
 ## [0.2.0-rc.7] - 2026-09-25
 
 ### Added
