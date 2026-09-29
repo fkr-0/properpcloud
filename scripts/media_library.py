@@ -124,11 +124,16 @@ def is_within(path: Path, parent: Path) -> bool:
     return absolute == ancestor or ancestor in absolute.parents
 
 
+def is_lexically_within(path: Path, parent: Path) -> bool:
+    """Compare absolute path spelling without traversing a potentially stale mount."""
+    absolute = Path(os.path.abspath(path))
+    ancestor = Path(os.path.abspath(parent))
+    return absolute == ancestor or ancestor in absolute.parents
+
+
 def filesystem_type_for_path(path: Path) -> str | None:
-    """Return the Linux mount filesystem type containing path, if mountinfo is readable."""
-    probe = Path(os.path.realpath(os.path.abspath(path)))
-    while not probe.exists() and probe.parent != probe:
-        probe = probe.parent
+    """Return the Linux mount filesystem type without traversing mounted filesystems."""
+    probe = Path(os.path.abspath(path))
     try:
         lines = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -145,8 +150,8 @@ def filesystem_type_for_path(path: Path) -> str | None:
         mount_text = fields[4]
         for escaped, literal in (("\\040", " "), ("\\011", "\t"), ("\\012", "\n"), ("\\134", "\\")):
             mount_text = mount_text.replace(escaped, literal)
-        mount_path = Path(mount_text)
-        if is_within(probe, mount_path):
+        mount_path = Path(os.path.abspath(mount_text))
+        if is_lexically_within(probe, mount_path):
             score = len(str(mount_path))
             if best is None or score > best[0]:
                 best = (score, trailing[0])
@@ -162,13 +167,13 @@ def validate_storage_boundary(
     """Fail closed when the canonical cloud mount vanished or state was put on it."""
     if (
         require_library_mount
-        and is_within(library_root, CANONICAL_PCLOUD_MOUNT)
+        and is_lexically_within(library_root, CANONICAL_PCLOUD_MOUNT)
         and not os.path.ismount(CANONICAL_PCLOUD_MOUNT)
     ):
         raise RuntimeError(
             f"canonical pCloud mount is unavailable: {CANONICAL_PCLOUD_MOUNT}; refusing filesystem access"
         )
-    if is_within(state_db, CANONICAL_PCLOUD_MOUNT):
+    if is_lexically_within(state_db, CANONICAL_PCLOUD_MOUNT):
         raise RuntimeError("the writable SQLite state database must not reside on the pCloud/rclone mount")
     state_filesystem = filesystem_type_for_path(state_db.parent)
     if state_filesystem == "fuse.rclone":

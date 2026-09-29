@@ -404,6 +404,12 @@ class MediaLibraryTest(unittest.TestCase):
                 require_library_mount=False,
             )
 
+    def test_canonical_mount_boundary_does_not_traverse_stale_mount(self):
+        with mock.patch.object(ml.os.path, "realpath", side_effect=AssertionError("must not traverse mount")):
+            with mock.patch.object(ml.os.path, "ismount", return_value=False):
+                with self.assertRaisesRegex(RuntimeError, "canonical pCloud mount is unavailable"):
+                    ml.validate_storage_boundary(Path("/tmp/dib/media-library"), Path("/tmp/state.db"))
+
     def test_writer_lock_serializes_same_library_root(self):
         first = ml.acquire_writer_lock(self.library_root, self.state_db)
         try:
