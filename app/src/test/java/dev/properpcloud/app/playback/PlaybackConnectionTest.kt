@@ -179,6 +179,56 @@ class PlaybackConnectionTest {
     }
 
     @Test
+    fun terminalMediaVariantsSkipWithoutTreatingPermissionFailureAsItemTerminal() {
+        listOf(404, 410, 415, 416, 422).forEach { responseCode ->
+            assertEquals(
+                PlaybackFailureAction.SKIP_TO_NEXT,
+                playbackFailureAction(
+                    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+                    responseCode = responseCode,
+                    refreshAvailable = false,
+                    hasNextMediaItem = true,
+                ),
+            )
+        }
+
+        listOf(
+            PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
+            PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+            PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+        ).forEach { errorCode ->
+            assertEquals(
+                PlaybackFailureAction.SKIP_TO_NEXT,
+                playbackFailureAction(
+                    errorCode,
+                    responseCode = null,
+                    refreshAvailable = false,
+                    hasNextMediaItem = true,
+                ),
+            )
+        }
+
+        assertEquals(
+            PlaybackFailureAction.SURFACE_FAILURE,
+            playbackFailureAction(
+                PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
+                responseCode = null,
+                refreshAvailable = false,
+                hasNextMediaItem = true,
+            ),
+        )
+    }
+
+    @Test
     fun failureSkipAdvancesForwardWithoutRepeatWraparound() {
         assertEquals(1, nextQueueIndexAfterFailure(currentIndex = 0, itemCount = 3))
         assertEquals(2, nextQueueIndexAfterFailure(currentIndex = 1, itemCount = 3))
