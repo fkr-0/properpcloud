@@ -1,0 +1,81 @@
+{
+  "schema": "properpcloud.rc-hardening-evidence/v1",
+  "audited_at": "2026-09-29T19:38:00+02:00",
+  "branch": "main",
+  "head_before_commit": "ea293b8902630c5fa2ca7cf7e4f5b6e04ae3777a",
+  "candidate": {"version":"0.2.0-rc.9","tag_contract":"v0.2.0-rc.9","publication_authorized":false},
+  "repository_state": {
+    "ahead_of_upstream_before_commit": 16,
+    "behind_upstream": 0,
+    "preserved_unrelated_dirty": ["bridge.yml"],
+    "open_github_issues": 0,
+    "open_github_pull_requests": 0,
+    "latest_published_ci_head": "c661c3167b95f798ab91b06915fbdd8260c97357",
+    "latest_published_ci_is_stale_vs_local_head": true
+  },
+  "rc_health": {
+    "build_stability": "green_locally",
+    "test_stability": "green_locally",
+    "release_blockers_reproduced": [],
+    "runtime_regressions_reproduced": [],
+    "flaky_tests_reproduced": [],
+    "product_source_change_required": false,
+    "new_test_change_required": false
+  },
+  "requested_edge_case_audit": [
+    {"area":"network_disconnected_or_transient_playback","evidence":"app/src/test/java/dev/properpcloud/app/playback/PlaybackConnectionTest.kt","status":"covered"},
+    {"area":"interrupted_metadata_download_cleanup","evidence":"source-pcloud/src/test/java/dev/properpcloud/source/pcloud/PCloudMetadataDownloadTest.kt#deletesPartialCandidateWhenDownloadIsInterrupted","status":"covered"},
+    {"area":"corrupt_or_unsupported_media","evidence":"app/src/test/java/dev/properpcloud/app/playback/PlaybackConnectionTest.kt#malformedAndUnsupportedMediaExposeCorruptMediaMessage","status":"covered"},
+    {"area":"permission_denied","evidence":"app/src/test/java/dev/properpcloud/app/playback/PlaybackConnectionTest.kt and app/src/test/java/dev/properpcloud/app/ui/MainViewModelTest.kt","status":"covered"},
+    {"area":"audiobook_progress_persistence","evidence":"app/src/test/java/dev/properpcloud/app/data/AppPreferencesRepositoryTest.kt","status":"covered"},
+    {"area":"remote_player_discovery_reconnect_degradation","evidence":"app/src/test/java/dev/properpcloud/app/playback/PlayerRegistryTest.kt","status":"covered"}
+  ],
+  "verification": [
+    {"command":"make doctor","exit_code":0,"duration_ms":968},
+    {"command":"make test","exit_code":0,"duration_ms":5945},
+    {"command":"make lint","exit_code":0,"duration_ms":5300},
+    {"command":"make build","exit_code":0,"duration_ms":7053},
+    {"command":"make ci","exit_code":0,"duration_ms":24463,"host_tests":137,"documentation_node_tests":3},
+    {"command":"make release-check","exit_code":0,"duration_ms":3956,"host_tests":137}
+  ],
+  "test_inventory": {
+    "jvm_and_robolectric_tests": 306,
+    "jvm_xml_suites": 60,
+    "jvm_failures": 0,
+    "jvm_errors": 0,
+    "jvm_skipped": 0,
+    "host_python_and_contract_tests": 137,
+    "documentation_node_tests": 3,
+    "total_named_tests": 446,
+    "coverage_percentage": null,
+    "coverage_delta": null,
+    "coverage_note": "No JaCoCo/Kover percentage report or gate is configured, so percentage coverage and percentage delta are not asserted."
+  },
+  "jvm_test_breakdown": {"app":84,"core-model":57,"desktop-app":48,"metadata-online":6,"metadata-tags":67,"source-pcloud":28,"source-server":9,"server":7},
+  "artifact": {"path":"app/build/outputs/apk/debug/app-debug.apk","bytes":25117625,"sha256":"ec91e266685b22b3e8bae9ae631beb6e659d53988fce83d55b38d3b7b5f0e267"},
+  "published_ci_observation": {
+    "android_run_id": 36518277733,
+    "android_result": "failure",
+    "android_failed_step": "Verify",
+    "linux_run_id": 36518277708,
+    "linux_result": "failure",
+    "linux_failed_step": "Verify 0.2.0 promotion matrix and bounded resilience soak",
+    "interpretation": "These runs are on older remote SHA c661c31. The current local head is 16 commits ahead and all requested local release gates pass; no current regression is inferred from stale remote CI."
+  },
+  "remaining_release_risk": [{
+    "severity":"high",
+    "area":"stable 0.2.0 promotion",
+    "status":"manual_or_external_evidence_still_required",
+    "items":[
+      "physical power-cut filesystem durability evidence",
+      "physical media-key behavior",
+      "physical suspend/resume cycle",
+      "GNOME and KDE Plasma session observations",
+      "protected Europe and United States pCloud account validation",
+      "retained protected-provider soak with real capability expiry and suspend/resume",
+      "supported Linux screen-reader/accessibility bridge or explicit maintainer exception",
+      "exact immutable v0.2.0 Arch archive rebuild after final stable tag"
+    ]
+  }],
+  "side_effects":{"product_source_changed":false,"test_source_changed":false,"tag_created_or_moved":false,"pushed":false,"published":false}
+}
