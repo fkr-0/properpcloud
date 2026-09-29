@@ -1,0 +1,138 @@
+schema: properpcloud.rc-hardening-evidence/v1
+audited_on: 2026-09-29
+task: user:properpcloud-rc-hardening-20260929-1817
+candidate:
+  version: 0.2.0-rc.9
+  expected_tag: v0.2.0-rc.9
+  latest_existing_tag: v0.2.0-rc.8
+  tag_created_or_moved: false
+repository:
+  branch: main
+  head_before_evidence_commit: 7b8901ad79e48f20df2f63e2266d35adc5810dd9
+  ahead_of_origin_before_evidence_commit: 14
+  behind_origin: 0
+  preserved_unrelated_dirty_paths:
+    - bridge.yml
+  open_github_issues: 0
+  open_github_pull_requests: 10
+  open_pull_request_note: All observed open PRs are Dependabot dependency-update PRs; none was treated as an RC regression without reproduced evidence.
+audit:
+  release_blockers_reproduced: []
+  runtime_regressions_reproduced: []
+  flaky_tests_reproduced: []
+  product_source_change_required: false
+  test_source_change_required: false
+  assessment: >-
+    Current main already contains focused regression coverage for the requested RC risk
+    areas. This run independently revalidated network-disconnected playback, terminal
+    media failures, permission-denied handling, failed library refresh retention,
+    audiobook resume persistence, remote-player controls, and interrupted verified
+    pCloud staging through the existing suite and release gates. No concrete uncovered
+    product defect was reproduced, so no speculative production or duplicate test
+    changes were introduced.
+coverage:
+  host_python_and_contract_tests: 137
+  documentation_node_tests: 3
+  jvm_and_robolectric_tests: 306
+  jvm_xml_suites: 60
+  total_named_tests: 446
+  named_test_delta_vs_r41: 0
+  percentage_coverage: null
+  percentage_coverage_delta: null
+  note: No JaCoCo or Kover percentage report/gate is configured.
+requested_edge_case_evidence:
+  network_disconnected_playback:
+    status: covered
+    examples:
+      - app/src/test/java/dev/properpcloud/app/playback/PlaybackConnectionTest.kt
+      - core-model/src/test/java/dev/properpcloud/core/model/PlaybackRecoveryIntegrationTest.kt
+  interrupted_download:
+    status: covered
+    examples:
+      - source-pcloud/src/test/java/dev/properpcloud/source/pcloud/PCloudMetadataDownloadTest.kt
+  corrupt_or_unsupported_media:
+    status: covered
+    examples:
+      - app/src/test/java/dev/properpcloud/app/playback/PlaybackConnectionTest.kt
+  permission_denied:
+    status: covered
+    examples:
+      - app/src/test/java/dev/properpcloud/app/playback/PlaybackConnectionTest.kt
+      - app/src/test/java/dev/properpcloud/app/ui/MainViewModelTest.kt
+  library_refresh:
+    status: covered
+    examples:
+      - app/src/test/java/dev/properpcloud/app/ui/MainViewModelTest.kt
+  audiobook_progress_persistence:
+    status: covered
+    examples:
+      - app/src/test/java/dev/properpcloud/app/ui/MainViewModelTest.kt
+  remote_player_controls:
+    status: covered
+    examples:
+      - app/src/test/java/dev/properpcloud/app/playback/PlayerRegistryTest.kt
+      - app/src/test/java/dev/properpcloud/app/ui/MainViewModelTest.kt
+verification:
+  - command: make local-check
+    result: pass
+  - command: make doctor
+    result: pass
+  - command: make test
+    result: pass
+    tests: 306
+    failures: 0
+    errors: 0
+    skipped: 0
+  - command: make lint
+    result: pass
+  - command: make build
+    result: pass
+  - command: make ci
+    result: pass
+    host_tests: 137
+    documentation_tests: 3
+    specs:
+      documents: 14
+      requirements: 21
+      use_cases: 22
+    docs_pages_built: 59
+  - command: make release-check
+    result: pass
+  - command: git diff --check
+    result: pass
+build_observations:
+  - severity: informational
+    area: documentation
+    status: non_failing_warning
+    note: Astro reports the pre-existing empty i18n collection and missing docs 404 entry while still completing the 59-page build successfully.
+  - severity: informational
+    area: independent_reviewer
+    status: unavailable
+    note: The optional OpenCode review backend was unavailable on this host; no claim depends on it.
+artifact:
+  path: app/build/outputs/apk/debug/app-debug.apk
+  bytes: 25117625
+  sha256: 6c4086ae69e1ff464ec8ba617a0423d633780f977731bce67dddf80ca47b56a4
+remaining_known_issues:
+  - severity: high
+    area: stable_0.2.0_promotion
+    status: external_or_manual_evidence_required
+    items:
+      - physical power-cut filesystem durability
+      - physical media-key behavior
+      - physical suspend/resume cycle
+      - GNOME and KDE Plasma session observations
+      - protected Europe and United States pCloud account validation
+      - retained protected-provider capability-expiry/suspend-resume soak
+      - supported Linux screen-reader/accessibility bridge or maintainer exception
+      - exact immutable v0.2.0 Arch archive rebuild after the final stable tag
+  - severity: informational
+    area: debug_apk_reproducibility
+    status: not_established
+    note: The debug APK hash differs from prior same-size local builds; no canonical release reproducibility claim is made.
+side_effects:
+  local_commits_requested: true
+  pushed: false
+  published: false
+  deployed: false
+  remote_release_created: false
