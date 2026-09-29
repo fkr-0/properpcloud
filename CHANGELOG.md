@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Hardened Android playback failure handling after rc.9 so transient network/access failures remain recoverable without consuming queue entries, permission and expired-access failures surface actionable redacted guidance, and corrupt/unsupported media is classified explicitly while terminal bad items still advance boundedly.
+
+### Testing
+
+- Requalified the post-rc.9 hardening with 305 Gradle/JVM/Robolectric tests, 136 host tests, Android lint/APK assembly, and the complete `make ci` gate; all executed checks pass.
+
 ## [0.2.0-rc.9] - 2026-09-29
 
 ### Added
