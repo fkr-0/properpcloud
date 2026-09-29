@@ -1,0 +1,110 @@
+{
+  "schema": "properpcloud.rc-hardening-evidence/v1",
+  "audited_at": "2026-09-29T20:44:00+02:00",
+  "branch": "main",
+  "head_after_fix": "29aba194fd7781d6ff53aced4ec2d416ff9f1dcb",
+  "candidate": {
+    "version": "0.2.0-rc.9",
+    "tag_contract": "v0.2.0-rc.9",
+    "publication_authorized": false
+  },
+  "repository_state": {
+    "ahead_of_origin_before_evidence_commit": 18,
+    "behind_origin": 0,
+    "preserved_unrelated_dirty": ["bridge.yml"],
+    "open_github_issues": 0,
+    "open_github_pull_requests": 10,
+    "open_pull_request_note": "All observed open pull requests are Dependabot dependency updates."
+  },
+  "reproduced_blocker": {
+    "severity": "high",
+    "area": "media_library_storage_boundary",
+    "symptom": "make ci host contract suite blocked in kernel D-state when /tmp/dib was a stale/unresponsive FUSE/rclone mount",
+    "root_cause": "filesystem_type_for_path() and validate_storage_boundary() used realpath-based containment checks that traversed the canonical cloud mount during a fail-closed preflight",
+    "fix": "use lexical absolute containment for mount-boundary and mountinfo matching so validation never traverses mounted filesystems; retain realpath-based is_within() for other security-sensitive content containment checks",
+    "commit": "29aba194fd7781d6ff53aced4ec2d416ff9f1dcb",
+    "changed_files": [
+      "scripts/media_library.py",
+      "tests/test_media_library.py"
+    ],
+    "regression_test": "MediaLibraryTest.test_canonical_mount_boundary_does_not_traverse_stale_mount"
+  },
+  "rc_health": {
+    "build_stability": "green_after_fix",
+    "test_stability": "green_after_fix",
+    "release_blockers_reproduced": ["stale FUSE mount could hang storage-boundary validation"],
+    "release_blockers_remaining_in_code": [],
+    "flaky_tests_reproduced": [],
+    "known_product_regressions_remaining": []
+  },
+  "requested_edge_case_audit": [
+    {"area": "network_disconnected_or_transient_playback", "status": "covered", "evidence": "app/src/test/java/dev/properpcloud/app/playback/PlaybackConnectionTest.kt"},
+    {"area": "interrupted_metadata_download_cleanup", "status": "covered", "evidence": "source-pcloud/src/test/java/dev/properpcloud/source/pcloud/PCloudMetadataDownloadTest.kt"},
+    {"area": "corrupt_or_unsupported_media", "status": "covered", "evidence": "app/src/test/java/dev/properpcloud/app/playback/PlaybackConnectionTest.kt"},
+    {"area": "permission_denied", "status": "covered", "evidence": "app/src/test/java/dev/properpcloud/app/playback/PlaybackConnectionTest.kt and app/src/test/java/dev/properpcloud/app/ui/MainViewModelTest.kt"},
+    {"area": "library_refresh", "status": "covered", "evidence": "app/src/test/java/dev/properpcloud/app/ui/MainViewModelTest.kt"},
+    {"area": "audiobook_progress_persistence", "status": "covered", "evidence": "app/src/test/java/dev/properpcloud/app/data/AppPreferencesRepositoryTest.kt"},
+    {"area": "remote_player_controls_and_reconnect", "status": "covered", "evidence": "app/src/test/java/dev/properpcloud/app/playback/PlayerRegistryTest.kt"},
+    {"area": "stale_or_disconnected_cloud_mount", "status": "covered_and_fixed", "evidence": "tests/test_media_library.py"}
+  ],
+  "verification": [
+    {"command": "make doctor", "result": "pass"},
+    {"command": "make test", "result": "pass", "jvm_and_robolectric_tests": 306},
+    {"command": "make lint", "result": "pass"},
+    {"command": "make build", "result": "pass"},
+    {"command": "make local-check", "result": "pass", "host_tests": 138},
+    {"command": "make ci", "result": "pass_after_fix", "host_tests": 138, "documentation_node_tests": 3},
+    {"command": "make release-check", "result": "pass", "host_tests": 138},
+    {"command": "git diff --check", "result": "pass"}
+  ],
+  "test_inventory": {
+    "jvm_and_robolectric_tests": 306,
+    "jvm_failures": 0,
+    "jvm_errors": 0,
+    "jvm_skipped": 0,
+    "host_python_and_contract_tests": 138,
+    "documentation_node_tests": 3,
+    "total_named_tests": 447,
+    "named_test_delta_vs_r43": 1,
+    "coverage_percentage": null,
+    "coverage_delta": null,
+    "coverage_note": "No JaCoCo/Kover percentage report or gate is configured; the measurable coverage delta is one new regression test."
+  },
+  "jvm_test_breakdown": {
+    "app": 84,
+    "core-model": 57,
+    "desktop-app": 48,
+    "metadata-online": 6,
+    "metadata-tags": 67,
+    "server": 7,
+    "source-pcloud": 28,
+    "source-server": 9
+  },
+  "artifact": {
+    "path": "app/build/outputs/apk/debug/app-debug.apk",
+    "bytes": 25117625,
+    "sha256": "9a955552925ec8069d8e93bc13535c2cfaf529bd79bf96b9a07ef84981043a29"
+  },
+  "remaining_release_risk": [{
+    "severity": "high",
+    "area": "stable_0.2.0_promotion",
+    "status": "manual_or_external_evidence_still_required",
+    "items": [
+      "physical power-cut filesystem durability evidence",
+      "physical media-key behavior",
+      "physical suspend/resume cycle",
+      "GNOME and KDE Plasma session observations",
+      "protected Europe and United States pCloud account validation",
+      "retained protected-provider soak with real capability expiry and suspend/resume",
+      "supported Linux screen-reader/accessibility bridge or explicit maintainer exception",
+      "exact immutable v0.2.0 Arch archive rebuild after final stable tag"
+    ]
+  }],
+  "side_effects": {
+    "product_source_changed": true,
+    "test_source_changed": true,
+    "tag_created_or_moved": false,
+    "pushed": false,
+    "published": false
+  }
+}
