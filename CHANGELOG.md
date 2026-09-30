@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Consolidates the `0.2.0` release-candidate line: source-neutral **Players** discovery with stable target identities, reconnect/deduplication and explicit degraded/unavailable state; audiobook mode with durable per-book chapter resume, independent skip intervals, per-tab speed, sleep/end-of-chapter behavior, and restore-without-autoplay; persistent tabbed audio sessions and directory bookmarks; the optional server-backed pCloud catalog; and the catalog-driven media-library/music-ingest tooling introduced across the RC series.
+- Server catalog responses include `bitrateKbps`, with an additive migration for existing catalog databases.
+
+### Changed
+
+- Playback, queue, progress, browser, player-target, and audiobook persistence consistently use stable source/node/book/target identities rather than expiring stream capabilities.
+- Android production no longer falls back to generated demo media when no provider is connected; generated WAV content remains test-only.
+- Publishable Android packaging now requires an externally supplied stable signing authority and fails closed when signing configuration is absent or incomplete. Older RC APKs used unrecoverable ephemeral signing identities, so the first installation under the stable signer requires a one-time uninstall/reinstall.
+
+### Fixed
+
+- Hardened Media3 recovery so transient network, authentication, timeout, provider and capability failures preserve queue intent, while proven terminal/missing/corrupt/unsupported items advance only the affected entry and cannot poison or loop the remaining queue.
+- Reconciled Media3 timeline selection back into durable/UI queue state across terminal-item compaction and controller disconnect/rebind without accidental autoplay.
+- Hardened local/server catalog handling so dropped or stale mounts retain the last-good catalog and fail closed instead of traversing an exposed backing directory.
+- Hardened remote-player discovery so provider failures or removal cannot shadow local Media3 authority or silently present stale targets as healthy.
+
+### Security
+
+- Non-loopback server access remains bearer-protected and HTTPS-gated; credentials, bearer values and signed provider URLs remain outside durable playback identity.
+- Stable Android signing material is supplied only by the release environment, is not stored in the repository, and release packaging rejects ordinary locally debug-signed APKs.
+
+### Testing
+
+- The 2026-09-30 stable-convergence pass re-ran `make doctor`, `make test`, `make lint`, `make build`, and the complete `make ci` gate successfully. The CI gate includes 139 host tests, specification/release validation, JVM/Robolectric tests, Android lint/APK assembly, desktop packaging, and the documentation test/Astro build.
+- Fresh focused reruns passed audiobook playback-mode tests plus Android/Robolectric Players, view-model restore, UI and persistence suites.
+- `make linux-ci` passed the packaged desktop/mpv/SQLite smoke, forced-player-exit recovery, external-SIGKILL restart/rollback recovery, clean-profile smoke, MPRIS controls, locked-keyring behavior, and 200% high-contrast accessibility capture.
+
+### Known limitations
+
+- Stable `v0.2.0` is **not yet tagged**. The canonical pre-tag promotion gate still blocks on physical power-cut durability, the Linux AT-SPI/screen-reader boundary, physical media-key and suspend/resume observations, GNOME/KDE session observations, protected Europe/United States pCloud validation, and the retained protected-provider soak. The exact `v0.2.0` Arch rebuild is intentionally post-tag.
+- The release pipeline now enforces stable signing authority, but the repository has not demonstrated the real production keystore in this local checkout; ordinary local output remains an intentionally non-publishable debug-signed APK. Stable promotion remains fail-closed until the authoritative release gates are satisfied.
+
 ## [0.2.0-rc.10] - 2026-09-30
 
 ### Added
