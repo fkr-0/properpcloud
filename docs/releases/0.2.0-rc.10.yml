@@ -1,0 +1,46 @@
+version: 0.2.0-rc.10
+tag: v0.2.0-rc.10
+status: release_candidate_for_hands_on_testing
+base_release: v0.2.0-rc.8
+final_target: v0.2.0
+date: 2026-09-30
+objective: >-
+  cut the next tagged release candidate after immutable v0.2.0-rc.8, carrying forward
+  the untagged rc.9 server bitrate migration plus playback recovery, stale-mount boundary,
+  and stable Android signing hardening without claiming the remaining stable 0.2.0 gates
+included_work:
+  - server catalog responses expose bitrateKbps and existing catalog databases migrate additively
+  - Android playback distinguishes recoverable network/access failures from terminal corrupt or unsupported media without destructive queue loss
+  - media-library boundary checks fail closed when configured mounts become stale or disappear
+  - publishable Android release packaging requires externally supplied stable signing authority and fails closed without it
+  - rc.9 remains an untagged local metadata candidate; rc.10 is the first taggable candidate after v0.2.0-rc.8
+upgrade_note: >-
+  older RC Android artifacts were signed with ephemeral CI/debug identities that are not
+  recoverable; installing the first rc.10 artifact produced with the stable signer may require
+  a one-time uninstall/reinstall rather than an in-place upgrade
+verification_required_before_tag:
+  - make doctor
+  - make test
+  - make lint
+  - make build
+  - make ci
+  - make release-check
+  - git diff --check
+final_0_2_0_blockers_not_claimed_by_this_candidate:
+  - physical power-cut filesystem durability evidence
+  - supported Linux screen-reader/accessibility bridge or explicit maintainer exception where still required
+  - physical media-key behavior
+  - physical suspend/resume cycle
+  - GNOME and KDE Plasma session observations
+  - protected Europe and United States pCloud account validation
+  - retained protected-provider soak with real capability expiry and suspend/resume
+  - exact immutable v0.2.0 Arch archive rebuild after final stable tag creation
+stable_promotion_policy: >-
+  the canonical 0.2.0 promotion evidence remains authoritative; pending, blocked, manual,
+  protected, external-session, and post-tag stable-release states are not converted to success
+  for this release candidate
+publication_scope: >-
+  local candidate commit and local signed tag are authorized by the operator's request for a
+  new RC; no push, GitHub release, artifact upload, deployment, or other remote publication
+  is authorized
+warning: this prerelease is for hands-on testing; final v0.2.0 promotion remains fail-closed

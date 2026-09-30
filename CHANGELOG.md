@@ -7,14 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.10] - 2026-09-30
+
+### Added
+
+- Carries forward the untagged rc.9 server-catalog addition: responses expose `bitrateKbps`, with an additive migration for existing catalog databases.
+
 ### Fixed
 
-- Hardened Android playback failure handling after rc.9 so transient network/access failures remain recoverable without consuming queue entries, permission and expired-access failures surface actionable redacted guidance, and corrupt/unsupported media is classified explicitly while terminal bad items still advance boundedly.
+- Hardened Android playback failure handling so transient network/access failures remain recoverable without consuming queue entries, permission and expired-access failures surface actionable redacted guidance, and corrupt/unsupported media is classified explicitly while terminal bad items still advance boundedly.
+- Hardened media-library boundary checks so stale or dropped mounts cannot be traversed as ordinary backing directories during catalog operations.
 - Stopped release packaging from silently publishing APKs signed by a newly generated container-local debug key. Publishable Android artifacts now require an externally injected stable signing authority and fail closed when it is absent or incomplete. Because the older RC CI signing keys were ephemeral and are not recoverable, moving from those RCs to the first build under the stable signer requires a one-time uninstall/reinstall.
+- Records rc.9 as an untagged local metadata candidate; rc.10 is the first taggable candidate after immutable `v0.2.0-rc.8`, avoiding a retroactive rc.9 tag.
 
 ### Testing
 
-- Requalified the post-rc.9 hardening with 306 Gradle/JVM/Robolectric tests, 139 host tests, 3 documentation tests, Android lint/APK assembly, stable-signer regression checks, and the complete `make ci` gate; all executed checks pass.
+- Requalified the candidate with 306 Gradle/JVM/Robolectric tests, 139 host tests, 3 documentation tests, Android lint/APK assembly, stable-signer regression checks, and the complete `make ci` gate; all executed checks pass before the rc.10 metadata cut.
 
 ## [0.2.0-rc.9] - 2026-09-29
 
@@ -895,8 +903,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.9...HEAD
-[0.2.0-rc.9]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.8...v0.2.0-rc.9
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.10...HEAD
+[0.2.0-rc.10]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.8...v0.2.0-rc.10
+[0.2.0-rc.9]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.8...f3138e0d102514ec7edfa403639729bf02a4c8aa
 [0.2.0-rc.8]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.7...v0.2.0-rc.8
 [0.2.0-rc.7]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.6...v0.2.0-rc.7
 [0.2.0-rc.6]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.5...v0.2.0-rc.6
