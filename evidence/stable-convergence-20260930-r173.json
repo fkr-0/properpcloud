@@ -1,0 +1,114 @@
+{
+  "schema": "properpcloud.release-convergence-evidence/v1",
+  "task": "PROPERPCLOUD-020-R173-20260930",
+  "date": "2026-09-30",
+  "repository": {
+    "branch": "main",
+    "head_before_evidence_commit": "1f78295612dd4bd8d3c0d96e21d802d34120ff68",
+    "origin_main": "c661c3167b95f798ab91b06915fbdd8260c97357",
+    "ahead_of_origin_before_evidence_commit": 26,
+    "version": "0.2.0-rc.10",
+    "candidate_tag": "v0.2.0",
+    "candidate_tag_created": false
+  },
+  "existing_release_commits": {
+    "bridge_workflow_commit": "e705d9c8b9b57253d3b69684ad21042428e3ba9b",
+    "rc10_release_commit": "11ea1716c782a027c66ef9b4c9df875f291ebda9",
+    "signing_hardening_commit": "6ae57c979eb5cf09b8ce67f159c3b7112407c77f",
+    "consolidated_changelog_commit": "1f78295612dd4bd8d3c0d96e21d802d34120ff68"
+  },
+  "verification": {
+    "doctor": "passed",
+    "test": {
+      "outcome": "passed",
+      "jvm_robolectric_tests": 306,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "lint": "passed",
+    "build": "passed",
+    "ci": "passed",
+    "release_check": "passed",
+    "phase7_phase8_phase9_boundary_tests": {
+      "outcome": "passed",
+      "tests": 26
+    },
+    "desktop_test": "passed",
+    "desktop_local_tag_recovery_process_smoke": "passed",
+    "desktop_session_audit": "passed",
+    "desktop_sleep_monitor_smoke": "passed",
+    "desktop_resilience_soak": {
+      "outcome": "passed",
+      "seconds": 120,
+      "cycles": 346,
+      "forced_exits": 1,
+      "max_resume_drift_ms": 712
+    },
+    "docs_build": {
+      "outcome": "passed",
+      "pages": 59,
+      "astro_errors": 0,
+      "astro_warnings": 0,
+      "astro_hints": 0,
+      "npm_vulnerabilities": 0
+    },
+    "players_audiobooks": {
+      "outcome": "passed_automated_coverage",
+      "focused_testcases_observed": 43,
+      "coverage_notes": [
+        "player discovery reconnect and deduplication",
+        "stale and unavailable remote targets",
+        "reserved local Media3 authority",
+        "audiobook per-book resume and playback speed",
+        "chapter and end-of-chapter behavior",
+        "sleep and skip controls",
+        "restore without autoplay",
+        "UI semantics and persistence"
+      ]
+    }
+  },
+  "android_signing": {
+    "policy": "publishable artifacts require explicit externally supplied stable signing authority",
+    "workflow_requires_secrets": [
+      "ANDROID_RELEASE_KEYSTORE_BASE64",
+      "ANDROID_RELEASE_KEYSTORE_PASSWORD",
+      "ANDROID_RELEASE_KEY_ALIAS",
+      "ANDROID_RELEASE_KEY_PASSWORD"
+    ],
+    "local_signing_environment": "unset",
+    "release_artifacts_without_signer": "rejected_as_expected",
+    "release_artifacts_with_required_flag_but_missing_values": "rejected_as_expected",
+    "production_keystore_demonstrated_in_this_checkout": false,
+    "debug_apk": {
+      "path": "app/build/outputs/apk/debug/app-debug.apk",
+      "bytes": 25117621,
+      "sha256": "a8290837a3b1194dd2a5692938d79e08e6a8b2598089c03fcd742e9e5b0b327d",
+      "publishable": false
+    }
+  },
+  "stable_readiness": {
+    "release_020_readiness": "19 passed status groups, 9 pending/blocking status groups",
+    "pretag_gate": "failed_as_expected",
+    "strict_gate": "failed_as_expected",
+    "blockers": [
+      "physical power-cut filesystem durability evidence",
+      "packaged local-workbench accessibility blocked by upstream Linux AT-SPI boundary",
+      "screen-reader review blocked by upstream Linux AT-SPI boundary",
+      "exact immutable v0.2.0 Arch rebuild is pending post-tag",
+      "physical media-key observation",
+      "physical suspend/resume cycle",
+      "alternate GNOME/KDE desktop session observations",
+      "protected provider retained soak with real capability expiry and suspend-resume",
+      "protected Europe and United States pCloud account validation"
+    ]
+  },
+  "release_decision": {
+    "ready_for_v0.2.0_tag": false,
+    "reason": "Canonical pre-tag and strict promotion gates remain blocked, and the real production Android keystore is not demonstrated in this checkout.",
+    "push_performed": false,
+    "publish_performed": false,
+    "upload_performed": false,
+    "deploy_performed": false
+  }
+}
