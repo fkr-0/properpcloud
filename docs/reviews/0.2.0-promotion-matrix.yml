@@ -33,10 +33,68 @@ promotion:
         - explicit high-contrast palette
         - visible non-color Selected and Current labels
         - base and keyboard-help screenshots are distinct and nonblank
+    native_local_workbench_release_boundary:
+      source_contracts:
+        status: passed_current_host
+        evidence: docs/reviews/phase8-local-workbench-power-loss-recovery.yml
+        checks:
+          - final pre-replace SHA-256 conflict guard runs after rollback and durable native recovery authority are armed
+          - recovery-arm failure aborts before media replacement
+          - interrupted exact-candidate replacement preserves rollback plus expected-result hash authority
+          - restart discovery requires explicit root reselection and serializes no complete/root-relative private path
+          - malformed, missing, symlinked, or externally changed recovery evidence remains mutation-blocking without overwrite authority
+          - current-original recovery records are retired only after exact-hash proof
+          - normal verified apply disarms cross-process authority while same-session rollback remains available
+          - Flatpak local-folder selection remains fail-closed without host or home filesystem access
+      kotlin_recovery_regressions:
+        status: passed_current_host
+        evidence: docs/reviews/phase8-local-workbench-power-loss-recovery.yml
+        checks:
+          - make desktop-test passed 37 of 37 tests in the pinned properpcloud/android-build:2026.08 image
+          - fresh recovery authority and selected-root identity reconstruct exact-hash guarded rollback after simulated replacement interruption
+          - malformed and externally changed durable evidence remains mutation-blocking without overwrite authority
+      cross_process_power_loss_recovery:
+        status: passed_current_host_packaged_process
+        evidence:
+          - docs/reviews/phase8-local-workbench-power-loss-recovery.yml
+          - docs/reviews/phase9-local-recovery-process-smoke.yml
+          - build/evidence/0.2.0-local-tag-recovery-process.json
+        checks:
+          - simulated power loss immediately after replacement leaves durable recovery authority armed
+          - fresh authority and identity after explicit root reselection discover the interrupted replacement and permit only exact-hash guarded rollback
+          - packaged process reaches the recovery-armed atomic replacement boundary and is then terminated by an external SIGKILL
+          - a fresh packaged process receives the selected scratch root again, rediscovers durable recovery, and verifies exact-hash guarded rollback
+        real_process_restart_reselection:
+          status: passed_current_host
+          evidence: build/evidence/0.2.0-local-tag-recovery-process.json
+          checks:
+            - first packaged process exited 137 after external SIGKILL following the atomic replacement boundary
+            - normal post-replacement verification/disarm did not execute in the killed process
+            - fresh packaged process rebuilt DesktopLocalFolderBinding only after the root was supplied again
+            - durable recovery was rediscovered and exact original bytes were restored through the guarded rollback path
+            - retained evidence records no selected-root/media path, provider URL, or credential
+        physical_power_cut_filesystem_durability:
+          status: pending_hardware
+          reason: SIGKILL proves the real process boundary but does not test loss of kernel/filesystem power or storage write-cache durability
+      packaged_local_workbench_accessibility:
+        status: blocked_upstream_linux_at_spi
+        evidence:
+          - docs/reviews/phase7-local-workbench-release-boundary.yml
+          - docs/reviews/phase10-local-workbench-accessibility.yml
+          - build/evidence/0.2.0-accessibility.json
+        passed_current_host:
+          - packaged desktop executable created and smoke-tested
+          - 200 percent high-contrast accessibility capture passed
+          - explicit Compose heading, selected/current, player-state, local-workbench, and recovery semantics remain covered in source/tests
+        still_required:
+          - selected-folder keyboard and focus traversal in the native local workbench
+          - large-text local-workbench control availability review
+          - Linux AT-SPI application-tree support from Compose Multiplatform or a separately supported properpcloud accessibility bridge/UI boundary
+        upstream_reason: current Compose Multiplatform desktop accessibility documentation states Linux is not supported
     screen_reader_review:
-      status: pending_manual
-      checks:
-        - real AT-SPI screen-reader traversal and action review
+      status: blocked_upstream_linux_at_spi
+      evidence: docs/reviews/phase10-local-workbench-accessibility.yml
+      reason: a real Linux AT-SPI screen-reader traversal cannot run truthfully while the current Compose Multiplatform Linux target exposes no supported accessibility bridge
     packages:
       appimage_v0.1.9:
         status: passed_tagged_release

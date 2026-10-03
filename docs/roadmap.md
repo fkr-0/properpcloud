@@ -358,15 +358,23 @@ Status: **release candidate for the completed credential-free current-host tranc
 6. [x] define `spec/tag-folder-workbench.yml` as the guarded next pre-`0.2.0` workflow,
    explicitly without claiming implementation or source mutation in this release.
 
-## `0.1.11` — folder-scoped Tag workbench (planned)
+## `0.1.11` — folder-scoped Tag workbench (absorbed into the `0.2.0` release-candidate line)
 
-- a dedicated direct-folder table and field inspector preserving filename/path identity;
-- gap-free initial scan plus robust watcher/change-feed reconciliation;
-- deterministic explainable correction proposals, where autocorrect never means auto-write;
-- per-field approval and conflict invalidation when source content changes;
-- local sibling staging, reread/decoder verification, atomic replacement, final readback,
-  rollback, and export-only fallback when safe replacement is unavailable;
-- remote review/export only until an atomic expected-revision provider primitive exists.
+Status: **implemented in the `0.2.0` release-candidate line; no `v0.1.11` tag was cut**.
+
+- [x] a dedicated direct-folder table and field inspector preserving filename/path identity;
+- [x] observer-before-scan local-root hosting plus robust watcher reconciliation;
+- [x] deterministic explainable folder/filename correction proposals, where autocorrect never means auto-write;
+- [x] per-field approval and conflict invalidation when source content changes;
+- [x] local sibling staging, reread/decoder verification, atomic replacement, final readback,
+  exact-hash rollback/recovery evidence, and export-only fallback when safe replacement is unavailable;
+- [x] recursive preview/dry-run/progress with recursion separately opted in;
+- [x] frozen diff-first Earlier/Later tag review with explicit add/remove/destructive state,
+  provenance/warnings, revision invalidation, and the same review carried through dry-run and replacement confirmation;
+- [x] portable extended-M3U generation with five order modes including explicit title-number,
+  recursive/per-album batches, exact `./...` target/content review checkpoints, relative entries,
+  trusted-duration EXTINF, stale-evidence guards, and a preview-first native CLI;
+- [x] remote review/export remains the boundary until an atomic expected-revision provider primitive exists.
 
 ## `0.2.0` — native Linux desktop parity
 

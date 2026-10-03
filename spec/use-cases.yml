@@ -208,6 +208,21 @@ use_cases:
         no_cache: Show full error with retry and account diagnostics.
         permission_denied: Preserve breadcrumb context and explain access loss.
       tests: [TEST-BROWSE-FRESH, TEST-BROWSE-STALE, TEST-BROWSE-LARGE]
+    UC-SEARCH-FILENAMES:
+      traces: [REQ-BROWSE, REQ-FILENAME-SEARCH]
+      title: Filter the loaded filesystem view by filename
+      trigger: User expands the magnifying-glass search control.
+      flow:
+        - user: Enter at least three filename characters and optionally toggle dirs, files, audio-files, or playlist-files filters.
+        - app: Debounce briefly and search only already-loaded MediaNode rows for the current folder scope.
+        - app: Match filenames case-insensitively, suppress duplicate stable identities, and apply deterministic natural/stable ordering.
+        - app: Treat generic files as a superset of audio/playlist file categories while selected.
+        - app: Persist match-type preferences, not query text or stream locations.
+        - user: Activate a folder/audio result through existing navigation/play behavior or inspect a generic/playlist file.
+      below_threshold: Preserve the normal library view and show no search result set.
+      empty: Show an explicit no-matching-filenames state.
+      deferred: Embedded artist/title/year matching is not part of this tranche.
+      tests: [TEST-SEARCH-THRESHOLD, TEST-SEARCH-FILENAME-CASE, TEST-SEARCH-FILTERS, TEST-SEARCH-PREFERENCES, TEST-SEARCH-UI]
     UC-QUEUE-FOLDER:
       traces: [REQ-QUEUE, REQ-SORTING]
       title: Build queue from direct folder children
@@ -286,11 +301,27 @@ use_cases:
             - resolve new capability
             - resume from last confirmed position
             - allow a later retry after cooldown
+        terminal_retriable_http_or_network:
+          explicit_play:
+            - preserve stable queue identity, current index, and intended position
+            - rebuild the platform item without the failed direct URI
+            - resolve a fresh capability through AudioSource and prepare again
+          permanent_failures: HTTP client/media failures outside the retriable policy remain visible and are not refreshed in a loop
+        stream_resolution_failure:
+          item_unavailable:
+            - omit or advance past only the stable item the source explicitly proves unavailable
+            - move forward monotonically without repeat wraparound
+            - if no eligible item remains, surface the failure and stop retrying automatically
+          transient:
+            - preserve every stable queue entry and current selection
+            - surface or retry in place; never convert source/network/auth/capability outage into destructive queue omission
         transient_network:
           result: Bounded backoff with visible retry and cancel.
         unsupported_decoder:
-          result: Fail item, preserve queue, offer inspect, download, external-open, or skip.
-      tests: [TEST-PLAY-REMOTE, TEST-PLAY-LINK-EXPIRY, TEST-SIGNED-LINK-RETRY-GATE, TEST-PLAY-RANGE]
+          result: Fail item and advance to a distinct next eligible queue entry when present; otherwise surface the terminal item without looping.
+        controller_or_service_rebind:
+          result: Preserve the last player-confirmed stable queue selection and restore paused state/position without autoplay.
+      tests: [TEST-PLAY-REMOTE, TEST-PLAY-LINK-EXPIRY, TEST-PLAY-LOCAL-HTTP-RECOVERY, TEST-PLAY-EXPLICIT-RECOVERY, TEST-PLAY-RESOLUTION-CLASSIFICATION, TEST-PLAY-SKIP-UNPLAYABLE, TEST-PLAY-MANUAL-RECOVERY, TEST-SIGNED-LINK-RETRY-GATE, TEST-PLAY-PROCESS-RECREATE, TEST-PLAY-RANGE]
     UC-SAVE-PROGRESS:
       traces: [REQ-PROGRESS]
       title: Persist and restore long-form position
@@ -303,15 +334,65 @@ use_cases:
         - service_teardown
       save_flow:
         - app: Read stable media ID, current position, duration, speed, and content revision.
-        - app: Coalesce writes while preserving latest observation.
+        - app: Coalesce active writes to approximately 30 seconds while preserving latest observation and force important pause/transition/lifecycle boundaries.
         - app: Apply completion policy.
         - app: Commit progress transactionally.
         - app: Return an observable persistence job for forced lifecycle checkpoints.
       restore_flow:
         - app: Compare stored and current content revision.
-        - app: Seek to stored position minus smart rewind when compatible.
+        - app: Clamp against known duration, restart effectively completed items at zero, otherwise seek to stored position minus smart rewind when compatible.
+        - app: Install restored queue/current item and normalized position together in a paused/no-autoplay state so a transient zero sample cannot overwrite durable progress.
         - app: Ask restart, retain, or discard when content materially changed.
-      tests: [TEST-PROGRESS-CHECKPOINT, TEST-PROGRESS-LIFECYCLE-FLUSH, TEST-PROGRESS-POLICY, TEST-PROGRESS-PROCESS-DEATH, TEST-PROGRESS-REVISION]
+      history:
+        - Disabled by default and separate from crash/session restoration.
+        - When enabled, upsert stable media identity plus position/duration/timestamp/completion and trim to configured bounded retention.
+      tests: [TEST-PROGRESS-CHECKPOINT, TEST-PROGRESS-LIFECYCLE-FLUSH, TEST-PROGRESS-POLICY, TEST-PROGRESS-PROCESS-DEATH, TEST-PROGRESS-REVISION, TEST-QUEUE-RESTORE-POSITION-ATOMIC, TEST-PLAYBACK-HISTORY]
+    UC-TABBED-AUDIO-SESSION:
+      traces: [REQ-SAVED-ROOTS, REQ-LONGFORM, REQ-QUEUE, REQ-PROGRESS]
+      title: Keep independent browser, queue, and resume state in audio tabs
+      trigger: User selects a named content tab such as Hörbücher, Musik, Sci-Fi, Krimi, Fantasy, or DJ/Auflege.
+      defaults:
+        - Hörbücher -> hb
+        - Musik -> musik
+        - DJ/Auflege -> dj
+        - Sci-Fi -> hb/Sci-Fi
+        - Krimi -> hb/Krimi
+        - Fantasy -> hb/Fantasy
+      switch_flow:
+        - app: Force a progress checkpoint for the current stable media identity.
+        - app: Invalidate pending stream/recovery work and stop the old platform-player load before changing the selected tab.
+        - app: Persist the old tab's queue, selected item, position, folder, speed, volume, shuffle, and repeat settings.
+        - app: Restore the destination tab's browser root/current folder and queue from stable source and node identities.
+        - app: Prepare the destination current item at its saved position in a paused state.
+        - user: Explicitly press Play to resume; switching tabs never starts playback automatically.
+      browser:
+        - Resolve each pCloud tab root from its validated relative path.
+        - Keep navigation inside that root even when restoring a previously visited folder.
+        - Search recursively inside the active pCloud tab with a bounded folder traversal.
+        - Sort folder rows by name, modified date, size, tagged title, or disc/track policy.
+        - Show current item, duration, format, size, last played time, and saved progress when known.
+      queue:
+        - Each tab owns an independent queue and current index.
+        - Reorder by drag or explicit move actions and remove individual entries.
+        - Save the current stable queue as a named playlist and later load it into the active tab without autoplay.
+      tab_management:
+        - Reorder named tabs without changing which session is active.
+        - Bound one collection to 32 tabs so repeated creation cannot grow player/session state without limit.
+        - Closing the active tab checkpoints and stops its player load before the successor session is restored.
+        - Show loading, playing, paused, or stopped as text in the tab strip; state is never color-only.
+      long_form:
+        - Remember playback speed and volume per tab.
+        - Support 30-second backward/forward seeking, shuffle, repeat off/all/one, and a bounded sleep timer.
+      persistence:
+        - Persist only stable source/node/folder identities plus player preferences and timestamps.
+        - Never persist signed pCloud stream URLs or bearer capabilities.
+        - Preserve unresolved pCloud references while disconnected so reconnect can restore them later.
+      tests:
+        - TEST-ROOT-CREATE
+        - TEST-ROOT-RENAME
+        - TEST-QUEUE-RESTORE-POSITION-ATOMIC
+        - TEST-PROGRESS-PROCESS-DEATH
+        - TEST-LINUX-KEYBOARD
     UC-CREATE-SAVED-ROOT:
       traces: [REQ-SAVED-ROOTS]
       title: Create a custom tab from folder
@@ -382,9 +463,9 @@ use_cases:
       trigger: User confirms Disconnect.
       flow:
         - app: Stop provider requests and block new stream resolution.
-        - app: Stop playback and clear the active queue when it contains provider media.
+        - app: Stop provider playback immediately while retaining non-secret stable tab/queue references for an explicit later reconnect.
         - app: Invalidate local credential handle immediately.
-        - app: Remove the provider source and switch to demo before any network request.
+        - app: Remove the provider source and switch to another already-connected library or the explicit disconnected state before any network request.
         - app: Attempt regional provider-side revocation using an HTTPS bearer header.
         - app: Report confirmed, already inactive, or unconfirmed remote invalidation separately.
         - user: Choose whether non-secret snapshots and offline files are retained.
@@ -392,6 +473,7 @@ use_cases:
       postconditions:
         - No future request can use removed credentials.
         - Existing remote-only playback stops.
+        - Persisted tab queues contain no signed stream capability and cannot play until the source reconnects.
         - Retained verified offline files follow explicit user choice.
       tests: [TEST-AUTH-LOGOUT, TEST-AUTH-REMOTE-REVOKE, TEST-LOGOUT-PLAYBACK, TEST-LOGOUT-CACHE]
     UC-LINUX-PARITY:

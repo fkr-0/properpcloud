@@ -1,32 +1,41 @@
 package dev.properpcloud.app.data
 
 import dev.properpcloud.app.security.PCloudSessionStore
+import dev.properpcloud.app.security.ServerCatalogSessionStore
 import dev.properpcloud.core.model.AudioSource
 import dev.properpcloud.core.model.SourceId
 import dev.properpcloud.source.pcloud.PCloudSession
 import dev.properpcloud.source.pcloud.PCloudSourceFactory
+import dev.properpcloud.source.server.ServerCatalogAudioSource
+import dev.properpcloud.source.server.ServerCatalogSession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentHashMap
 
 enum class SourceKind(val id: String) {
-    DEMO("demo"),
+    NONE("none"),
     PCLOUD("pcloud"),
+    SERVER("server"),
 }
 
 class SourceRegistry(
-    demoSource: AudioSource,
+    disconnectedSource: AudioSource,
     private val tokenVault: PCloudSessionStore,
+    private val serverVault: ServerCatalogSessionStore,
 ) {
     private val sources = ConcurrentHashMap<SourceId, AudioSource>()
-    private val _current = MutableStateFlow(demoSource)
+    private val _current = MutableStateFlow(disconnectedSource)
     private var pCloudSession: PCloudSession? = null
     val current: StateFlow<AudioSource> = _current.asStateFlow()
 
     init {
-        sources[demoSource.id] = demoSource
+        require(disconnectedSource.id == SourceId(SourceKind.NONE.id)) {
+            "disconnected source must use the reserved none source id"
+        }
+        sources[disconnectedSource.id] = disconnectedSource
         tokenVault.read()?.let(::installPCloud)
+        serverVault.read()?.let(::installServer)
     }
 
     fun source(id: SourceId): AudioSource? = sources[id]
@@ -36,6 +45,9 @@ class SourceRegistry(
         _current.value = source
         return true
     }
+
+    fun currentKind(): SourceKind =
+        SourceKind.entries.firstOrNull { it.id == _current.value.id.value } ?: SourceKind.NONE
 
     fun installPCloud(session: PCloudSession) {
         tokenVault.write(session)
@@ -49,10 +61,31 @@ class SourceRegistry(
         val session = pCloudSession
         pCloudSession = null
         tokenVault.clear()
-        sources.remove(SourceId(SourceKind.PCLOUD.id))
-        select(SourceKind.DEMO)
+        val removedId = SourceId(SourceKind.PCLOUD.id)
+        sources.remove(removedId)
+        if (_current.value.id == removedId) {
+            select(if (hasServerSession()) SourceKind.SERVER else SourceKind.NONE)
+        }
         return session
     }
 
     fun hasPCloudSession(): Boolean = sources.containsKey(SourceId(SourceKind.PCLOUD.id))
+
+    fun installServer(session: ServerCatalogSession) {
+        serverVault.write(session)
+        val source = ServerCatalogAudioSource(session)
+        sources[source.id] = source
+        _current.value = source
+    }
+
+    fun disconnectServerLocally() {
+        serverVault.clear()
+        val removedId = SourceId(SourceKind.SERVER.id)
+        sources.remove(removedId)
+        if (_current.value.id == removedId) {
+            select(if (hasPCloudSession()) SourceKind.PCLOUD else SourceKind.NONE)
+        }
+    }
+
+    fun hasServerSession(): Boolean = sources.containsKey(SourceId(SourceKind.SERVER.id))
 }

@@ -32,7 +32,7 @@ This flow is explicitly an interim compatibility path. Browser OAuth remains the
 
 ## Disconnecting
 
-Disconnect removes the locally stored session and switches the current source to the demo library. Provider-side token revocation is a distinct operation; consult the account security page when a device has been lost or compromised.
+Disconnect removes the locally stored session. On Android, the current source falls back to another connected library when available, otherwise to the explicit **No library connected** state. Provider-side token revocation is a distinct operation; consult the account security page when a device has been lost or compromised.
 
 ## Linux Secret Service diagnostics
 

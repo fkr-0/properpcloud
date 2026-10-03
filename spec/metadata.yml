@@ -155,9 +155,9 @@ metadata:
       - return typed failure in the application orchestration layer
   source_preparation:
     contract: MetadataContentSource.prepareMetadataSource
-    demo:
-      - Copy the generated WAV to a unique app-private source file.
-      - Return SHA-256 as content evidence.
+    generated_test_fixture:
+      - Generate deterministic WAV input only from the Android test source set.
+      - Copy it to a unique app-private source file and return SHA-256 as content evidence.
     pCloud:
       - Load file metadata and provider SHA-256 before download.
       - Download to a unique app-private destination.

@@ -1,0 +1,120 @@
+phase7_local_workbench_release_boundary:
+  recorded_on: 2026-08-21
+  scope: native_desktop_selected_directory_local_workbench_only
+  status: hardened_with_concrete_release_blockers_remaining
+  implementation_evidence:
+    final_pre_replace_conflict_guard:
+      status: implemented
+      behavior:
+        - source SHA-256 is revalidated after verified rollback-copy creation and immediately before atomic replacement
+        - a changed source is left untouched and private staging/recovery siblings are removed
+    interrupted_replace_classification:
+      status: implemented
+      behavior:
+        - an atomic-replace call that reports failure is not assumed to mean no rename occurred
+        - exact staged-candidate bytes are recognized by SHA-256 and retain exact rollback bytes plus a guarded current-result hash
+        - bytes matching neither reviewed original nor staged candidate remain indeterminate without force rollback authority
+        - an indeterminate result stops the batch and remains write-blocking after watcher reconciliation
+    guarded_rollback:
+      status: implemented_same_session
+      behavior:
+        - rollback requires exact current-result SHA-256 plus retained rollback bytes at the apply-service primitive itself; an unknown current-result hash is indeterminate and cannot be overwritten
+        - later external edits return conflict and are never overwritten
+        - restored original bytes are rehashed and file plus parent-directory durability is forced where supported
+        - rollback has no force mode
+        - selected-root binding rejects rollback targets outside the selected root
+    desktop_presentation:
+      status: implemented_static_contract_verified
+      behavior:
+        - per-file status, filename, recovery message, and rollback availability are projected without recovery-file paths
+        - interrupted outcomes disable tag and playlist mutation controls
+        - explicit guarded rollback confirmation is exposed one file at a time
+        - proposal warnings and result states have Compose semantics
+        - proposal row keys use stable node, field, and rule identity rather than list index
+        - recursive consent and mutation controls are split across rows for large-text layout headroom
+        - complete selected-root paths continue to be redacted from user-facing operation messages
+    flatpak_boundary:
+      status: unchanged_fail_closed
+      behavior:
+        - FLATPAK_ID or /.flatpak-info prevents native local-folder selection
+        - no host or home filesystem permission was added
+        - no document-portal implementation is claimed
+  exercised_current_host:
+    phase7_source_contracts:
+      status: passed
+      command: python3 -m unittest -v tests.test_phase7_local_workbench_release_boundary
+      result: 10_of_10_passed
+    spec_validation:
+      status: passed
+      command: python3 scripts/validate-specs.py
+      result: 12_documents_20_requirements_20_use_cases
+    docker_image_presence:
+      status: unavailable
+      image: properpcloud/android-build:2026.08
+      result: absent
+      policy: not_pulled_or_rebuilt_for_phase7
+    host_kotlinc:
+      status: unavailable
+      result: not_installed
+  authored_but_not_exercised_locally:
+    kotlin_recovery_regressions:
+      status: pending_ci_toolchain
+      cases:
+        - direct rollback refuses retained recovery bytes when no current-result SHA-256 was proven
+        - source change during staging conflicts before replacement
+        - interrupted replace after exact candidate move retains guarded rollback and stops the batch
+        - host remains stale after interrupted candidate replacement and returns live only after guarded rollback reconciliation
+      reason: pinned Docker build image and host kotlinc are both unavailable
+  platform_and_package_evidence_cells:
+    packaged_native_smoke:
+      status: not_exercised
+      reason: no packaged desktop executable is present and the pinned build image is unavailable
+    local_workbench_keyboard_focus:
+      status: not_exercised_runtime
+      implemented_seams:
+        - native Compose controls remain keyboard operable
+        - stable proposal keys preserve surviving-row identity across recomposition
+      missing: packaged selected-folder keyboard traversal evidence
+    high_contrast_200_percent_local_workbench:
+      status: not_exercised_phase7
+      reason: packaged executable unavailable
+      tooling:
+        - accessibility audit requests GTK HighContrast, PROPERPCLOUD_HIGH_CONTRAST=1, 200 percent Java UI scale, and Compose accessibility
+        - audit scratch logs now remain under the repository evidence directory rather than bare /tmp
+    large_text_local_workbench:
+      status: not_exercised_runtime
+      implemented_seam: recursive consent and action controls are split into bounded rows instead of one wide action row
+    at_spi_screen_reader:
+      status: not_exercised
+      reason: requires packaged app and real accessibility traversal/session evidence
+    alternate_desktops:
+      status: not_exercised_phase7
+      targets:
+        - GNOME Shell
+        - KDE Plasma
+    appimage_smoke:
+      status: not_exercised
+      reason: AppImage artifact absent and package build unavailable
+    flatpak_bundle_smoke:
+      status: not_exercised
+      reason: bundle artifact absent and package build unavailable
+  concrete_release_blockers:
+    cross_process_power_loss_recovery:
+      status: blocked_implementation
+      detail: selected-root authorization and rollback-result association are intentionally session-scoped; after process loss there is no durable redacted locator that can re-associate retained rollback bytes with an exact target and expected current hash
+      required_proof:
+        - terminate after replacement while recovery bytes exist
+        - restart and explicitly reselect the same root
+        - discover recovery authority without guessing complete private paths
+        - reconcile target bytes by hash
+        - prove guarded rollback or remain mutation-blocked
+    kotlin_runtime_verification:
+      status: blocked_local_toolchain
+      detail: authored Kotlin/JUnit recovery tests require CI or an already-present pinned image
+    packaged_accessibility_and_session_evidence:
+      status: blocked_local_artifact
+      detail: no current packaged executable is available for selected-folder keyboard, focus, high-contrast, 200-percent, large-text, or AT-SPI evidence
+  privacy:
+    complete_private_media_paths_recorded: false
+    rollback_sibling_paths_recorded: false
+    credentials_or_provider_tokens_recorded: false

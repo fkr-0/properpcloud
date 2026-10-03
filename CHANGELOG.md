@@ -7,15 +7,311 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0-rc.7] - 2026-09-25
+
+### Added
+
+- Added a stable, source-neutral **Players** overview that deduplicates known playback targets across reconnect/discovery and exposes connectivity, playback state, current media, and safe local controls through the existing controller authority.
+- Added audiobook playback state with durable per-book resume, chapter-aware navigation, playback speed, configurable skip intervals, sleep/end-of-chapter stopping behavior, and restore-without-autoplay semantics isolated from normal music queue modes.
+- Added persistent directory bookmarks to the Android folder browser for quick return to known library locations.
+
+### Changed
+
+- Simplified Android pCloud/server settings copy by removing developer-oriented OAuth/client-ID controls and credential-storage implementation banners from the normal user surface while preserving the existing authentication and vault behavior.
+- Updated Android first-run/privacy/user documentation to reflect the production **No library connected** state; deterministic generated WAV media remains test-only on Android and available as a Linux verification source.
+
+### Fixed
+
+- Android **Play folder** now queues the recursive subtree, so folders whose top level contains only subdirectories still reach playable descendants; direct-only playback remains an explicit secondary action.
+- Folder and generic-file rows no longer expose the internal “stable source identity” wording in visible labels.
+- Reissued the rc.6 playback-liveness hardening after closing a release-runner-only test discovery defect: the stdlib host gate runs exactly its 40 unittest modules instead of importing the separate pytest-only music-ingest suite. The executed unittest count remains 136, so clean GitHub runners do not require an accidental host `pytest` installation before tag metadata validation.
+- Carries forward rc.6's bounded Media3 terminal-item skipping, source-neutral terminal-vs-transient stream-resolution classification, stable queue/timeline reconciliation across controller rebind, manual post-error recovery, and removal of the Android production demo source.
+
+### Testing
+
+- The Players/audiobook implementation and subsequent settings-polish pass were independently reviewed; focused core-model/source-server tests and the 136-test local host gate are green before release-candidate packaging.
+- Reproduced the rc.6 GitHub failure on exact tag/SHA and verified it was `ModuleNotFoundError: pytest` during stdlib discovery rather than a playback regression.
+
+## [0.2.0-rc.6] - 2026-09-16
+
+### Fixed
+
+- Hardened Android Media3 playback liveness so item-scoped terminal decode, format, missing-media,
+  and provider-proven unavailable failures advance monotonically to the next eligible queue entry
+  when one exists, while final/all-bad queues terminate boundedly without repeat-wraparound or an
+  error/skip loop. Manual Next, Previous, selection, and explicit retry re-prepare from stable
+  source/node identity so one bad item cannot poison later valid playback.
+- Added source-neutral stream-resolution failure classification across direct pCloud and server
+  catalog adapters. Proven item-unavailable failures may omit only that stable item; offline,
+  timeout, authentication, 5xx, and temporary capability failures preserve the queue and remain
+  recoverable instead of destructively cascade-skipping later entries.
+- Reconciled player-confirmed Media3 timeline identity back into durable/UI queue state after
+  terminal-item compaction and across controller disconnect/rebind, preserving the intended stable
+  current item and sane position without accidental autoplay.
+- Removed the Android production demo library and demo-mode fallback. First run and provider
+  disconnect now use an explicit no-library-connected state or another already-connected provider,
+  while deterministic generated WAV media remains confined to the Android test source set.
+
+### Testing
+
+- Added focused regression coverage for bad→good, good→bad→good, consecutive/all-bad queues,
+  terminal final items, transient resolver failures, manual post-error recovery, queue/timeline
+  convergence, controller rebind, and generated test-media behavior.
+
+## [0.2.0-rc.5] - 2026-09-08
+
+### Added
+
+- Added capability-gated Linux system-tray playback controls with Show, Play/Pause, Previous,
+  Next, and Quit actions plus one now-playing notification per newly audible stable track. The
+  desktop window hides on close only when a tray recovery surface is actually available.
+- Added an optional self-hosted pCloud library server with pooled REST access, owner-only
+  reloadable session files, live connectivity health, recursive provider metadata caching,
+  folder creation, metadata lookup, and signed-link generation while retaining pCloud IDs as
+  stable source identity.
+- Added a persistent rclone full-remote mount template plus systemd user units and an incremental
+  SQLite catalog scanner. Changed audio files are tag-inspected and SHA-256 fingerprinted with
+  technical/path metadata; unchanged files are reused, duplicate groups are indexed, and an
+  unavailable provider or mount preserves the last good catalog for explicit degraded operation.
+- Added server browse/search/status/scan/node/duplicate APIs, short-lived range-capable local
+  playback tickets, a source-neutral server `AudioSource` adapter, and `properpcloud library
+  scan|status|search` commands on the native desktop entry point.
+- Android can now connect to the optional server catalog, persist it as a selectable source,
+  browse the server-generated folder tree, restore stable server queue identities, and resolve
+  fresh server playback tickets through the existing Media3 path instead of scanning pCloud on
+  the device.
+- Added persistent tabbed audio sessions on Android and Linux with the default Hörbücher, Musik,
+  DJ/Auflege, Sci-Fi, Krimi, and Fantasy roots. Each tab keeps its own pCloud browser location,
+  queue/current item, resume position, speed, volume, shuffle, and repeat state; switching tabs
+  checkpoints and pauses the old tab and restores the new tab without autoplay.
+- Added active-tab tree search, name/date/size sorting, current-track and last-played/progress
+  browser cues, explicit resume, named queue playlists, drag reordering with non-drag alternatives,
+  ±30-second seeking, 0.5–3× playback speed, sleep timers, and desktop Space/arrow media shortcuts.
+  Durable tab/playlist state uses only stable source/node/folder identities; signed pCloud stream
+  URLs remain just-in-time capabilities and disconnected pCloud queues are preserved for reconnect.
+- Added an extensive `/tmp/dib/media-library` organization/import layer for external-disk
+  discovery catalogs. Imports are dry-run by default, preserve source-disk/path provenance,
+  support filename+size or exact SHA-256 dedupe, stage copies before atomic visibility, retry
+  bounded transient FUSE errors, and publish per-run manifests plus a consistent SQLite snapshot.
+- Added FTS5 filename/path search, optional ffprobe/exiftool audio/image enrichment, FLAC/photo
+  query filters, verification, by-type/source space reports, report-only cleanup candidates, and
+  a documented independent-backup strategy; the live writable SQLite state stays local rather
+  than relying on WAL/locking semantics through the pCloud/rclone mount. Canonical writes now
+  fail closed if `/tmp/dib` is not mounted, arbitrary `fuse.rclone` state locations are rejected,
+  manifests stream through local spools for large catalogs, supplied SHA-256 evidence is verified,
+  malformed/missing source rows are isolated, and cleanup diagnostics are bounded while covering
+  interrupted uploads and untracked cloud media. Import planning/writes are locally serialized per
+  library root, dry-run counters cannot masquerade as completed copies, and source/destination
+  traversal through absolute paths or intermediate symlinks is rejected before media access.
+- Added resumable music ingestion from external-disk catalogs into `audio/music` with full-ancestry
+  exclusion of sample/podcast/recording trees, NFC/pCloud-safe filenames, staged Mutagen metadata
+  normalization with original-tag provenance, exact SHA-256 duplicate suppression, MP3 bitrate
+  quality tiers and replacement auditing, and portable ingest/quality/unsorted reports under
+  `media-library/metadata`.
+
+### Security
+
+- Non-loopback server binds require an owner-only bearer-token file and remote catalog clients
+  require HTTPS. pCloud credentials, API bearer values, provider signed URLs, and local mount
+  paths remain outside durable media identity and stream tickets expire from process memory.
+- Android stores the optional server API bearer under a separate Android Keystore AES-GCM key,
+  keeps it out of presentation/queue state, clears transient plaintext byte buffers where
+  practical, and probes the server successfully before persisting a new server session.
+
+### Fixed
+
+- Hardened tabbed desktop playback for long-running sessions: tab count is bounded and reorderable,
+  closing/switching the active tab stops its old mpv load, stale asynchronous stream resolutions
+  cannot become audible, unexpected mpv exits re-resolve the stable track and restore position/
+  play-pause intent, audio output is reloaded on resume for device changes, process descriptors are
+  reaped deterministically, stale per-tab settings are removed, and corrupt SQLite state is
+  quarantined before starting from clean user state.
+- Hardened local-library mount loss so production scans verify the configured path is still an
+  actual mount point rather than merely a readable backing directory. A dropped rclone/FUSE mount
+  now fails the scan closed and retains the last-good SQLite catalog instead of pruning it as an
+  empty library; the server unit weakly starts the mount while remaining alive for degraded browse.
+
+## [0.2.0-rc.4] - 2026-08-28
+
+### Added
+
+- Added filesystem-first filename search on Android and native desktop. Search opens from the
+  magnifying-glass control, updates automatically from three characters with a short debounce,
+  matches names case-insensitively, and keeps deterministic natural/stable ordering without
+  requiring embedded metadata.
+- Added persisted search match filters for directories, generic files, audio files, and playlist
+  files. Generic `files` remains the intentional superset, while audio/playlist filters can be
+  selected independently when generic files are disabled; duplicate stable identities are removed.
+- Added durable, separately configurable playback history with bounded retention. History is
+  disabled by default, stores stable source/node identities rather than stream capabilities, and
+  remains distinct from the queue/progress state required for crash/session restoration.
+
+### Fixed
+
+- Hardened Android and desktop playback recovery for stale or failed provider stream locations.
+  Retriable HTTP/network failures now re-resolve the playable location from stable media identity,
+  rebuild/reprepare the current item, and preserve the intended queue item and position instead of
+  repeatedly handing Media3/mpv the already-failed direct URL.
+- Explicit **Play** after a terminal playback error now enters the same bounded recovery path, so a
+  bad HTTP status does not permanently poison later Play/Pause attempts. Recovery recognizes the
+  reviewed transient/auth/stale-link status set, follows nested causes, and keeps permanent client
+  failures fail-closed rather than retrying indefinitely.
+- Closed the Android Media3 experimental-API lint boundary at the application container so release
+  lint remains green without a baseline or global lint suppression.
+
+### Changed
+
+- Queue state is persisted after successful queue/selection mutations and restored by stable
+  identity at startup. Expiring provider URLs are never used as durable queue identity.
+- Playback progress now checkpoints on a 30-second cadence and at lifecycle/transition boundaries
+  such as pause, item change, stop/close, completion, and forced shutdown paths, avoiding repeated
+  per-second paused writes while preserving bounded resume accuracy.
+- Android DataStore and desktop SQLite persistence were extended additively for the new player,
+  history, and search-preference state; malformed/stale positions are normalized conservatively and
+  existing persistence remains backward-compatible.
+- pCloud and local-folder library adapters now expose stable generic/playlist file nodes needed by
+  filename search instead of discarding every non-audio entry from the searchable library model.
+
+### Testing
+
+- Added deterministic loopback-HTTP recovery coverage proving failed/stale stream resolution is
+  reacquired and resumed without persisting the ephemeral URL, plus Android explicit-recovery tests.
+- Added search/filter, queue/progress/history persistence, repository codec/SQLite, and desktop
+  process-smoke coverage. The release gate exercises filename search plus queue, progress, history,
+  and filter restoration after SQLite reopen.
+- Revalidated the complete Android/JVM/desktop/docs/Linux release stack, including packaged crash
+  recovery, local-tag recovery, MPRIS controls, locked-keyring handling, accessibility capture,
+  release metadata, and zero-vulnerability documentation dependencies.
+
+### Known limitations
+
+- Search in this candidate is filename/name based. ID3 artist, title, year, and other embedded-tag
+  match types remain intentionally deferred until the filesystem-first path is established.
+- This candidate does not promote stable `0.2.0`: physical power-cut durability, physical media-key
+  and suspend/resume observations, GNOME/KDE session evidence, protected EU/US provider validation
+  and soak, and the existing Linux accessibility/promotion boundaries remain explicit blockers.
+
+## [0.2.0-rc.3] - 2026-08-27
+
+### Added
+
+- Added a native-desktop `--generate-playlists <local-root>` batch CLI that previews by
+  default, requires `--write` for materialization, exposes all five deterministic playlist
+  orders, and keeps recursive/per-album scope explicit through the same selected-root,
+  revision-bound workbench used by the desktop UI.
+- Added an explicit `title-number` playlist order. A leading decimal integer in the embedded
+  `TITLE` sorts numerically (`01`, `2`, `10` => `1`, `2`, `10`), with deterministic handling
+  for ties, non-numeric titles, missing titles, filenames, and stable paths.
+- Added typed, revision-bound tag and playlist review projections. Playlist checkpoints expose
+  every exact safe `./...` target path plus every final M3U8 line before any playlist bytes are
+  created.
+- Added a real-WAV integration test covering folder/filename tag inference, explicit approval,
+  dry-run preflight, verified jaudiotagger-backed local writes, fresh metadata readback,
+  relative extended-M3U generation, and resulting playback queue order.
+
+### Changed
+
+- Native-desktop tag review is now diff-first: the frozen review presents explicit **Earlier**
+  and **Later** values and distinguishes ordinary changes, additions from empty values, and
+  destructive removals to empty while retaining rule/confidence provenance, warnings, conflicts,
+  filename/path identity, and the existing hash/revision/rollback safety boundary.
+- A successful tag dry-run and the final replacement confirmation now explicitly reference the
+  same frozen Earlier/Later review revision; watcher/reconciliation drift invalidates that review
+  rather than refreshing values underneath the user.
+- Playlist CLI preview prints the exact prospective playlist contents rather than a count-only
+  summary; `--write` remains the separate materialization confirmation and stale membership,
+  content, or revision evidence fails closed before the first output byte.
+- Clarified that filesystem watcher events invalidate and reconcile reviewed work but do not
+  perform unattended playlist writes; bounded post-sync regeneration remains playlist-only and
+  can resume only from an explicitly submitted, still-current reviewed batch.
+- Updated metadata documentation with the exercised ID3v2.3/v2.4 compatibility boundary,
+  modeled writable fields, preservation of unrelated ID3 frames, current native local-root
+  support, and the preview-first CLI workflow.
+
+### Known limitations
+
+- This release candidate does not claim stable `0.2.0` promotion. Physical power-cut filesystem
+  durability, physical media-key behavior, a real suspend/resume cycle, GNOME and KDE Plasma
+  observations, protected Europe/United States pCloud account validation, and the retained
+  protected-provider soak remain unresolved stable-promotion gates.
+- Linux AT-SPI/screen-reader traversal remains blocked by the current Compose Multiplatform Linux
+  accessibility boundary; selected-folder keyboard/focus/large-text review and a supported Linux
+  accessibility bridge or explicit maintainer exception remain required for stable promotion.
+- The exact immutable `v0.2.0` Arch archive rebuild is still a post-tag stable-release gate and is
+  deliberately not represented as completed by this prerelease.
+
+## [0.2.0-rc.2] - 2026-08-23
+
+### Testing
+
+- Added a packaged native-desktop recovery smoke that externally sends `SIGKILL` only after
+  the recovery-armed atomic tag replacement completes, then starts a fresh packaged process,
+  supplies the selected scratch root again, rediscovers durable recovery authority, and verifies
+  exact-hash guarded rollback without retaining private paths, provider URLs, or credentials.
+- Revalidated the release candidate with the pinned Docker toolchain, desktop JVM/JUnit suite,
+  complete Linux CI smoke set, host specification checks, and fail-closed `0.2.0` readiness gates.
+
+### Changed
+
+- Promotion evidence now distinguishes verified packaged process restart/reselection recovery
+  from still-unverified physical power-loss durability.
+- Linux screen-reader/AT-SPI promotion status now records the current Compose Multiplatform Linux
+  accessibility boundary as an upstream blocker instead of presenting it as an ordinary manual
+  check that could be completed on the existing packaged UI.
+
+### Known limitations
+
+- Physical power-cut durability, physical media-key and suspend/resume observation, GNOME/KDE
+  session checks, protected EU/US provider accounts and retained provider soak, and the exact
+  post-tag `v0.2.0` Arch rebuild remain explicit promotion gates.
+- Real Linux AT-SPI/screen-reader traversal is blocked by the current Compose Multiplatform
+  Linux accessibility boundary; final promotion requires an explicit documented exception or a
+  supported Linux accessibility bridge/UI strategy rather than silently marking that gate passed.
+
+## [0.2.0-rc.1] - 2026-08-22
+
+### Added
+
+- Folder metadata-suite playlist generation now supports deterministic direct-folder and
+  explicit subtree `.m3u8` plans with relative paths, natural filename, disc/track tag,
+  tagged-title, or modification-time ordering, trusted-duration `EXTINF`, safe tag-derived
+  display naming, stale-evidence preflight, and bounded playlist-only post-sync regeneration.
+- A shared local-root metadata-suite session adds revision-bound preview/confirmation for tag
+  and playlist work, keeps recursive playlist consent independent from recursive tag mutation,
+  revokes stale reviews/queued regeneration on reconciliation signals, and requires a fresh
+  post-write scan before deriving playlists after confirmed tag changes.
+- A neutral local-filesystem workbench host now proves explicit writable-root and atomic-move
+  capability, registers a real JVM `WatchService` lease before scanning, invalidates reviews on
+  relevant events before debounce, reconciles overflow/invalid observers through full rescans,
+  and never turns watcher or post-sync activity into tag writes.
+- Native Compose Desktop can now bind an explicitly user-selected local directory to that host as
+  a separate filesystem-first `AudioSource`, with opaque stable source/node IDs, direct browsing
+  and playback, live/stale reconciliation state, preview/dry-run/confirmation tag controls, and
+  independently gated direct or recursive playlist materialization. The selected private root is
+  session-scoped rather than persisted, and source switching closes the observer and local queue
+  authority.
+- A cheap host-side `make local-check` workflow is now the default routine developer gate,
+  with optional portable-JVM `make fast-test` when the pinned image is already available,
+  while GitHub Actions retains Robolectric, Android lint, APK assembly, docs, and the complete
+  `make ci` merge verification.
+
 ### Planned
 
-- Implement the specified folder-scoped Tag workbench with live change reconciliation,
-  previewed correction rules, and guarded atomic local replacement before enabling any
-  source mutation.
+- Complete the remaining folder-scoped Tag workbench release boundary with a truthful Flatpak
+  document-portal directory lease/path mapping (without broad host/home access), Android SAF as a
+  separate platform adapter, and the remaining conflict/power-loss/rollback plus
+  accessibility/platform evidence before claiming the full workbench release-ready.
 - `0.2.0` promotion only after the protected EU/US provider, alternate desktop,
   physical media-key/suspend, and real screen-reader gates are complete.
 - Verified offline pinning, saved roots, long-form controls, and Android Auto after
   cross-platform queue/progress semantics stabilize.
+
+### Known limitations
+
+- This is a release candidate for hands-on testing, not the final `0.2.0` promotion.
+- Physical power-cut durability, real packaged restart/reselection recovery, selected-folder
+  screen-reader/focus review, physical media keys and suspend/resume, GNOME/KDE observations,
+  and protected EU/US provider soak/account evidence remain explicit final-release blockers.
 
 ## [0.1.10] - 2026-08-05
 
@@ -576,7 +872,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.1.10...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.5...HEAD
+[0.2.0-rc.5]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.4...v0.2.0-rc.5
+[0.2.0-rc.4]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.2...v0.2.0-rc.4
+[0.2.0-rc.3]: https://github.com/fkr-0/properpcloud/commit/638ac07e69ccfa59a16e0f6df5e1862a0eb6beb2
+[0.2.0-rc.2]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.1...v0.2.0-rc.2
+[0.2.0-rc.1]: https://github.com/fkr-0/properpcloud/compare/v0.1.10...v0.2.0-rc.1
 [0.1.10]: https://github.com/fkr-0/properpcloud/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/fkr-0/properpcloud/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/fkr-0/properpcloud/compare/v0.1.7...v0.1.8

@@ -1,0 +1,139 @@
+phase8_local_workbench_power_loss_recovery:
+  recorded_on: 2026-08-21
+  evidence_updated_on: 2026-08-22
+  scope: native_desktop_selected_root_power_loss_recovery_only
+  status: implementation_complete_source_contracts_and_runtime_regressions_passed_physical_durability_pending
+  objective: >-
+    Close TEST-TAG-FOLDER-POWER-LOSS-RECOVERY without persisting a complete private root/media path,
+    weakening selected-root authorization, or introducing any force-overwrite path.
+  design:
+    shared_apply_hook:
+      status: implemented
+      behavior:
+        - LocalTagRecoveryAuthority is an opt-in shared apply hook; provider/prepared-copy callers default to NoopLocalTagRecoveryAuthority
+        - the existing FolderTagApplyService toolkit-only and replacement-function constructor forms remain available
+        - native recovery authority is durably armed after exact rollback creation and before the final source hash guard/destructive replacement
+        - recovery-arm failure aborts before media replacement
+        - proven verified apply, proven automatic rollback, and proven explicit rollback disarm the cross-process authority
+    native_record:
+      status: implemented
+      placement: private hidden sibling in the exact target directory
+      serialized_fields:
+        - base64url-encoded target basename
+        - base64url-encoded rollback basename
+        - reviewed original SHA-256
+        - expected replacement SHA-256
+      deliberately_absent:
+        - selected-root path
+        - target parent path
+        - complete media path
+        - root-relative media path
+        - provider URL, token, credential, raw tag payload, or audio bytes
+      durability:
+        - private temporary record write
+        - file force before publication
+        - atomic sibling move to deterministic recovery-record identity
+        - parent-directory force where the platform supports it
+    restart_discovery:
+      status: implemented
+      authorization: only after the user explicitly reselects a native local root and DesktopLocalFilesystemIdentity is rebuilt for that root
+      traversal:
+        - selected tree only
+        - no followed symlink directories
+        - bounded to 1024 recovery records; an overflow becomes a mutation-blocking issue
+      reconciliation:
+        current_equals_original:
+          result: safe_cleanup
+          behavior: record is retired; rollback sibling is deleted only when independently hashed as the exact original
+        current_equals_expected_result_and_rollback_equals_original:
+          result: guarded_recovery_authority
+          behavior: reconstruct an INDETERMINATE FileApplyResult using the newly selected root's opaque source/node identity and exact hashes
+        malformed_missing_symlink_or_external_mismatch:
+          result: blocked_no_overwrite_authority
+          behavior: preserve evidence and keep metadata mutation disabled; never infer or force a target replacement
+    native_binding_and_ui:
+      status: implemented
+      behavior:
+        - binding discovers recovery before host open and refreshes discovery after reconciliation, tag execution, and rollback
+        - confirmed tag and playlist writes fail closed while durable recovery remains unresolved
+        - rollback still passes through the existing session/host/apply-service exact-current-hash guard
+        - controller re-associates durable results with the current selected-root session and presents only filename/redacted status, never rollback or selected-root paths
+        - selected root remains unpersisted; restart falls back to normal source selection and requires explicit directory selection
+        - normal reread-verified apply keeps existing same-session rollback bytes but removes the cross-process recovery record
+  authored_kotlin_regressions:
+    status: passed_current_host
+    command: make desktop-test
+    result: passed_37_of_37_in_pinned_properpcloud_android_build_2026_08
+    cases:
+      - durable recovery authority is armed before replacement and disarmed after verified apply
+      - recovery-arm failure stops before media replacement
+      - terminate immediately after replacement then instantiate a fresh authority/identity after explicit reselection and perform guarded rollback
+      - record armed before replacement is cleaned only when current target is still the exact original
+      - external edit after interrupted replacement remains blocked and preserves recovery evidence
+      - malformed recovery record remains blocking and is not silently deleted
+      - normal verified apply disarms cross-process recovery while retaining same-session rollback bytes
+      - a restarted DesktopLocalFolderBinding discovers recovery, blocks playlist mutation, and permits exact-hash rollback
+  current_host_source_evidence:
+    phase8_contracts:
+      command: python3 -m unittest -v tests.test_phase8_local_workbench_power_loss_recovery
+      result: passed_10_of_10
+    phase7_regression_contracts:
+      command: python3 -m unittest -v tests.test_phase7_local_workbench_release_boundary
+      result: passed_10_of_10
+    spec_validation:
+      command: python3 scripts/validate-specs.py
+      result: passed_12_documents_20_requirements_20_use_cases
+    local_check:
+      command: make local-check
+      result: passed_101_of_101
+    release_readiness:
+      command: make release-020-readiness
+      result: passed_readiness_summary_with_16_passed_status_groups_and_10_truthful_pending_or_blocked_groups
+    diff_check:
+      command: git diff --check
+      result: passed
+  unexercised_runtime_and_platform_cells:
+    kotlin_junit_execution:
+      status: passed_current_host
+      evidence: make desktop-test passed 37 of 37 tests in properpcloud/android-build:2026.08
+    real_process_kill_restart_reselection:
+      status: pending_runtime
+      note: authored Kotlin regression uses an Error immediately after target replacement to skip normal disarm and reconstructs fresh identity/authority objects for the restart boundary, but a packaged executable has not yet been launched, terminated, and restarted for this proof
+    physical_power_cut_filesystem_durability:
+      status: not_exercised_hardware
+    packaged_native_smoke:
+      status: passed_current_host
+      evidence: make linux-ci packaged desktop smoke passed
+    packaged_local_workbench_accessibility:
+      status: pending_manual
+      evidence: build/evidence/0.2.0-accessibility.json
+      note: packaged 200 percent high-contrast capture passed; selected-folder AT-SPI, keyboard/focus, and large-text traversal remain unrecorded
+    at_spi_screen_reader:
+      status: not_exercised
+    alternate_desktops:
+      status: not_exercised_phase8
+      targets:
+        - GNOME Shell
+        - KDE Plasma
+  local_availability:
+    android_studio_jbr21: present_openjdk_21_0_3
+    pinned_android_build_image: present_properpcloud_android_build_2026_08
+    pinned_image_gradle: 9.6.1
+    pinned_image_kotlin: 2.3.21
+    host_kotlinc: absent
+    kotlinx_coroutines_core_1_11_0_offline_cache: not_required_for_pinned_image_verification
+    packaged_desktop_executable: present_generated_and_smoke_tested
+    appimage: absent
+    flatpak_bundle: absent
+  flatpak_boundary:
+    status: unchanged_fail_closed
+    behavior:
+      - local directory selection remains unavailable under FLATPAK_ID or /.flatpak-info
+      - no --filesystem=host permission exists
+      - no --filesystem=home permission exists
+      - no document-portal implementation is claimed
+  privacy:
+    complete_private_media_paths_recorded: false
+    selected_root_path_persisted: false
+    rollback_sibling_paths_recorded_in_evidence: false
+    credentials_or_provider_tokens_recorded: false

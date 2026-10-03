@@ -4,7 +4,7 @@ architecture:
     presentation: unidirectional data flow
     integrations: capability-oriented ports and adapters
     persistence: local-first cache with provider-authoritative remote file state
-    backend: no mandatory custom server
+    backend: optional self-hosted local-library server; direct provider clients remain supported
   dependency_rule:
     allowed:
       - presentation -> application
@@ -33,6 +33,7 @@ architecture:
         media:
           - AudioFolder
           - AudioTrack
+          - generic and playlist LibraryFile nodes
           - raw and normalized metadata values
           - provenance and confidence
         policies:
@@ -41,6 +42,8 @@ architecture:
           - progress and completion
           - saved-root matching
           - cache retention
+          - filename search matching and match-type algebra
+          - playback HTTP recovery classification and bounded history retention
         snapshots:
           - queue snapshot
           - folder snapshot description
@@ -82,6 +85,7 @@ architecture:
         persistence:
           - QueueRepository
           - ProgressRepository
+          - PlaybackHistoryRepository
           - FolderSnapshotRepository
           - SavedRootRepository
           - BookmarkRepository
@@ -97,8 +101,10 @@ architecture:
           - DiagnosticSink
       transactions:
         - Queue replacement is atomic.
+        - Every successful queue mutation/current selection commits durable stable identity before it is considered restored state.
         - Folder refresh applies one consistent generation.
         - Progress and completion update together.
+        - Optional playback history is updated transactionally with a progress checkpoint and remains retention-bounded.
         - Pin intent and cache accounting remain consistent after process death.
         - Mutation audit ends as verified, failed, conflicted, or indeterminate; never silently incomplete.
       concurrency:
@@ -111,7 +117,15 @@ architecture:
         - Cancellation never commits an incomplete replacement queue.
     source_integration:
       purpose: Translate SDK and protocol behavior into source capabilities.
-      modules: [source-pcloud, source-webdav, future-source-local, future-source-saf]
+      modules: [source-pcloud, source-server, source-webdav, future-source-local, future-source-saf]
+      server_catalog:
+        responsibilities:
+          - browse a server-generated folder-first catalog through stable node identity
+          - resolve short-lived server stream tickets without persisting capability URLs
+          - preserve direct pCloud clients as an independent supported source mode
+        boundaries:
+          - remote cleartext HTTP is rejected
+          - API credentials never become media identity or presentation metadata
       pcloud:
         libraries:
           shared_source_adapter: com.pcloud.sdk:java-core
@@ -152,10 +166,14 @@ architecture:
             - copy source bytes to unique app-private staging
             - apply approved Set and Clear operations only
             - reread and verify staged tag changes
+            - prove explicit writable local-root capability without converting provider caches into source identity
+            - host neutral JVM WatchService reconciliation with observer-before-scan registration and revision-bound review invalidation
           boundaries:
             - No jaudiotagger type crosses into core-model or presentation.
             - The original source file is never edited in place.
             - Unsupported or malformed files fail without a mutation candidate.
+            - LocalFolderRootCapability must be supplied by a real local-source/client boundary; the native desktop selected-directory source now satisfies this boundary, while pCloud/demo/prepared copies do not.
+            - Watcher callbacks invalidate and schedule reconciliation only; they never stage or apply tags.
         metadata_online:
           path: metadata-online
           responsibilities:
@@ -240,6 +258,9 @@ architecture:
           - Long-lived player belongs to service, not Activity or composable.
           - Media ID contains stable source and node identity.
           - Ephemeral URI is resolved before prepare and replaced on eligible expiry.
+          - Eligible terminal HTTP/network recovery rebuilds URI-less MediaItems from stable identity before prepare; explicit Play never retries a stale capability in place.
+          - Permanent HTTP/media failures remain terminal and visible.
+          - Startup resolves saved progress before installing the restored queue, preventing a transient zero-position checkpoint and preserving paused/no-autoplay restoration.
           - UI process can reconnect after recreation without rebuilding authoritative queue.
       linux:
         primary: mpv JSON IPC adapter
@@ -249,6 +270,9 @@ architecture:
           - media keys
           - desktop notifications
           - optional sleep inhibition
+        invariants:
+          - Provider stream refresh re-resolves by stable source/node identity and resumes from the intended position under a bounded per-item retry gate.
+          - Queue/current selection, progress, search filters, and optional bounded history use SQLite user state; provider capability URLs remain process memory only.
     presentation:
       purpose: Accessible interaction and explicit rendering of application state.
       android:
@@ -310,7 +334,7 @@ architecture:
       core-metadata:
         depends_on: [core-domain]
       metadata-tags:
-        depends_on: [core-model, jaudiotagger]
+        depends_on: [core-model, coroutines, jaudiotagger]
       metadata-online:
         depends_on: [core-model, coroutines, JDK-HTTP-and-XML]
       source-pcloud-jvm:
@@ -339,6 +363,7 @@ architecture:
           - feature-inspector
           - feature-settings
           - source-pcloud-jvm
+          - source-server
           - persistence-android
           - playback-android
           - metadata-tags
@@ -387,16 +412,24 @@ architecture:
       - QueueRepository atomically commits snapshot
       - Playback observes committed queue and resolves first item
       - UI observes queue and session projections
+    filename_search:
+      - UI expands the filename-search affordance and updates a debounced query.
+      - Application searches only the already-loaded MediaNode projection for the current scope.
+      - Domain applies the three-character threshold, case-insensitive filename predicate, match-type algebra, stable-ID duplicate suppression, and deterministic natural ordering.
+      - Match-type preferences persist independently from query text; embedded-tag matchers remain deferred.
     stream_refresh:
-      - Player reports eligible HTTP failure with stable media ID
+      - Player reports eligible HTTP or network failure with stable media ID
       - Application invalidates only ephemeral StreamHandle
       - Source resolves new handle
       - Playback resumes from last confirmed position
       - Retry budget is decremented and surfaced in diagnostics
+      - Explicit Play after an eligible terminal failure reconstructs the player item from stable identity; permanent failures remain surfaced without refresh
     progress_checkpoint:
       - Playback emits stable media ID and position sample
+      - Application coalesces active samples to approximately 30-second checkpoints and forces writes on pause, item/queue transitions, failure, background/task removal, and shutdown boundaries
       - Application applies completion and smart-rewind policies
       - ProgressRepository upserts in one transaction
+      - Enabled playback history upserts the same stable identity then trims to configured bounded retention
       - Browser and player projections update
     metadata_write:
       - UI submits approved RepairPlan ID
@@ -419,14 +452,19 @@ architecture:
       - Staged tags are reread and compared with the approved patch.
       - Original bytes remain unchanged; staged hash becomes apply evidence.
     folder_tag_workbench:
-      - UI opens one stable direct-folder identity.
-      - Application establishes an observer lease and generation barrier.
+      - The native desktop local-directory source explicitly supplies LocalFolderRootCapability only after a user selects and validates one writable root; pCloud/demo/prepared-copy surfaces do not satisfy this step.
+      - Desktop local source/node identity is filesystem-first and opaque: one selected-root source ID plus root-relative node IDs, independent of tags and provider metadata.
+      - The selected root is session-scoped in the current desktop client; source switch/application close closes the observer and clears queue authority, and no complete private path is restored from persistence.
+      - Explicit tag dry-run/apply and playlist-batch operations project only completed/total progress; private paths remain outside presentation and evidence.
+      - The Flatpak package remains fail-closed for local-root selection until a real document-portal directory lease exists; broad host/home filesystem access is not added as a substitute.
+      - LocalFolderWorkbenchHost registers the WatchService observer lease before starting its first scan.
       - Source enumeration and bounded tag parsing produce an immutable FolderTagSnapshot.
-      - Events received during scanning are drained, coalesced, and reconciled before live state.
+      - Events received during scanning revoke current reviews, are bounded/coalesced, and force authoritative reconciliation before live state.
       - Pure correction rules produce explainable field-level proposals without mutation.
-      - User freezes exact approved fields against content SHA-256 and confirms replacement.
+      - User freezes exact approved fields against content SHA-256 and separately confirms replacement.
       - Local adapter stages beside the source, verifies tags and decodability, revalidates the original, and atomically replaces.
-      - Final readback and watcher reconciliation prove the result; rollback restores exact original bytes on verification failure.
+      - Mutation and rescan are serialized; expected self-events are never suppressed and a fresh watcher-stable readback proves the resulting view.
+      - Rollback restores exact original bytes on verification failure; watcher/post-sync automation has no tag-apply command path.
   error_taxonomy:
     authentication:
       examples: [missing_token, rejected_token, wrong_region, callback_mismatch]
@@ -466,3 +504,4 @@ architecture:
     ADR-004: Shared Kotlin/JVM core for Android and Linux first.
     ADR-005: Platform playback behind an application port.
     ADR-006: Stable IDs persisted; ephemeral direct URLs never persisted as identity.
+    ADR-007: A self-hosted pCloud catalog server is optional and may centralize provider scanning, mounted-byte access, and rebuildable search metadata without removing direct-client operation.

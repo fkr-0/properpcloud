@@ -17,10 +17,11 @@ done
 [[ -x /usr/bin/import ]] || { echo "/usr/bin/import from ImageMagick is required" >&2; exit 1; }
 [[ -x /usr/bin/identify ]] || { echo "/usr/bin/identify from ImageMagick is required" >&2; exit 1; }
 [[ -x "$APP" ]] || { echo "packaged properpcloud executable is missing" >&2; exit 1; }
-mkdir -p "$OUT_DIR"
+ACCESSIBILITY_TMP="$OUT_DIR/.accessibility-tmp"
+mkdir -p "$OUT_DIR" "$ACCESSIBILITY_TMP"
 rm -f "$BASE" "$HELP" "$EVIDENCE"
 
-export APP BASE HELP
+export APP BASE HELP ACCESSIBILITY_TMP
 dbus-run-session -- xvfb-run -a -s '-screen 0 1600x1000x24 -nolisten tcp' bash -euo pipefail <<'INNER'
 export GIO_USE_VFS=local
 export GTK_THEME=HighContrast
@@ -32,7 +33,7 @@ export SKIKO_RENDER_API=SOFTWARE
 capture_window() {
   local show_help=$1
   local output=$2
-  local log=/tmp/properpcloud-accessibility-${show_help}.log
+  local log="$ACCESSIBILITY_TMP/properpcloud-accessibility-${show_help}.log"
   PROPERPCLOUD_SHOW_KEYBOARD_HELP="$show_help" "$APP" >"$log" 2>&1 &
   local app_pid=$!
   local window=
@@ -62,6 +63,7 @@ capture_window() {
   /usr/bin/import -window "$window" "$output"
   kill "$app_pid" 2>/dev/null || true
   wait "$app_pid" 2>/dev/null || true
+  rm -f "$log"
 }
 
 capture_window 0 "$BASE"

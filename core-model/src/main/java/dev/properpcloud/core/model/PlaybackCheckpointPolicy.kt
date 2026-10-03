@@ -19,6 +19,8 @@ data class PlaybackObservation(
 data class PlaybackCheckpointCursor(
     val mediaId: String? = null,
     val positionMillis: Long = -1,
+    val observedAtEpochMillis: Long = -1,
+    val wasPlaying: Boolean? = null,
 )
 
 data class PlaybackCheckpointDecision(
@@ -27,11 +29,13 @@ data class PlaybackCheckpointDecision(
 )
 
 class PlaybackCheckpointPolicy(
-    private val minimumPositionDeltaMillis: Long = 10_000,
+    private val minimumPositionDeltaMillis: Long = 30_000,
+    private val minimumCheckpointIntervalMillis: Long = 30_000,
     private val completionRatio: Double = 0.95,
 ) {
     init {
         require(minimumPositionDeltaMillis > 0)
+        require(minimumCheckpointIntervalMillis > 0)
         require(completionRatio in 0.5..1.0)
     }
 
@@ -53,8 +57,12 @@ class PlaybackCheckpointPolicy(
         val shouldPersist = force ||
             cursor.mediaId != mediaId ||
             abs(observation.positionMillis - cursor.positionMillis) >= minimumPositionDeltaMillis ||
-            !observation.isPlaying
-        if (!shouldPersist) return PlaybackCheckpointDecision(null, cursor)
+            cursor.observedAtEpochMillis < 0 ||
+            observedAtEpochMillis - cursor.observedAtEpochMillis >= minimumCheckpointIntervalMillis ||
+            (!observation.isPlaying && cursor.wasPlaying != false)
+        if (!shouldPersist) {
+            return PlaybackCheckpointDecision(null, cursor.copy(wasPlaying = observation.isPlaying))
+        }
 
         val duration = observation.durationMillis
             ?.takeIf { it > 0 }
@@ -72,7 +80,7 @@ class PlaybackCheckpointPolicy(
         )
         return PlaybackCheckpointDecision(
             progress = progress,
-            cursor = PlaybackCheckpointCursor(mediaId, observation.positionMillis),
+            cursor = PlaybackCheckpointCursor(mediaId, observation.positionMillis, observedAtEpochMillis, observation.isPlaying),
         )
     }
 }

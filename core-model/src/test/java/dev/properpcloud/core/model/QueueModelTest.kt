@@ -50,6 +50,37 @@ class QueueModelTest {
     }
 
     @Test
+    fun assemblerRecursesByDefault() = runTest {
+        val source = FakeAudioSource(
+            mapOf(
+                folder.id to listOf(nested),
+                nested.id to listOf(track("nested.mp3", nested.id)),
+            ),
+        )
+
+        val result = FolderQueueAssembler(source).build(folder.id)
+
+        assertEquals(listOf("nested.mp3"), result.entries.map { it.track.name })
+        assertEquals(2, result.visitedFolders)
+    }
+
+    @Test
+    fun recursiveAssemblerFindsPlayableDescendantsWhenTopLevelHasNoTracks() = runTest {
+        val source = FakeAudioSource(
+            mapOf(
+                folder.id to listOf(nested),
+                nested.id to listOf(track("1.mp3", nested.id)),
+            ),
+        )
+
+        val result = FolderQueueAssembler(source).build(folder.id, recursive = true)
+
+        assertEquals(listOf("1.mp3"), result.entries.map { it.track.name })
+        assertEquals(2, result.visitedFolders)
+        assertFalse(result.isPartial)
+    }
+
+    @Test
     fun assemblerReportsPartialFailureWithoutDiscardingSuccessfulTracks() = runTest {
         val source = FakeAudioSource(mapOf(folder.id to listOf(track("1.mp3", folder.id), nested)), failOn = nested.id)
         val result = FolderQueueAssembler(source).build(folder.id, recursive = true)
@@ -73,6 +104,37 @@ class QueueModelTest {
         assertEquals(selected, result.queue.current)
         assertEquals(1, result.omittedCount)
         assertTrue(result.requiresRewrite)
+    }
+
+    @Test
+    fun playerTimelineCompactionRemovesOnlyProvenUnavailableEntriesAndReindexesSelection() {
+        val bad = entry("bad.mp3")
+        val good = entry("good.mp3")
+        val later = entry("later.mp3")
+        val queue = PlaybackQueue(entries = listOf(bad, good, later), currentIndex = 0)
+        val goodId = MediaIdentity.encode(good.track.sourceId, good.track.id)
+        val laterId = MediaIdentity.encode(later.track.sourceId, later.track.id)
+
+        val reconciled = QueueTimelineReconciliation.reconcile(
+            queue = queue,
+            timelineMediaIds = listOf(goodId, laterId),
+            currentMediaId = goodId,
+        )
+
+        assertEquals(listOf("good.mp3", "later.mp3"), reconciled.entries.map { it.track.name })
+        assertEquals(0, reconciled.currentIndex)
+        assertEquals(good, reconciled.current)
+    }
+
+    @Test
+    fun emptyOrUnrelatedPlayerTimelineCannotDestructivelyRewriteDurableQueue() {
+        val queue = PlaybackQueue(entries = listOf(entry("one.mp3"), entry("two.mp3")), currentIndex = 1)
+
+        assertSame(queue, QueueTimelineReconciliation.reconcile(queue, emptyList(), currentMediaId = null))
+        assertSame(
+            queue,
+            QueueTimelineReconciliation.reconcile(queue, listOf("other\u001ftrack:unknown"), currentMediaId = null),
+        )
     }
 
     @Test

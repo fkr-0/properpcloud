@@ -1,0 +1,45 @@
+version: 0.2.0-rc.5
+tag: v0.2.0-rc.5
+status: release_candidate_for_hands_on_testing
+base_release: v0.2.0-rc.4
+final_target: v0.2.0
+date: 2026-09-08
+objective: >-
+  publish the optional server-catalog, persistent tabbed playback, and hardened external-media
+  library ingestion tranche as an immutable prerelease without claiming the remaining stable
+  0.2.0 protected-provider, physical-device, accessibility, or post-tag promotion gates
+included_work:
+  - optional self-hosted pCloud library server with pooled REST access, owner-only reloadable sessions, recursive metadata caching, signed-link generation, and stable pCloud identity
+  - incremental mounted-library catalog scanning with SHA-256/tag enrichment, duplicate indexing, last-good degraded operation, and mount-loss fail-closed behavior
+  - server browse, search, status, scan, node, duplicate, and short-lived playback-ticket APIs plus Android and desktop source-neutral integration
+  - persistent Android and Linux audio tabs with independent browser root, queue/current item, resume position, speed, volume, shuffle, repeat, search/sort, playlists, sleep timers, and desktop shortcuts
+  - bounded tab/session persistence and stale-stream recovery that retain only stable source, node, folder, queue, and progress identity while resolving fresh capabilities just in time
+  - catalog-driven /tmp/dib media-library import, local SQLite state, streamed manifests, optional enrichment, FTS search, verification, space reports, and report-only cleanup diagnostics
+  - media-library hardening for lost canonical mounts, fuse.rclone state rejection, per-root writer serialization, SHA-256 evidence validation, malformed or missing rows, bounded cleanup, and path/symlink containment
+  - resumable external-disk music ingestion with ancestry exclusions, metadata normalization/provenance, exact duplicate handling, bitrate quality tiers, replacement auditing, and portable reports
+  - non-loopback server authentication and HTTPS policy plus Android Keystore protection for optional server bearer credentials
+verification_required_before_tag:
+  - make doctor
+  - make test
+  - make lint
+  - make build
+  - make ci
+  - make release-check
+  - make release-artifacts
+final_0_2_0_blockers_not_claimed_by_this_candidate:
+  - physical power-cut filesystem durability evidence
+  - supported Linux screen-reader/accessibility bridge or explicit maintainer exception where still required
+  - physical media-key behavior
+  - physical suspend/resume cycle
+  - GNOME and KDE Plasma session observations
+  - protected Europe and United States pCloud account validation
+  - retained protected-provider soak with real capability expiry and suspend/resume
+  - exact immutable v0.2.0 Arch archive rebuild after final stable tag creation
+stable_promotion_policy: >-
+  the canonical 0.2.0 promotion evidence remains authoritative; pending, blocked, manual,
+  protected, external-session, and post-tag stable-release states are not converted to success
+  for this release candidate
+publication_scope: >-
+  operator-authorized tagged prerelease: push main and the v0.2.0-rc.5 tag, allowing the
+  repository release workflow to publish its normal GitHub Release and release artifacts
+warning: this prerelease is for hands-on testing; final v0.2.0 promotion remains fail-closed

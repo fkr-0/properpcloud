@@ -1,8 +1,8 @@
 # Troubleshooting
 
-## Start with the demo library
+## Separate Android provider failures from local failures
 
-If the demo source cannot browse, queue, and play, the problem is local. If demo playback works but pCloud does not, focus on account region, network, and provider permissions.
+Android no longer ships a production demo library. If the app is disconnected, first confirm that Settings shows **No library is currently selected**, then connect pCloud or the optional server catalog. For credential-free playback diagnostics, use the generated-WAV Android test suite or the Linux desktop verification source rather than a user-visible Android demo mode.
 
 ## Linux: mpv does not start
 

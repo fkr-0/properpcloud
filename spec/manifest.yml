@@ -23,6 +23,8 @@ specification:
       owns: metadata provenance, batch planning, online matching, staged edits, guarded remote mutation
     - file: tag-folder-workbench.yml
       owns: folder-scoped tag review, correction proposals, live change reconciliation, and guarded local apply
+    - file: media-library.yml
+      owns: catalog-driven external-media import, pCloud library layout, provenance, deduplication, and maintenance
     - file: testing.yml
       owns: test strategy, fixtures, matrices, fault injection, release gates
     - file: definition-of-done.yml

@@ -20,13 +20,17 @@ class DesktopShortcutsTest {
             DesktopShortcut.PlayPause,
             resolveDesktopShortcut(Key.Spacebar, DesktopFocusTarget.LIBRARY),
         )
+        assertEquals(DesktopShortcut.Seek(-30_000), resolveDesktopShortcut(Key.DirectionLeft, DesktopFocusTarget.LIBRARY))
+        assertEquals(DesktopShortcut.Seek(30_000), resolveDesktopShortcut(Key.DirectionRight, DesktopFocusTarget.QUEUE))
+        assertEquals(DesktopShortcut.AdjustVolume(0.05f), resolveDesktopShortcut(Key.DirectionUp, DesktopFocusTarget.LIBRARY))
+        assertEquals(DesktopShortcut.AdjustVolume(-0.05f), resolveDesktopShortcut(Key.DirectionDown, DesktopFocusTarget.QUEUE))
     }
 
     @Test
     fun `queue has complete non drag keyboard operations`() {
         assertEquals(
             DesktopShortcut.SelectQueue(1),
-            resolveDesktopShortcut(Key.DirectionDown, DesktopFocusTarget.QUEUE),
+            resolveDesktopShortcut(Key.DirectionDown, DesktopFocusTarget.QUEUE, ctrl = true),
         )
         assertEquals(
             DesktopShortcut.MoveQueueSelection(-1),

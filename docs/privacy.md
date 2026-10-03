@@ -8,7 +8,8 @@ advertising SDK, analytics SDK, telemetry upload, or account database.
 - provider source and node identifiers;
 - folder and filename metadata returned by the selected source;
 - queue order and containing-folder references;
-- playback position, duration, completion, and selected sort/source settings;
+- playback position, duration, completion, selected sort/source settings, and filename-search match-type preferences;
+- optional bounded playback-history rows when the user enables history;
 - a bundled or user-overridden public pCloud application client ID;
 - an OAuth access token after successful pCloud authorization, or an interim
   direct-login `auth` token after successful documented account authentication;
@@ -21,7 +22,7 @@ transfer.
 
 ## Network communication
 
-When the demo source is selected, no network is required.
+Android performs no provider network request while no library is connected. The Linux desktop generated-WAV verification source also requires no network.
 
 When pCloud is selected, the app communicates with pCloud's documented regional
 API host and temporary content hosts returned by pCloud. The app accepts only
@@ -41,10 +42,23 @@ Temporary signed media links are capabilities. They are resolved immediately
 before playback, kept only in Media3 runtime state, and not written to DataStore,
 logs, queue snapshots, release evidence, or bug-report templates.
 
+On an eligible HTTP or network playback failure, retry operates from the stable
+source/node identity. The failed capability URL is discarded, a provider adapter
+resolves a fresh capability, and the player is rebuilt/reprepared at the intended
+queue item and position. This recovery does not promote the old or new URL into
+identity or persistence. Permanent HTTP/media failures remain visible rather than
+causing an unbounded capability-refresh loop.
+
 Queue and progress persistence uses stable source/node identity, containing-folder
 identity, position, duration, playback speed, observation time, and completion.
 The frozen cross-platform fixture corpus contains the same non-secret fields and
 deliberately excludes stream URLs, tokens, provider responses, and local paths.
+
+Playback history is disabled by default. If enabled, it stores only stable
+source/node identity, position, optional duration, observation time, and completion.
+It uses bounded retention (100 items by default, never more than 500). Search
+preferences store only which filename match categories are enabled; search query
+text is not persisted by this feature.
 
 Online metadata matching is opt-in. A MusicBrainz search may transmit the title,
 artist, album, ISRC, and approximate duration that the user approved. A future
@@ -77,10 +91,8 @@ properpcloud does not persist or centrally collect:
 
 ## User controls
 
-- **Use demo** switches to an entirely local source.
-- **Disconnect** removes the encrypted pCloud session from this device.
-- Clearing app storage removes preferences, queue/progress records, generated
-  demo media, metadata source copies and exports, and local credential material.
+- **Disconnect** removes the encrypted pCloud session from this device; Android falls back to another connected library or the explicit disconnected state.
+- Clearing Android app storage removes preferences, queue/progress records, optional playback history, metadata source copies and exports, and local credential material. Generated WAV fixtures are test-only and are not part of the production Android library.
 
 ## External services
 

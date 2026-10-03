@@ -29,11 +29,15 @@ data class MpvState(
     val paused: Boolean = true,
     val positionMillis: Long = 0,
     val durationMillis: Long? = null,
+    val speed: Float = 1f,
+    val volume: Float = 1f,
     val idle: Boolean = true,
+    val eofReached: Boolean = false,
     val error: String? = null,
     val unexpectedExit: Boolean = false,
     val restartAvailable: Boolean = false,
     val streamFailure: Boolean = false,
+    val resumeAfterRestart: Boolean = false,
 )
 
 class MpvController(
@@ -60,10 +64,10 @@ class MpvController(
         closing.set(false)
         val generation = processGeneration.incrementAndGet()
         polling?.cancel()
-        current?.destroyForcibly()
+        terminate(current)
         Files.createDirectories(runtimeDirectory)
         runCatching { Files.deleteIfExists(socketPath) }
-        process = ProcessBuilder(buildList {
+        val started = ProcessBuilder(buildList {
             add(executable)
             add("--no-config")
             add("--idle=yes")
@@ -77,6 +81,10 @@ class MpvController(
             .redirectOutput(ProcessBuilder.Redirect.DISCARD)
             .redirectError(ProcessBuilder.Redirect.DISCARD)
             .start()
+        // mpv is controlled exclusively through JSON IPC. Closing the inherited stdin pipe here
+        // avoids retaining one parent-side file descriptor for every process generation.
+        runCatching { started.outputStream.close() }
+        process = started
         for (attempt in 0 until 100) {
             if (Files.exists(socketPath)) break
             if (process?.isAlive != true) error("mpv exited before its IPC socket became ready")
@@ -88,7 +96,12 @@ class MpvController(
         polling = scope.launch(Dispatchers.IO) { pollState(monitoredProcess, generation) }
     }
 
-    suspend fun load(handle: StreamHandle, resumeMillis: Long = 0) {
+    suspend fun reloadAudioOutput() {
+        ensureStarted()
+        command(listOf("ao-reload"))
+    }
+
+    suspend fun load(handle: StreamHandle, resumeMillis: Long = 0, play: Boolean = true) {
         ensureStarted()
         require(handle.url.startsWith("https://") || handle.url.startsWith("file:")) { "unsupported playback URL scheme" }
         expectedIdle.set(true)
@@ -97,14 +110,17 @@ class MpvController(
             delay(80)
             command(listOf("seek", resumeMillis / 1_000.0, "absolute+exact"))
         }
-        command(listOf("set_property", "pause", false))
+        command(listOf("set_property", "pause", !play))
         expectedIdle.set(false)
         mutableState.value = mutableState.value.copy(
             idle = false,
+            paused = !play,
+            eofReached = false,
             error = null,
             unexpectedExit = false,
             restartAvailable = false,
             streamFailure = false,
+            resumeAfterRestart = false,
         )
     }
 
@@ -129,9 +145,17 @@ class MpvController(
     }
 
     suspend fun setSpeed(speed: Float) {
-        require(speed in 0.5f..4f)
+        require(speed in 0.5f..3f)
         ensureStarted()
         command(listOf("set_property", "speed", speed))
+        mutableState.value = mutableState.value.copy(speed = speed)
+    }
+
+    suspend fun setVolume(volume: Float) {
+        require(volume in 0f..1f)
+        ensureStarted()
+        command(listOf("set_property", "volume", volume * 100f))
+        mutableState.value = mutableState.value.copy(volume = volume)
     }
 
     suspend fun stop() {
@@ -162,6 +186,8 @@ class MpvController(
                 val paused = propertyBoolean("pause") ?: true
                 val idle = propertyBoolean("idle-active") ?: true
                 val eofReached = propertyBoolean("eof-reached") ?: false
+                val speed = propertyDouble("speed")?.toFloat()?.coerceIn(0.5f, 3f) ?: mutableState.value.speed
+                val volume = propertyDouble("volume")?.toFloat()?.div(100f)?.coerceIn(0f, 1f) ?: mutableState.value.volume
                 mutableState.value = mpvPlaybackState(
                     previous = mutableState.value,
                     paused = paused,
@@ -170,6 +196,8 @@ class MpvController(
                     idle = idle,
                     eofReached = eofReached,
                     expectedIdle = expectedIdle.get(),
+                    speed = speed,
+                    volume = volume,
                 )
             }.onFailure {
                 mutableState.value = mutableState.value.copy(error = "mpv IPC became unavailable")
@@ -228,11 +256,22 @@ class MpvController(
         closing.set(true)
         processGeneration.incrementAndGet()
         polling?.cancel()
-        process?.let { running ->
-            runCatching { if (running.isAlive) running.destroy() }
-            runCatching { if (!running.waitFor(2, TimeUnit.SECONDS)) running.destroyForcibly() }
-        }
+        terminate(process)
+        process = null
+        polling = null
         Files.deleteIfExists(socketPath)
+    }
+
+    private fun terminate(running: Process?) {
+        if (running == null) return
+        runCatching { running.outputStream.close() }
+        runCatching { if (running.isAlive) running.destroy() }
+        runCatching {
+            if (!running.waitFor(2, TimeUnit.SECONDS)) {
+                running.destroyForcibly()
+                running.waitFor(2, TimeUnit.SECONDS)
+            }
+        }
     }
 }
 
@@ -244,6 +283,7 @@ internal fun mpvExitState(previous: MpvState, expected: Boolean): MpvState =
         unexpectedExit = !expected,
         restartAvailable = !expected,
         streamFailure = false,
+        resumeAfterRestart = !expected && previous.running && !previous.paused && !previous.idle,
     )
 
 internal fun mpvPlaybackState(
@@ -254,6 +294,8 @@ internal fun mpvPlaybackState(
     idle: Boolean,
     eofReached: Boolean,
     expectedIdle: Boolean,
+    speed: Float = previous.speed,
+    volume: Float = previous.volume,
 ): MpvState {
     val failed = previous.running && !previous.idle && idle && !eofReached && !expectedIdle
     val recoveryPending = previous.restartAvailable && idle && !expectedIdle
@@ -263,11 +305,15 @@ internal fun mpvPlaybackState(
         paused = paused,
         positionMillis = positionMillis,
         durationMillis = durationMillis,
+        speed = speed.coerceIn(0.5f, 3f),
+        volume = volume.coerceIn(0f, 1f),
         idle = idle,
+        eofReached = eofReached,
         error = if (failureVisible) previous.error ?: "mpv playback failed" else null,
         unexpectedExit = false,
         restartAvailable = failureVisible,
         streamFailure = failed,
+        resumeAfterRestart = false,
     )
 }
 

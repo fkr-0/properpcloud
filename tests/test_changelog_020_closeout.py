@@ -16,7 +16,12 @@ class Changelog020CloseoutTest(unittest.TestCase):
 
     def test_unreleased_keeps_only_future_work(self) -> None:
         unreleased = CHANGELOG.split("## [0.1.10]", 1)[0]
-        self.assertIn("Implement the specified folder-scoped Tag workbench", unreleased)
+        self.assertIn("Native Compose Desktop can now bind an explicitly user-selected local directory", unreleased)
+        self.assertIn("Complete the remaining folder-scoped Tag workbench release boundary", unreleased)
+        self.assertIn("document-portal directory lease/path mapping", unreleased)
+        self.assertIn("Android SAF", unreleased)
+        self.assertIn("full workbench release-ready", unreleased)
+        self.assertIn("real JVM `WatchService` lease", unreleased)
         self.assertIn("0.2.0", unreleased)
 
 

@@ -32,12 +32,26 @@ class PlaybackCheckpointPolicyTest {
         assertEquals(track.sourceId, decision.progress?.sourceId)
         assertEquals(track.id, decision.progress?.nodeId)
         assertEquals(12_000L, decision.progress?.positionMillis)
-        assertEquals(PlaybackCheckpointCursor(mediaId, 12_000), decision.cursor)
+        assertEquals(PlaybackCheckpointCursor(mediaId, 12_000, 99, true), decision.cursor)
+    }
+
+    @Test
+    fun elapsedCheckpointIntervalPersistsEvenWithoutThirtySecondsOfPositionDelta() {
+        val cursor = PlaybackCheckpointCursor(mediaId, 12_000, 100, true)
+        val decision = PlaybackCheckpointPolicy().evaluate(
+            queue,
+            PlaybackObservation(mediaId, 15_000, 100_000, isPlaying = true),
+            cursor,
+            observedAtEpochMillis = 30_100,
+        )
+
+        assertEquals(15_000L, decision.progress?.positionMillis)
+        assertEquals(30_100L, decision.cursor.observedAtEpochMillis)
     }
 
     @Test
     fun playingObservationBelowThresholdDoesNotWriteAgain() {
-        val cursor = PlaybackCheckpointCursor(mediaId, 12_000)
+        val cursor = PlaybackCheckpointCursor(mediaId, 12_000, 99, true)
         val decision = PlaybackCheckpointPolicy().evaluate(
             queue,
             PlaybackObservation(mediaId, 19_999, 100_000, isPlaying = true),
@@ -46,7 +60,7 @@ class PlaybackCheckpointPolicyTest {
         )
 
         assertNull(decision.progress)
-        assertEquals(cursor, decision.cursor)
+        assertEquals(cursor.copy(wasPlaying = true), decision.cursor)
     }
 
     @Test
@@ -70,6 +84,26 @@ class PlaybackCheckpointPolicyTest {
 
         assertEquals(12_500L, paused.progress?.positionMillis)
         assertEquals(12_500L, forced.progress?.positionMillis)
+    }
+
+    @Test
+    fun repeatedPausedObservationsDoNotWriteEveryTickerTick() {
+        val policy = PlaybackCheckpointPolicy()
+        val firstPause = policy.evaluate(
+            queue,
+            PlaybackObservation(mediaId, 12_500, 100_000, isPlaying = false),
+            PlaybackCheckpointCursor(mediaId, 12_000, 100, true),
+            observedAtEpochMillis = 101,
+        )
+        val repeatedPause = policy.evaluate(
+            queue,
+            PlaybackObservation(mediaId, 12_500, 100_000, isPlaying = false),
+            firstPause.cursor,
+            observedAtEpochMillis = 102,
+        )
+
+        assertEquals(12_500L, firstPause.progress?.positionMillis)
+        assertNull(repeatedPause.progress)
     }
 
     @Test

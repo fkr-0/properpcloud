@@ -99,6 +99,7 @@ dependencies {
     implementation(projects.metadataOnline)
     implementation(projects.metadataTags)
     implementation(projects.sourcePcloud)
+    implementation(projects.sourceServer)
     implementation(projects.sourceWebdav)
     implementation(libs.pcloud.android)
     implementation(libs.media3.exoplayer)

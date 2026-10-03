@@ -1,0 +1,49 @@
+version: 0.2.0-rc.4
+tag: v0.2.0-rc.4
+status: release_candidate_for_hands_on_testing
+base_release: v0.2.0-rc.2
+final_target: v0.2.0
+date: 2026-08-28
+objective: >-
+  publish the playback-resilience, durable player restoration, bounded history, and
+  filesystem-first filename-search tranche as an immutable prerelease without claiming
+  the remaining stable 0.2.0 physical, protected-provider, accessibility, or post-tag gates
+included_work:
+  - bounded Android and desktop recovery from stale or failed provider stream locations using stable source/node identity rather than persisted direct URLs
+  - explicit Play recovery after terminal retriable HTTP/network failure with current-item and intended-position preservation
+  - queue and current-selection persistence on successful mutations with stable identity restoration at startup
+  - 30-second progress checkpoint cadence plus transition, lifecycle, completion, and shutdown flush boundaries
+  - optional bounded playback history with persisted enable/retention settings and no expiring capabilities
+  - filesystem-first filename search from three characters with deterministic ordering and persisted directory/file/audio/playlist match filters
+  - generic-file superset semantics, duplicate suppression, and stable generic/playlist library-file identities across pCloud and local-folder adapters
+  - additive Android DataStore and desktop SQLite persistence/schema support plus privacy and architecture contract updates
+  - deterministic loopback-HTTP, Android recovery, search/filter, persistence, SQLite, and packaged desktop smoke coverage
+verified_before_release_commit:
+  - make doctor passed with the reviewed Gradle wrapper and pinned Android/JVM toolchain
+  - make fast-test passed the portable core/provider JVM matrix
+  - make test passed the Android, desktop, core, metadata, and provider test matrix
+  - make lint passed without a lint baseline or UnsafeOptIn suppression
+  - make build passed and assembled the Android debug artifact
+  - make ci passed host/spec/docs/test/lint/build and desktop-distributable verification
+  - make release-check passed with all release metadata internally consistent
+  - make desktop-smoke proved filename search plus queue/progress/history/filter restoration after SQLite reopen
+  - make linux-ci passed packaged desktop, crash recovery, local-tag recovery, MPRIS, locked-keyring, and accessibility gates
+  - documentation build/audit reported zero npm vulnerabilities
+  - git diff --check passed
+final_0_2_0_blockers_not_claimed_by_this_candidate:
+  - physical power-cut filesystem durability evidence
+  - supported Linux screen-reader/accessibility bridge or explicit maintainer exception where still required
+  - physical media-key behavior
+  - physical suspend/resume cycle
+  - GNOME and KDE Plasma session observations
+  - protected Europe and United States pCloud account validation
+  - retained protected-provider soak with real capability expiry and suspend/resume
+  - exact immutable v0.2.0 Arch archive rebuild after final stable tag creation
+stable_promotion_policy: >-
+  the canonical 0.2.0 promotion evidence remains authoritative; pending, blocked, manual,
+  protected, external-session, and post-tag stable-release states are not converted to success
+  for this release candidate
+publication_scope: >-
+  operator-authorized tagged prerelease: push main and the signed v0.2.0-rc.4 tag, allowing
+  the repository release workflow to publish its normal GitHub Release and release artifacts
+warning: this prerelease is for hands-on testing; final v0.2.0 promotion remains fail-closed

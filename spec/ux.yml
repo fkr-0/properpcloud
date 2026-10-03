@@ -8,13 +8,21 @@ ux:
       primary_destinations:
         - browser
         - saved_roots
+        - players
         - queue
         - settings
+      settings_surface:
+        user_facing_only: true
+        hides:
+          - OAuth developer/client-ID setup
+          - provider developer-console affordances
+          - token-encryption and Keystore implementation banners
+        connection_copy: concise status and actionable errors instead of credential-storage implementation details
       persistent_surface:
         mini_player:
           visible_when: a selected media item exists
           actions: [play_pause, open_now_playing]
-          content: [title_or_filename, containing_folder, progress]
+          content: [title_or_filename, containing_folder, progress, active_player, playback_mode_state]
       contextual_destinations:
         now_playing:
           entry: tap mini-player
@@ -28,10 +36,10 @@ ux:
       player: persistent bottom control surface
     linux_desktop:
       panes:
-        navigation: account, roots, folder tree
+        navigation: account, audio tabs, active-tab root, folder tree
         content: folder list, search, or inspector
         queue: reorderable queue and history
-      player: persistent bottom bar with optional expanded details panel
+      player: persistent bottom bar with per-tab speed, volume, shuffle, repeat, and sleep controls
   navigation_model:
     rules:
       - Folder identity, not path text, drives navigation.
@@ -126,7 +134,7 @@ ux:
         filtered: No files match current filter
         offline_uncached: Folder has no cached snapshot
         actions:
-          no_audio: [Play subtree, Show all files]
+          no_audio: [Play folder, Show all files]
           filtered: [Clear filter]
     queue:
       header:
@@ -152,6 +160,88 @@ ux:
         condition: queue build omitted one or more candidates
         content: counts by unsupported, inaccessible, failed, duplicate
         action: Open report
+    players_overview:
+      identity: provider_stable_player_id
+      source_neutral: true
+      rows:
+        content: [display_name, provider, connectivity, playback_state, current_media, active_state]
+        deduplication: reconnect and rediscovery update one stable row rather than append another
+        stale_behavior: retain the row and label degraded or unavailable explicitly
+      controls:
+        local: route through the existing playback/controller authority
+        remote: show transport controls only when the provider exposes a controller authority
+        forbidden: create a second Media3 player/session stack for this surface
+    tabbed_audio_player:
+      defaults:
+        - {name: Hörbücher, root: hb}
+        - {name: Musik, root: musik}
+        - {name: DJ/Auflege, root: dj}
+        - {name: Sci-Fi, root: hb/Sci-Fi}
+        - {name: Krimi, root: hb/Krimi}
+        - {name: Fantasy, root: hb/Fantasy}
+      tab_strip:
+        presentation: horizontally scrollable named chips with optional icon/color, queue count, and textual loading/playing/paused/stopped state
+        actions: [select, add, rename, change_root, reorder, remove]
+        maximum_tabs: 32
+        switching:
+          - Checkpoint the old tab and stop its platform-player load before selection changes while preserving paused resume state in the tab session.
+          - Restore the new tab's browser, queue, position, and player preferences.
+          - Never autoplay merely because a tab became active.
+        closing_active:
+          - Invalidate pending stream resolutions before changing tab ownership.
+          - Stop the old platform-player load even when the successor tab has an empty queue.
+      browser:
+        scope: active tab root and descendants only
+        rows:
+          show: [current_track, duration, format, size, last_played, progress]
+          progress_action: offer explicit resume from the stored position
+        controls:
+          sort: [name, modified_date, size, tagged_title, disc_and_track]
+          search: recursive and bounded within the active pCloud tab tree
+          folder: play all direct children remains explicit
+      queue:
+        ownership: one independent queue per tab
+        reorder: long-press drag plus visible move controls and desktop keyboard alternative
+        named_playlists:
+          - Save the active queue under a user-provided name.
+          - Load into the active tab paused; loading never implies play.
+      player:
+        global_invariant: at most one platform player may be actively playing
+        asynchronous_load_invariant: resolve streams outside the player lock, prepare the winning request paused, and never make a superseded tab or queue request audible
+        controls:
+          - play_pause
+          - previous_next
+          - seek_back_30_seconds
+          - seek_forward_30_seconds
+          - playback_speed_0_5_to_3
+          - volume
+          - shuffle
+          - repeat_off_all_one
+          - sleep_timer
+        audiobook_mode:
+          music_semantics_disabled: [shuffle, repeat_off_all_one]
+          previous: restart_current_chapter_after_threshold_else_previous_chapter
+          next: next_chapter
+          seek_intervals: independently_configurable_back_and_forward
+          resume_identity: [stable_source_id, book_folder_id]
+          resume_payload: [chapter_id, position, duration, speed, updated_at]
+          chapter_end_stop: pause after automatic transition when enabled
+          restoration: restore queue, chapter, position, speed, and timer paused; never autoplay
+        desktop_shortcuts:
+          Space: play_pause
+          Left_or_Right: seek_30_seconds
+          Up_or_Down: volume_5_percent
+          Ctrl_Left_or_Right: previous_or_next
+          Ctrl_Up_or_Down: move_keyboard_selection
+        desktop_tray:
+          availability: only when the host reports system-tray support
+          controls: [show_player, play_pause, previous, next, quit]
+          close_behavior: hide the window while the supported tray remains available; otherwise close exits normally
+          notification: announce a newly audible stable track identity once, never merely because it was preloaded paused
+      durability:
+        persisted: [stable_source_id, stable_node_id, folder_id, queue_order, position, speed, volume, shuffle, repeat, tab_definition, named_playlist, audiobook_book_id, audiobook_chapter_id, audiobook_resume_position, audiobook_skip_intervals, audiobook_stop_at_chapter_end, sleep_timer_deadline]
+        forbidden: [signed_stream_url, bearer_token, provider_password]
+        disconnect: preserve stable unresolved queue references for later reconnect
     now_playing:
       hierarchy:
         - artwork or folder-derived cover
@@ -306,7 +396,8 @@ ux:
   interaction_patterns:
     folder_quick_actions:
       compact:
-        default_visible: play folder button when folder contains known direct audio
+        default_visible: play folder button for the selected folder
+        primary_play_folder: recursively enumerate the selected folder so descendant audio plays even when the top level has no playable files
         overflow: all other operations
       desktop:
         toolbar: play, append, play next, subtree menu, pin

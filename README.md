@@ -6,7 +6,7 @@
 
 Folder-first pCloud audio playback for Android and Linux.
 
-[![Version](https://img.shields.io/badge/version-0.1.6-59636e)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.0--rc.3-59636e)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-properpcloud.fkr.dev-276a51)](https://properpcloud.fkr.dev)
 
@@ -36,8 +36,13 @@ Both clients share the same Kotlin/JVM source, folder, sorting, queue, progress,
 - browser OAuth support when a registered public application ID is available;
 - raw provider and metadata inspection with secrets redacted;
 - staged, hash-guarded metadata export and repair planning;
-- deterministic generated-WAV demo media requiring no account or network;
+- diff-first native-desktop tag review with explicit Earlier/Later values, typed add/remove/destructive transitions, frozen revision identity, and the existing dry-run plus final-confirmation hash/rollback boundary;
+- shared preview-first relative `.m3u8` generation with five deterministic order modes including explicit numeric `title-number`, an exact target-and-content checkpoint before creation, stale-evidence guards, bounded playlist-only post-sync regeneration, native-desktop selected-root UI binding, and a preview-by-default `--generate-playlists` CLI that prints every prospective line; Android keeps verified ZIP export rather than inventing writable local-root authority;
+- deterministic generated-WAV fixtures for tests and Linux desktop verification without provider credentials;
 - Linux MPRIS media keys, Secret Service tokens, SQLite state, and XDG paths;
+- preview-first external-disk catalog import into an extensive pCloud media-library tree,
+  with provenance-preserving incremental sync, optional SHA-256 dedupe, FTS5 search,
+  manifests, verification, space accounting, and report-only cleanup;
 - a pre-rendered Markdown documentation site deployed through GitHub Pages.
 
 ## First run
@@ -60,15 +65,27 @@ sudo pacman -S --needed mpv libsecret
 
 ### Android
 
+For routine source edits:
+
+```bash
+make local-check
+```
+
+Only when an installable APK is actually needed:
+
 ```bash
 make doctor
-make test
-make lint
 make build
 make install
 ```
 
-Start with **Demo library** on either platform. Connect pCloud only after demo browsing, queuing, playback, seeking, and restart restoration work locally.
+Routine development intentionally avoids rebuilding the Android application on every edit.
+`make local-check` runs host-side contract and configuration checks without requiring the
+Android toolchain image. Push and pull-request GitHub Actions run the full portable JVM,
+Robolectric, lint, APK assembly, documentation, and repository `make ci` gate. `make fast-test`
+is available for targeted portable JVM verification when the pinned image is already local.
+
+On Android, first run now shows an explicit **No library connected** state until pCloud or the optional server catalog is connected; production Android builds do not fabricate demo media. The Linux desktop retains its deterministic generated-WAV source for credential-free host verification.
 
 Detailed instructions are published at `https://properpcloud.fkr.dev` and remain available as Markdown under [`docs/`](docs/index.md).
 
@@ -114,6 +131,9 @@ The pinned container supplies Eclipse Temurin 21, Gradle 9.6.1, Android compile 
 make image                # build the pinned toolchain image
 make doctor               # validate wrapper, image, and prerequisites
 make release-check        # validate specifications and release metadata
+make local-check          # routine host contract/config gate; no Android image required
+make media-library-test   # host-only catalog/import regression suite; does not touch pCloud
+make fast-test            # optional portable JVM tests when the build image is already local
 make test                 # Android and portable JVM tests
 make desktop-test         # Linux adapter tests
 make desktop-smoke        # real host mpv + SQLite smoke
@@ -156,7 +176,9 @@ properpcloud/
 - [`spec/architecture.yml`](spec/architecture.yml) — layers, data flows, and trust boundaries
 - [`spec/contracts.yml`](spec/contracts.yml) — ports, records, persistence, events, and errors
 - [`spec/testing.yml`](spec/testing.yml) — fixtures, fault injection, and release gates
+- [`spec/media-library.yml`](spec/media-library.yml) — external catalog import, pCloud layout, provenance, dedupe, and maintenance
 - [`spec/linux-client.yml`](spec/linux-client.yml) — native Linux architecture and acceptance
+- [`docs/media-library.md`](docs/media-library.md) — media-library setup, import/query/verification runbook
 - [`docs/api/`](docs/api/README.md) — human-readable public contract reference
 
 ## Release line

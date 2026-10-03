@@ -51,18 +51,34 @@ class MpvControllerTest {
     }
 
     @Test
-    fun `unexpected process exit requires an explicit manual restart`() {
-        val failed = mpvExitState(MpvState(running = true, paused = false, positionMillis = 12_000), expected = false)
+    fun `unexpected process exit preserves whether playback should resume`() {
+        val failed = mpvExitState(
+            MpvState(running = true, paused = false, idle = false, positionMillis = 12_000),
+            expected = false,
+        )
         assertFalse(failed.running)
         assertTrue(failed.paused)
         assertTrue(failed.unexpectedExit)
         assertTrue(failed.restartAvailable)
+        assertTrue(failed.resumeAfterRestart)
         assertEquals("mpv exited unexpectedly", failed.error)
 
         val closed = mpvExitState(failed, expected = true)
         assertFalse(closed.unexpectedExit)
         assertFalse(closed.restartAvailable)
+        assertFalse(closed.resumeAfterRestart)
         assertNull(closed.error)
+    }
+
+    @Test
+    fun `paused process crash remains paused after recovery`() {
+        val failed = mpvExitState(
+            MpvState(running = true, paused = true, idle = false, positionMillis = 5_000),
+            expected = false,
+        )
+
+        assertTrue(failed.restartAvailable)
+        assertFalse(failed.resumeAfterRestart)
     }
 
     @Test
@@ -106,7 +122,29 @@ class MpvControllerTest {
 
         assertFalse(eof.streamFailure)
         assertFalse(stopped.streamFailure)
+        assertTrue(eof.eofReached)
+        assertFalse(stopped.eofReached)
         assertNull(eof.error)
         assertNull(stopped.error)
+    }
+
+    @Test
+    fun `playback projection preserves bounded speed and normalized volume`() {
+        val playing = MpvState(running = true, paused = false, idle = false)
+
+        val projected = mpvPlaybackState(
+            previous = playing,
+            paused = false,
+            positionMillis = 1_000,
+            durationMillis = 60_000,
+            idle = false,
+            eofReached = false,
+            expectedIdle = false,
+            speed = 1.75f,
+            volume = 0.42f,
+        )
+
+        assertEquals(1.75f, projected.speed)
+        assertEquals(0.42f, projected.volume)
     }
 }

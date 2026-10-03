@@ -5,8 +5,8 @@ This manual covers daily use of properpcloud on Android and Linux. The two clien
 ## Fast path
 
 1. Install the client for your platform.
-2. Start with the built-in demo library to verify browsing, queuing, playback, and resume behavior.
-3. Open the account action and connect pCloud using the correct account region.
+2. On Android, connect pCloud or the optional server catalog; on Linux, the generated-WAV verification source remains available without credentials.
+3. Open the account action and connect pCloud using the correct account region when using direct pCloud access.
 4. Double-click or tap a folder to browse it.
 5. Use **Play folder**, **Play next**, or **Append** to build the queue.
 6. Use **Show folder** from the queue to return to the current track's containing folder.
@@ -26,7 +26,7 @@ This manual covers daily use of properpcloud on Android and Linux. The two clien
 
 | Term | Meaning |
 | --- | --- |
-| Source | A provider-backed or local library, such as pCloud or the demo source. |
+| Source | A provider-backed or local library, such as pCloud, the optional server catalog, or a native desktop local source. |
 | Node | A stable folder or audio-file identity within a source. |
 | Queue snapshot | The ordered tracks found when a folder is queued. Later provider changes do not silently rewrite it. |
 | Direct link | A short-lived URL resolved immediately before playback. It is not persisted as media identity. |

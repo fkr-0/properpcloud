@@ -4,6 +4,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,12 +20,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
@@ -35,6 +42,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Visibility
@@ -42,6 +50,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
@@ -49,6 +58,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -74,6 +84,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
@@ -86,11 +97,72 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.properpcloud.core.model.AudioFolder
+import dev.properpcloud.core.model.AudioTabId
 import dev.properpcloud.core.model.AudioTrack
+import dev.properpcloud.core.model.LibraryFile
+import dev.properpcloud.core.model.LibraryFileKind
+import dev.properpcloud.core.model.MAX_AUDIO_TABS
 import dev.properpcloud.core.model.MediaNode
 import dev.properpcloud.core.model.QueueOperation
+import dev.properpcloud.core.model.SearchMatchType
+import dev.properpcloud.core.model.TrackSortKey
+import dev.properpcloud.metadata.tags.FolderPlaylistOrder
+import dev.properpcloud.metadata.tags.FolderTagReviewTransition
+import dev.properpcloud.metadata.tags.FolderTagReviewValue
+import dev.properpcloud.metadata.tags.FolderTagReviewValueKind
+import dev.properpcloud.metadata.tags.LocalFolderWorkbenchWatchState
 import dev.properpcloud.source.pcloud.PCloudAccountRegion
 import java.awt.SystemColor
+import java.text.DateFormat
+import java.util.Date
+
+private fun playlistOrderLabel(order: FolderPlaylistOrder): String = when (order) {
+    FolderPlaylistOrder.NATURAL_FILENAME -> "natural filename"
+    FolderPlaylistOrder.TAG_TRACK_NUMBER -> "disc and track tags"
+    FolderPlaylistOrder.TAGGED_TITLE -> "tagged title"
+    FolderPlaylistOrder.TITLE_NUMBER -> "title number"
+    FolderPlaylistOrder.MODIFICATION_TIME -> "modification time"
+}
+
+private fun desktopSortLabel(key: TrackSortKey): String = when (key) {
+    TrackSortKey.NATURAL_FILENAME -> "Name"
+    TrackSortKey.DISC_THEN_TRACK -> "Disc/track"
+    TrackSortKey.TAGGED_TITLE -> "Title"
+    TrackSortKey.MODIFIED_TIME -> "Date"
+    TrackSortKey.SIZE -> "Size"
+}
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024L * 1024L -> "%.1f GB".format(bytes / (1024.0 * 1024.0 * 1024.0))
+    bytes >= 1024L * 1024L -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+    bytes >= 1024L -> "%.1f KB".format(bytes / 1024.0)
+    else -> "$bytes B"
+}
+
+private fun formatLastPlayed(epochMillis: Long): String =
+    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(epochMillis))
+
+private fun desktopVisibleNodes(state: DesktopUiState): List<MediaNode> =
+    if (state.searchExpanded && state.searchQuery.trim().length >= 3) state.searchResults else state.nodes
+
+private fun desktopSearchTypeLabel(type: SearchMatchType): String = when (type) {
+    SearchMatchType.DIRECTORIES -> "Dirs"
+    SearchMatchType.FILES -> "Files"
+    SearchMatchType.AUDIO_FILES -> "Audio"
+    SearchMatchType.PLAYLIST_FILES -> "Playlists"
+}
+
+private fun tagReviewValueLabel(value: FolderTagReviewValue): String = when (value.kind) {
+    FolderTagReviewValueKind.EMPTY -> "Empty"
+    FolderTagReviewValueKind.PRESENT -> value.value!!
+}
+
+private fun tagTransitionLabel(transition: FolderTagReviewTransition): String = when (transition) {
+    FolderTagReviewTransition.CHANGED -> "Changed value"
+    FolderTagReviewTransition.ADDED_FROM_EMPTY -> "Added from empty"
+    FolderTagReviewTransition.REMOVAL_TO_EMPTY -> "Removal to empty — destructive"
+    FolderTagReviewTransition.UNCHANGED -> "No byte-level value change"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -114,24 +186,28 @@ fun DesktopApp(controller: DesktopController) {
                     DesktopShortcut.PlayPause -> controller.playPause()
                     DesktopShortcut.Next -> controller.next()
                     DesktopShortcut.Previous -> controller.previous()
+                    is DesktopShortcut.Seek -> controller.seek(shortcut.deltaMillis)
+                    is DesktopShortcut.AdjustVolume -> controller.adjustVolume(shortcut.delta)
                     DesktopShortcut.FocusLibrary -> focusTarget = DesktopFocusTarget.LIBRARY
                     DesktopShortcut.FocusQueue -> focusTarget = DesktopFocusTarget.QUEUE
                     DesktopShortcut.ShowHelp -> keyboardHelp = true
                     is DesktopShortcut.SelectLibrary -> {
                         focusTarget = DesktopFocusTarget.LIBRARY
-                        librarySelection = moveSelection(librarySelection, shortcut.delta, state.nodes.size)
+                        librarySelection = moveSelection(librarySelection, shortcut.delta, desktopVisibleNodes(state).size)
                     }
                     is DesktopShortcut.OpenLibrary -> {
-                        val node = state.nodes.getOrNull(librarySelection) ?: return@onPreviewKeyEvent true
+                        val node = desktopVisibleNodes(state).getOrNull(librarySelection) ?: return@onPreviewKeyEvent true
                         when (shortcut.operation) {
                             LibraryKeyboardOperation.OPEN_OR_PLAY -> controller.open(node)
                             LibraryKeyboardOperation.APPEND -> when (node) {
                                 is AudioTrack -> controller.enqueue(node)
                                 is AudioFolder -> controller.enqueueFolder(node, recursive = true, QueueOperation.APPEND)
+                                is LibraryFile -> controller.inspect(node)
                             }
                             LibraryKeyboardOperation.PLAY_REPLACE -> when (node) {
                                 is AudioTrack -> controller.play(node)
                                 is AudioFolder -> controller.enqueueFolder(node, recursive = false, QueueOperation.REPLACE)
+                                is LibraryFile -> controller.inspect(node)
                             }
                             LibraryKeyboardOperation.INSPECT -> controller.inspect(node)
                         }
@@ -162,6 +238,8 @@ fun DesktopApp(controller: DesktopController) {
                     actions = {
                         TextButton(onClick = controller::useDemo) { Text("Demo") }
                         TextButton(onClick = controller::usePCloud) { Text("pCloud") }
+                        TextButton(onClick = { controller.chooseLocalFolder(recursive = false) }) { Text("Local") }
+                        TextButton(onClick = { controller.chooseLocalFolder(recursive = true) }) { Text("Local tree") }
                         IconButton(onClick = { accountDialog = true }) {
                             Icon(if (state.connectedToPCloud) Icons.Default.Logout else Icons.Default.Login, "Account")
                         }
@@ -173,6 +251,7 @@ fun DesktopApp(controller: DesktopController) {
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
                 if (state.busy) CircularProgressIndicator(Modifier.fillMaxWidth().height(3.dp))
+                AudioTabStrip(state, controller)
                 Row(Modifier.weight(1f).fillMaxWidth()) {
                     NavigationPane(state, controller, Modifier.width(250.dp).fillMaxHeight())
                     Divider(Modifier.fillMaxHeight().width(1.dp))
@@ -194,6 +273,10 @@ fun DesktopApp(controller: DesktopController) {
                         modifier = Modifier.widthIn(min = 320.dp, max = 440.dp).fillMaxHeight(),
                     )
                 }
+                if (state.localWorkbench.active) {
+                    Divider()
+                    LocalWorkbenchPane(state.localWorkbench, controller)
+                }
                 Surface(tonalElevation = 2.dp) {
                     Text(state.status, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp), style = MaterialTheme.typography.bodySmall)
                 }
@@ -201,6 +284,474 @@ fun DesktopApp(controller: DesktopController) {
         }
         if (accountDialog) AccountDialog(state, controller, onDismiss = { accountDialog = false })
         if (keyboardHelp) KeyboardHelpDialog(onDismiss = { keyboardHelp = false })
+    }
+}
+
+@Composable
+private fun AudioTabStrip(state: DesktopUiState, controller: DesktopController) {
+    var addDialogOpen by remember { mutableStateOf(false) }
+    var editDialogOpen by remember { mutableStateOf(false) }
+    val active = state.audioTabs.active
+    Surface(tonalElevation = 1.dp) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 10.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            state.audioTabs.tabs.forEach { tab ->
+                val playbackLabel = when {
+                    tab.definition.id != state.audioTabs.activeTabId -> "stopped"
+                    state.playbackLoading -> "loading"
+                    state.playback.restartAvailable -> "stopped"
+                    state.playback.running && !state.playback.idle && !state.playback.paused -> "playing"
+                    state.playback.running && !state.playback.idle -> "paused"
+                    else -> "stopped"
+                }
+                FilterChip(
+                    selected = tab.definition.id == state.audioTabs.activeTabId,
+                    onClick = { controller.switchAudioTab(tab.definition.id) },
+                    label = {
+                        Text(
+                            buildString {
+                                tab.definition.icon?.takeIf(String::isNotBlank)?.let { append(it).append(' ') }
+                                append(tab.definition.name)
+                                append(" · ").append(playbackLabel)
+                                if (tab.queue.entries.isNotEmpty()) append(" · ${tab.queue.entries.size}")
+                            },
+                            maxLines = 1,
+                        )
+                    },
+                )
+            }
+            IconButton(onClick = { addDialogOpen = true }, enabled = state.audioTabs.tabs.size < MAX_AUDIO_TABS) {
+                Icon(Icons.Default.Add, "Add audio tab")
+            }
+            IconButton(onClick = { editDialogOpen = true }) { Icon(Icons.Default.Edit, "Edit ${active.definition.name} tab") }
+            val activeIndex = state.audioTabs.tabs.indexOfFirst { it.definition.id == active.definition.id }
+            IconButton(
+                onClick = { controller.moveAudioTab(active.definition.id, -1) },
+                enabled = activeIndex > 0,
+            ) { Icon(Icons.Default.KeyboardArrowLeft, "Move ${active.definition.name} tab left") }
+            IconButton(
+                onClick = { controller.moveAudioTab(active.definition.id, 1) },
+                enabled = activeIndex in 0 until state.audioTabs.tabs.lastIndex,
+            ) { Icon(Icons.Default.KeyboardArrowRight, "Move ${active.definition.name} tab right") }
+        }
+    }
+    if (addDialogOpen) {
+        AudioTabEditorDialog(
+            title = "Add audio tab",
+            initialName = "",
+            initialRoot = "",
+            confirmLabel = "Add",
+            onDismiss = { addDialogOpen = false },
+            onConfirm = { name, root ->
+                addDialogOpen = false
+                controller.addAudioTab(name, root)
+            },
+        )
+    }
+    if (editDialogOpen) {
+        AudioTabEditorDialog(
+            title = "Edit ${active.definition.name}",
+            initialName = active.definition.name,
+            initialRoot = active.definition.rootPath,
+            confirmLabel = "Save",
+            canDelete = state.audioTabs.tabs.size > 1,
+            onDelete = {
+                editDialogOpen = false
+                controller.removeAudioTab(active.definition.id)
+            },
+            onDismiss = { editDialogOpen = false },
+            onConfirm = { name, root ->
+                editDialogOpen = false
+                controller.updateAudioTab(active.definition.id, name, root)
+            },
+        )
+    }
+}
+
+@Composable
+private fun AudioTabEditorDialog(
+    title: String,
+    initialName: String,
+    initialRoot: String,
+    confirmLabel: String,
+    canDelete: Boolean = false,
+    onDelete: () -> Unit = {},
+    onDismiss: () -> Unit,
+    onConfirm: (String, String) -> Unit,
+) {
+    var name by remember(initialName) { mutableStateOf(initialName) }
+    var root by remember(initialRoot) { mutableStateOf(initialRoot) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    root,
+                    { root = it },
+                    label = { Text("pCloud root path") },
+                    supportingText = { Text("Relative path, for example hb/Sci-Fi") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(name, root) }, enabled = name.isNotBlank()) { Text(confirmLabel) }
+        },
+        dismissButton = {
+            Row {
+                if (canDelete) TextButton(onClick = onDelete) { Text("Delete") }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        },
+    )
+}
+
+@Composable
+private fun LocalWorkbenchPane(
+    state: DesktopLocalWorkbenchUiState,
+    controller: DesktopController,
+) {
+    var selected by remember(state.sessionRevision, state.proposals) {
+        mutableStateOf(
+            state.proposals.filter(DesktopLocalTagProposal::autoPreselected).fold(emptySet<DesktopLocalTagProposal>()) { accepted, proposal ->
+                accepted.filterNot { it.nodeId == proposal.nodeId && it.field == proposal.field }.toSet() + proposal
+            },
+        )
+    }
+    var recursiveTagOptIn by remember(state.sessionRevision) { mutableStateOf(false) }
+    var recursivePlaylistOptIn by remember(state.sessionRevision) { mutableStateOf(false) }
+    var onePlaylistPerAlbum by remember(state.sessionRevision) { mutableStateOf(false) }
+    var playlistOrder by remember(state.sessionRevision) { mutableStateOf(FolderPlaylistOrder.TAG_TRACK_NUMBER) }
+    var orderMenu by remember { mutableStateOf(false) }
+    var confirmTagWrite by remember { mutableStateOf(false) }
+    var confirmPlaylistWrite by remember { mutableStateOf(false) }
+    var confirmTagRollback by remember { mutableStateOf(false) }
+    val live = state.hostState == LocalFolderWorkbenchWatchState.LIVE && !state.recoveryRequired
+
+    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                Modifier.weight(1f).semantics {
+                    stateDescription = if (state.recoveryRequired) {
+                        "Recovery required before additional metadata writes"
+                    } else {
+                        "${state.hostState.name.lowercase().replace('_', ' ')} at revision ${state.sessionRevision}"
+                    }
+                },
+            ) {
+                Text(
+                    "Local metadata workbench",
+                    modifier = Modifier.semantics { heading() },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "${state.hostState.name.lowercase().replace('_', '-')} · revision ${state.sessionRevision} · ${state.fileCount} audio file(s)",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (state.recoveryRequired) {
+                    Text(
+                        "Recovery required: further tag and playlist writes are disabled until the interrupted outcome is resolved or explicitly abandoned by closing this selected-root session.",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Text(state.message, style = MaterialTheme.typography.labelSmall)
+                state.operationLabel?.let { label ->
+                    Text(
+                        "$label · ${state.operationCompleted}/${state.operationTotal}",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(onClick = controller::refreshLocalWorkbench) { Text("Reconcile") }
+                if (state.rollbackAvailableCount > 0) {
+                    OutlinedButton(onClick = { confirmTagRollback = true }) {
+                        Text("Rollback latest (${state.rollbackAvailableCount})")
+                    }
+                }
+            }
+        }
+
+        if (state.tagOutcomes.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text("Tag apply and recovery results", Modifier.semantics { heading() }, style = MaterialTheme.typography.labelLarge)
+            LazyColumn(Modifier.fillMaxWidth().height(92.dp)) {
+                itemsIndexed(
+                    state.tagOutcomes,
+                    key = { index, outcome -> "${outcome.filename}:${outcome.status}:$index" },
+                ) { _, outcome ->
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 3.dp).semantics(mergeDescendants = true) {
+                            contentDescription = buildString {
+                                append("Tag result ${outcome.filename}. ${outcome.status.name.lowercase().replace('_', ' ')}. ")
+                                append(outcome.message)
+                                if (outcome.rollbackAvailable) append(" Guarded rollback available.")
+                            }
+                            stateDescription = outcome.status.name.lowercase().replace('_', ' ')
+                        },
+                    ) {
+                        Text("${outcome.filename} · ${outcome.status.name.lowercase().replace('_', '-')}", style = MaterialTheme.typography.bodySmall)
+                        Text(outcome.message, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+
+        if (state.proposals.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text("Review local proposals", Modifier.semantics { heading() }, style = MaterialTheme.typography.labelLarge)
+            LazyColumn(Modifier.fillMaxWidth().height(120.dp)) {
+                itemsIndexed(
+                    state.proposals,
+                    key = { _, proposal -> "${proposal.nodeId.value}:${proposal.field}:${proposal.ruleId}" },
+                ) { _, proposal ->
+                    val checked = proposal in selected
+                    Row(
+                        Modifier.fillMaxWidth().semantics(mergeDescendants = true) {
+                            contentDescription = buildString {
+                                append("${proposal.filename}, ${proposal.field}. Current ${proposal.currentValue ?: "empty"}. Proposed ${proposal.proposedValue ?: "empty"}. Rule ${proposal.ruleId}.")
+                                if (proposal.warnings.isNotEmpty()) append(" Warning: ${proposal.warnings.joinToString("; ")}")
+                            }
+                            stateDescription = if (checked) "Selected for review" else "Not selected for review"
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = checked,
+                            onCheckedChange = { enabled ->
+                                selected = if (enabled) {
+                                    selected.filterNot { it.nodeId == proposal.nodeId && it.field == proposal.field }.toSet() + proposal
+                                } else {
+                                    selected - proposal
+                                }
+                            },
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text("${proposal.filename} · ${proposal.field}", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "Earlier: ${proposal.currentValue?.takeUnless(String::isBlank) ?: "Empty"} · " +
+                                    "Later: ${proposal.proposedValue?.takeUnless(String::isBlank) ?: "Empty (proposed removal)"}",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            Text("Rule ${proposal.ruleId} · confidence ${proposal.confidence}", style = MaterialTheme.typography.labelSmall)
+                            proposal.warnings.forEach { warning ->
+                                Text("Warning: $warning", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (state.recursiveScope) {
+                    Row(
+                        Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Allow recursive tag plan"
+                            stateDescription = if (recursiveTagOptIn) "Selected" else "Not selected"
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = recursiveTagOptIn, onCheckedChange = { recursiveTagOptIn = it })
+                        Text("Allow recursive tag plan", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(
+                        onClick = { controller.reviewLocalTags(selected, state.sessionRevision, recursiveTagOptIn) },
+                        enabled = live && selected.isNotEmpty(),
+                    ) { Text("Review selected") }
+                    OutlinedButton(
+                        onClick = controller::dryRunReviewedLocalTags,
+                        enabled = live && state.reviewedTagCount > 0,
+                    ) { Text("Dry run") }
+                    Button(
+                        onClick = { confirmTagWrite = true },
+                        enabled = live && state.tagDryRunReady,
+                    ) { Text("Apply reviewed tags") }
+                }
+            }
+        }
+
+        state.tagReview?.let { review ->
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Frozen Earlier / Later review",
+                Modifier.semantics { heading() },
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Text(
+                "Revision ${review.revision} · ${review.changedFieldCount} changed field(s)" +
+                    if (review.hasDestructiveChanges) " · includes destructive removal" else "",
+                style = MaterialTheme.typography.labelSmall,
+            )
+            LazyColumn(Modifier.fillMaxWidth().height(180.dp)) {
+                itemsIndexed(review.files, key = { _, file -> file.nodeId.value }) { _, file ->
+                    ElevatedCard(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(8.dp)) {
+                            Text(file.relativePath, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                            file.fields.forEach { field ->
+                                Column(
+                                    Modifier.fillMaxWidth().padding(top = 5.dp).semantics(mergeDescendants = true) {
+                                        contentDescription = buildString {
+                                            append("${file.relativePath}, ${field.field}. ")
+                                            append("Earlier ${tagReviewValueLabel(field.earlier)}. ")
+                                            append("Later ${tagReviewValueLabel(field.later)}. ")
+                                            append("${tagTransitionLabel(field.transition)}. Rule ${field.ruleId}. ")
+                                            append("Confidence ${field.confidence}.")
+                                            if (field.conflictsWithExistingValue) append(" Conflicts with existing value.")
+                                            if (field.warnings.isNotEmpty()) append(" Warning: ${field.warnings.joinToString("; ")}")
+                                        }
+                                        stateDescription = tagTransitionLabel(field.transition)
+                                    },
+                                ) {
+                                    Text("${field.field} · ${tagTransitionLabel(field.transition)}", style = MaterialTheme.typography.labelSmall)
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text("Earlier", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                                            Text(tagReviewValueLabel(field.earlier), style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        Column(Modifier.weight(1f)) {
+                                            Text("Later", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                                            Text(
+                                                if (field.transition == FolderTagReviewTransition.REMOVAL_TO_EMPTY) {
+                                                    "Empty — will remove value"
+                                                } else {
+                                                    tagReviewValueLabel(field.later)
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                            )
+                                        }
+                                    }
+                                    Text("Rule ${field.ruleId} · confidence ${field.confidence}", style = MaterialTheme.typography.labelSmall)
+                                    Text(field.explanation, style = MaterialTheme.typography.labelSmall)
+                                    if (field.conflictsWithExistingValue) {
+                                        Text("Conflict: existing embedded value will change only after confirmation.", style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    field.warnings.forEach { warning -> Text("Warning: $warning", style = MaterialTheme.typography.labelSmall) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box {
+                    OutlinedButton(onClick = { orderMenu = true }, enabled = live) { Text("Playlist: ${playlistOrderLabel(playlistOrder)}") }
+                    DropdownMenu(expanded = orderMenu, onDismissRequest = { orderMenu = false }) {
+                        FolderPlaylistOrder.values().forEach { order ->
+                            DropdownMenuItem(
+                                text = { Text(playlistOrderLabel(order)) },
+                                onClick = { playlistOrder = order; orderMenu = false },
+                            )
+                        }
+                    }
+                }
+                if (state.recursiveScope) {
+                    Row(
+                        Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Recursive playlists"
+                            stateDescription = if (recursivePlaylistOptIn) "Selected" else "Not selected"
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = recursivePlaylistOptIn, onCheckedChange = { recursivePlaylistOptIn = it }, enabled = live)
+                        Text("Recursive playlists", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Row(
+                        Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "One playlist per album"
+                            stateDescription = if (onePlaylistPerAlbum) "Selected" else "Not selected"
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = onePlaylistPerAlbum, onCheckedChange = { onePlaylistPerAlbum = it }, enabled = live)
+                        Text("One per album", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = {
+                        controller.reviewLocalPlaylist(
+                            recursivePlaylistOptIn = recursivePlaylistOptIn,
+                            onePlaylistPerAlbum = onePlaylistPerAlbum,
+                            order = playlistOrder,
+                        )
+                    },
+                    enabled = live,
+                ) { Text("Review playlist") }
+                Button(
+                    onClick = { confirmPlaylistWrite = true },
+                    enabled = live && state.playlistReview != null,
+                ) { Text("Write reviewed playlist") }
+            }
+        }
+        state.playlistReview?.let { review ->
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Exact playlist checkpoint · revision ${review.revision} · ${playlistOrderLabel(review.order)}",
+                Modifier.semantics { heading() },
+                style = MaterialTheme.typography.labelLarge,
+            )
+            LazyColumn(Modifier.fillMaxWidth().height(160.dp)) {
+                itemsIndexed(review.files, key = { _, file -> file.targetRelativePath }) { _, file ->
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp).semantics(mergeDescendants = true) {
+                            contentDescription = "Playlist target ${file.targetRelativePath}. Exact final content: ${file.finalLines.joinToString(". ")}"
+                        },
+                    ) {
+                        Text("Target ${file.targetRelativePath}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        file.finalLines.forEach { line -> Text(line, style = MaterialTheme.typography.labelSmall) }
+                    }
+                }
+            }
+            Text("Reviewing writes zero playlist bytes; Write reviewed playlist revalidates this exact checkpoint first.", style = MaterialTheme.typography.labelSmall)
+        }
+    }
+
+    if (confirmTagWrite) {
+        AlertDialog(
+            onDismissRequest = { confirmTagWrite = false },
+            title = { Text("Replace reviewed tag bytes?") },
+            text = { Text("The dry run passed for the frozen Earlier / Later review at revision ${state.tagReview?.revision ?: state.sessionRevision}. Only those exact reviewed fields and hashes will be applied; watcher reconciliation runs afterwards.") },
+            confirmButton = {
+                Button(onClick = { confirmTagWrite = false; controller.applyReviewedLocalTags(confirmWrite = true) }) { Text("Apply") }
+            },
+            dismissButton = { TextButton(onClick = { confirmTagWrite = false }) { Text("Cancel") } },
+        )
+    }
+    if (confirmTagRollback) {
+        AlertDialog(
+            onDismissRequest = { confirmTagRollback = false },
+            title = { Text("Restore the latest verified original bytes?") },
+            text = { Text("Rollback is allowed only while the current file still matches the exact previously verified apply result. A later external edit causes a conflict instead of being overwritten.") },
+            confirmButton = {
+                Button(onClick = { confirmTagRollback = false; controller.rollbackLatestLocalTag(confirmRollback = true) }) { Text("Rollback") }
+            },
+            dismissButton = { TextButton(onClick = { confirmTagRollback = false }) { Text("Cancel") } },
+        )
+    }
+    if (confirmPlaylistWrite) {
+        AlertDialog(
+            onDismissRequest = { confirmPlaylistWrite = false },
+            title = { Text("Write reviewed playlist?") },
+            text = { Text("Only the exact revision-bound playlist review will be materialized inside the selected local root.") },
+            confirmButton = {
+                Button(onClick = { confirmPlaylistWrite = false; controller.materializeReviewedLocalPlaylist(confirmWrite = true) }) { Text("Write playlist") }
+            },
+            dismissButton = { TextButton(onClick = { confirmPlaylistWrite = false }) { Text("Cancel") } },
+        )
     }
 }
 
@@ -213,14 +764,17 @@ private fun KeyboardHelpDialog(onDismiss: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text("Ctrl+L · focus library")
                 Text("Ctrl+Q · focus queue")
-                Text("↑/↓ · select an item")
+                Text("Space · play/pause")
+                Text("←/→ · seek 30 seconds")
+                Text("↑/↓ · volume ±5%")
+                Text("Ctrl+↑/↓ · select an item in the focused pane")
                 Text("Enter · open/play selected item")
                 Text("Shift+Enter · append selected library item")
                 Text("Ctrl+Enter · replace queue and play")
                 Text("Alt+Enter · inspect selected library item")
                 Text("Alt+↑/↓ · move selected queue item")
                 Text("Delete · remove selected queue item")
-                Text("Space · play/pause · Ctrl+←/→ · previous/next")
+                Text("Ctrl+←/→ · previous/next")
                 Text("All queue operations have non-drag alternatives.", fontWeight = FontWeight.SemiBold)
             }
         },
@@ -231,7 +785,8 @@ private fun KeyboardHelpDialog(onDismiss: () -> Unit) {
 @Composable
 private fun NavigationPane(state: DesktopUiState, controller: DesktopController, modifier: Modifier) {
     Column(modifier.padding(12.dp)) {
-        Text("Folders", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(state.audioTabs.active.definition.name, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text("Root: ${state.audioTabs.active.definition.rootPath.ifBlank { "/" }}", style = MaterialTheme.typography.labelSmall)
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             itemsIndexed(state.breadcrumbs) { index, folder ->
@@ -260,6 +815,29 @@ private fun NavigationPane(state: DesktopUiState, controller: DesktopController,
                 }
             }
         }
+        Spacer(Modifier.height(16.dp))
+        Text("Playback history", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleSmall)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = state.playbackHistoryEnabled,
+                onCheckedChange = controller::setPlaybackHistoryEnabled,
+            )
+            Text("Keep bounded history", style = MaterialTheme.typography.bodySmall)
+        }
+        if (state.playbackHistoryEnabled) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                listOf(25, 100, 250).forEach { retention ->
+                    FilterChip(
+                        selected = state.playbackHistoryRetention == retention,
+                        onClick = { controller.setPlaybackHistoryRetention(retention) },
+                        label = { Text(retention.toString()) },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -273,33 +851,89 @@ private fun LibraryPane(
     onSelected: (Int) -> Unit,
     modifier: Modifier,
 ) {
+    val visibleNodes = desktopVisibleNodes(state)
+    var sortMenu by remember { mutableStateOf(false) }
     Column(modifier.padding(14.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(state.currentFolder?.name ?: "Library", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
                 Text("Double-click to open or play; right-click for queue actions", style = MaterialTheme.typography.bodySmall)
-                if (keyboardFocused) Text("Keyboard focus · ↑/↓ select · Enter open/play · F1 help", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                if (keyboardFocused) Text("Keyboard focus · Ctrl+↑/↓ select · Enter open/play · F1 help", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
             state.currentFolder?.let { folder ->
                 FilledTonalButton(onClick = { controller.enqueueFolder(folder, recursive = false, QueueOperation.REPLACE) }) {
                     Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(6.dp)); Text("Play folder")
                 }
             }
+            Box {
+                OutlinedButton(onClick = { sortMenu = true }) { Text("Sort: ${desktopSortLabel(state.sortKey)}") }
+                DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                    listOf(
+                        TrackSortKey.NATURAL_FILENAME,
+                        TrackSortKey.MODIFIED_TIME,
+                        TrackSortKey.SIZE,
+                        TrackSortKey.TAGGED_TITLE,
+                        TrackSortKey.DISC_THEN_TRACK,
+                    ).forEach { key ->
+                        DropdownMenuItem(
+                            text = { Text(desktopSortLabel(key)) },
+                            onClick = { sortMenu = false; controller.setSort(key) },
+                        )
+                    }
+                }
+            }
+            IconButton(onClick = controller::toggleSearch) {
+                Icon(
+                    if (state.searchExpanded) Icons.Default.Close else Icons.Default.Search,
+                    if (state.searchExpanded) "Close filename search" else "Search filenames",
+                )
+            }
+        }
+        if (state.searchExpanded) {
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = state.searchQuery,
+                onValueChange = controller::updateSearchQuery,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Search ${state.audioTabs.active.definition.name}") },
+                placeholder = { Text("Type at least 3 characters") },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                SearchMatchType.entries.forEach { type ->
+                    FilterChip(
+                        selected = type in state.searchMatchTypes,
+                        onClick = { controller.toggleSearchMatchType(type) },
+                        label = { Text(desktopSearchTypeLabel(type)) },
+                    )
+                }
+            }
+            if (state.searchBusy) CircularProgressIndicator(Modifier.height(20.dp).width(20.dp))
+            if (state.searchQuery.isNotEmpty() && state.searchQuery.trim().length < 3) {
+                Text("Enter at least 3 characters; pCloud search stays inside this tab's root tree.", style = MaterialTheme.typography.labelSmall)
+            }
         }
         Spacer(Modifier.height(12.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            itemsIndexed(state.nodes, key = { _, node -> node.sourceId.value + node.id.value }) { index, node ->
+            if (state.searchExpanded && state.searchQuery.trim().length >= 3 && !state.searchBusy && visibleNodes.isEmpty()) {
+                item { Text("No matching filenames", style = MaterialTheme.typography.bodyMedium) }
+            }
+            itemsIndexed(visibleNodes, key = { _, node -> node.sourceId.value + node.id.value }) { index, node ->
                 var menu by remember(node.id) { mutableStateOf(false) }
                 val keyboardSelected = keyboardFocused && index == selectedIndex
+                val currentTrack = state.queue.current?.track
+                val isCurrentTrack = node is AudioTrack && currentTrack?.sourceId == node.sourceId && currentTrack.id == node.id
+                val progress = if (node is AudioTrack) state.progressByNodeId[node.id] else null
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth()
                         .semantics {
                             selected = keyboardSelected
                             stateDescription = if (keyboardSelected) "Keyboard selected" else "Not selected"
-                            contentDescription = if (node is AudioFolder) {
-                                "Folder ${node.name}"
-                            } else {
-                                "Track ${node.name}"
+                            contentDescription = when (node) {
+                                is AudioFolder -> "Folder ${node.name}"
+                                is AudioTrack -> "Track ${node.name}"
+                                is LibraryFile -> if (node.kind == LibraryFileKind.PLAYLIST) "Playlist file ${node.name}" else "File ${node.name}"
                             }
                         }
                         .combinedClickable(
@@ -310,16 +944,53 @@ private fun LibraryPane(
                 ) {
                     Row(
                         Modifier.fillMaxWidth()
-                            .background(if (keyboardFocused && index == selectedIndex) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
+                            .background(
+                                when {
+                                    keyboardFocused && index == selectedIndex -> MaterialTheme.colorScheme.secondaryContainer
+                                    isCurrentTrack -> MaterialTheme.colorScheme.primaryContainer
+                                    else -> MaterialTheme.colorScheme.surface
+                                },
+                            )
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(if (node is AudioFolder) Icons.Default.Folder else Icons.Default.LibraryMusic, null)
+                        Icon(
+                            when (node) {
+                                is AudioFolder -> Icons.Default.Folder
+                                is AudioTrack -> if (isCurrentTrack) Icons.Default.PlayArrow else Icons.Default.LibraryMusic
+                                is LibraryFile -> Icons.Default.Description
+                            },
+                            null,
+                        )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(node.name, fontWeight = FontWeight.Medium)
                             if (node is AudioTrack) {
-                                Text(listOfNotNull(node.taggedTitle, node.durationMillis?.let(::formatDuration)).joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    listOfNotNull(
+                                        node.taggedTitle,
+                                        node.durationMillis?.let(::formatDuration),
+                                        node.sizeBytes?.let(::formatBytes),
+                                        node.name.substringAfterLast('.', "audio").uppercase(),
+                                    ).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                progress?.let { saved ->
+                                    val percent = saved.durationMillis?.takeIf { it > 0 }
+                                        ?.let { ((saved.positionMillis * 100) / it).coerceIn(0, 100) }
+                                    Text(
+                                        buildString {
+                                            append("Last played ").append(formatLastPlayed(saved.observedAtEpochMillis))
+                                            if (percent != null) append(" · $percent%")
+                                            append(" · ").append(formatDuration(saved.positionMillis))
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                    )
+                                }
+                            } else if (node is LibraryFile) {
+                                Text(if (node.kind == LibraryFileKind.PLAYLIST) "Playlist file" else "File", style = MaterialTheme.typography.bodySmall)
                             }
                             if (keyboardSelected) {
                                 Text("Selected", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
@@ -329,6 +1000,12 @@ private fun LibraryPane(
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             when (node) {
                                 is AudioTrack -> {
+                                    if (progress != null && !progress.completed && progress.positionMillis > 0) {
+                                        DropdownMenuItem(
+                                            { Text("Resume at ${formatDuration(progress.positionMillis)}") },
+                                            onClick = { menu = false; controller.play(node) },
+                                        )
+                                    }
                                     DropdownMenuItem({ Text("Play now") }, onClick = { menu = false; controller.play(node) })
                                     DropdownMenuItem({ Text("Play next") }, onClick = { menu = false; controller.enqueue(node, QueueOperation.PLAY_NEXT) })
                                     DropdownMenuItem({ Text("Append") }, onClick = { menu = false; controller.enqueue(node) })
@@ -338,6 +1015,7 @@ private fun LibraryPane(
                                     DropdownMenuItem({ Text("Play direct children") }, onClick = { menu = false; controller.enqueueFolder(node, false, QueueOperation.REPLACE) })
                                     DropdownMenuItem({ Text("Append subtree") }, onClick = { menu = false; controller.enqueueFolder(node, true, QueueOperation.APPEND) })
                                 }
+                                is LibraryFile -> Unit
                             }
                             DropdownMenuItem({ Text("Inspect") }, onClick = { menu = false; controller.inspect(node) })
                         }
@@ -357,12 +1035,27 @@ private fun QueuePane(
     onSelected: (Int) -> Unit,
     modifier: Modifier,
 ) {
+    var saveDialogOpen by remember { mutableStateOf(false) }
+    var loadMenuOpen by remember { mutableStateOf(false) }
     Column(modifier.padding(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).semantics { heading() })
+            TextButton(onClick = { saveDialogOpen = true }, enabled = state.queue.entries.isNotEmpty()) { Text("Save") }
+            Box {
+                TextButton(onClick = { loadMenuOpen = true }, enabled = state.audioTabs.playlists.isNotEmpty()) { Text("Load") }
+                DropdownMenu(expanded = loadMenuOpen, onDismissRequest = { loadMenuOpen = false }) {
+                    state.audioTabs.playlists.forEach { playlist ->
+                        DropdownMenuItem(
+                            text = { Text("${playlist.name} · ${playlist.entries.size}") },
+                            onClick = { loadMenuOpen = false; controller.loadSavedPlaylist(playlist.name) },
+                        )
+                    }
+                }
+            }
             AssistChip(onClick = controller::revealContainingFolder, label = { Text("Show folder") })
         }
-        if (keyboardFocused) Text("Keyboard focus · ↑/↓ select · Enter play · Alt+↑/↓ move · Delete remove", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        if (keyboardFocused) Text("Keyboard focus · Ctrl+↑/↓ select · Enter play · Alt+↑/↓ move · Delete remove", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+        Text("Long-press and drag to reorder; arrow buttons and Alt+↑/↓ remain available.", style = MaterialTheme.typography.labelSmall)
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             itemsIndexed(state.queue.entries, key = { _, entry -> entry.track.sourceId.value + entry.track.id.value }) { index, entry ->
@@ -372,6 +1065,26 @@ private fun QueuePane(
                     tonalElevation = if (currentTrack) 3.dp else 0.dp,
                     shape = MaterialTheme.shapes.small,
                     modifier = Modifier.fillMaxWidth()
+                        .pointerInput(index, state.queue.entries.size) {
+                            var dragY = 0f
+                            detectDragGesturesAfterLongPress(
+                                onDragCancel = { dragY = 0f },
+                                onDragEnd = { dragY = 0f },
+                            ) { _, amount ->
+                                dragY += amount.y
+                                val threshold = 42.dp.toPx()
+                                when {
+                                    dragY > threshold && index < state.queue.entries.lastIndex -> {
+                                        controller.moveQueue(index, 1)
+                                        dragY = 0f
+                                    }
+                                    dragY < -threshold && index > 0 -> {
+                                        controller.moveQueue(index, -1)
+                                        dragY = 0f
+                                    }
+                                }
+                            }
+                        }
                         .semantics {
                             selected = keyboardSelected
                             stateDescription = when {
@@ -412,13 +1125,39 @@ private fun QueuePane(
             }
         }
     }
+    if (saveDialogOpen) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { saveDialogOpen = false },
+            title = { Text("Save playlist") },
+            text = {
+                OutlinedTextField(
+                    name,
+                    { name = it },
+                    label = { Text("Playlist name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { saveDialogOpen = false; controller.saveCurrentPlaylist(name) },
+                    enabled = name.isNotBlank(),
+                ) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { saveDialogOpen = false }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable
 private fun PlayerBar(state: DesktopUiState, controller: DesktopController) {
     val current = state.queue.current?.track
+    val tab = state.audioTabs.active
+    var sleepMenuOpen by remember { mutableStateOf(false) }
+    var volume by remember(tab.definition.id, tab.volume) { mutableStateOf(tab.volume) }
     Surface(shadowElevation = 8.dp) {
-        Row(
+        Column(
             Modifier.fillMaxWidth()
                 .semantics {
                     contentDescription = current?.let { "Player for ${it.name}" } ?: "Player with no selected track"
@@ -429,32 +1168,81 @@ private fun PlayerBar(state: DesktopUiState, controller: DesktopController) {
                         else -> "Playing"
                     }
                 }
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            Column(Modifier.width(260.dp)) {
-                Text(current?.taggedTitle ?: current?.filenameStem ?: "Nothing playing", fontWeight = FontWeight.SemiBold, maxLines = 1)
-                Text(current?.name ?: "Choose a track", style = MaterialTheme.typography.bodySmall, maxLines = 1)
-            }
-            IconButton(onClick = controller::previous) { Icon(Icons.Default.SkipPrevious, "Previous") }
-            IconButton(onClick = controller::playPause) { Icon(if (state.playback.paused) Icons.Default.PlayArrow else Icons.Default.Pause, "Play or pause") }
-            if (state.playback.restartAvailable) {
-                IconButton(onClick = controller::restartPlayer) {
-                    Icon(Icons.Default.Refresh, "Restart player and resume")
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.width(260.dp)) {
+                    Text(current?.taggedTitle ?: current?.filenameStem ?: "Nothing playing", fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Text("${tab.definition.name} · ${current?.name ?: "Choose a track"}", style = MaterialTheme.typography.bodySmall, maxLines = 1)
                 }
+                IconButton(onClick = controller::previous) { Icon(Icons.Default.SkipPrevious, "Previous") }
+                IconButton(onClick = controller::playPause) { Icon(if (state.playback.paused) Icons.Default.PlayArrow else Icons.Default.Pause, "Play or pause") }
+                if (state.playback.restartAvailable) {
+                    IconButton(onClick = controller::restartPlayer) {
+                        Icon(Icons.Default.Refresh, "Restart player and resume")
+                    }
+                }
+                IconButton(onClick = controller::next) { Icon(Icons.Default.SkipNext, "Next") }
+                IconButton(onClick = { controller.seek(-30_000) }) { Icon(Icons.Default.KeyboardArrowLeft, "Back 30 seconds") }
+                IconButton(onClick = { controller.seek(30_000) }) { Icon(Icons.Default.KeyboardArrowRight, "Forward 30 seconds") }
+                val duration = state.playback.durationMillis ?: current?.durationMillis ?: 0
+                Slider(
+                    value = state.playback.positionMillis.coerceAtMost(duration).toFloat(),
+                    onValueChange = { controller.seekAbsolute(it.toLong()) },
+                    valueRange = 0f..duration.coerceAtLeast(1).toFloat(),
+                    enabled = current != null,
+                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                )
+                Text("${formatDuration(state.playback.positionMillis)} / ${formatDuration(duration)}", style = MaterialTheme.typography.labelMedium)
             }
-            IconButton(onClick = controller::next) { Icon(Icons.Default.SkipNext, "Next") }
-            IconButton(onClick = { controller.seek(-15_000) }) { Icon(Icons.Default.KeyboardArrowLeft, "Back 15 seconds") }
-            IconButton(onClick = { controller.seek(30_000) }) { Icon(Icons.Default.KeyboardArrowRight, "Forward 30 seconds") }
-            val duration = state.playback.durationMillis ?: current?.durationMillis ?: 0
-            Slider(
-                value = state.playback.positionMillis.coerceAtMost(duration).toFloat(),
-                onValueChange = { controller.seekAbsolute(it.toLong()) },
-                valueRange = 0f..duration.coerceAtLeast(1).toFloat(),
-                enabled = current != null,
-                modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-            )
-            Text("${formatDuration(state.playback.positionMillis)} / ${formatDuration(duration)}", style = MaterialTheme.typography.labelMedium)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Speed", style = MaterialTheme.typography.labelMedium)
+                listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f).forEach { speed ->
+                    FilterChip(
+                        selected = kotlin.math.abs(tab.playbackSpeed - speed) < 0.01f,
+                        onClick = { controller.setPlaybackSpeed(speed) },
+                        label = { Text(if (speed % 1f == 0f) "${speed.toInt()}×" else "$speed×") },
+                    )
+                }
+                Text("Vol ${(volume * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
+                Slider(
+                    value = volume,
+                    onValueChange = { volume = it },
+                    onValueChangeFinished = { controller.setVolume(volume) },
+                    valueRange = 0f..1f,
+                    modifier = Modifier.width(130.dp),
+                )
+                FilterChip(selected = tab.shuffle, onClick = controller::toggleShuffle, label = { Text("Shuffle") })
+                FilterChip(
+                    selected = tab.repeatMode != dev.properpcloud.core.model.PlayerRepeatMode.OFF,
+                    onClick = controller::cycleRepeatMode,
+                    label = { Text("Repeat ${tab.repeatMode.name.lowercase()}") },
+                )
+                Box {
+                    OutlinedButton(onClick = { sleepMenuOpen = true }) {
+                        Text(if (state.sleepTimerEndsAtEpochMillis == null) "Sleep" else "Sleep active")
+                    }
+                    DropdownMenu(expanded = sleepMenuOpen, onDismissRequest = { sleepMenuOpen = false }) {
+                        listOf(15, 30, 45, 60, 90, 120).forEach { minutes ->
+                            DropdownMenuItem(
+                                text = { Text("Stop after $minutes min") },
+                                onClick = { sleepMenuOpen = false; controller.setSleepTimer(minutes) },
+                            )
+                        }
+                        if (state.sleepTimerEndsAtEpochMillis != null) {
+                            DropdownMenuItem(
+                                text = { Text("Cancel timer") },
+                                onClick = { sleepMenuOpen = false; controller.setSleepTimer(null) },
+                            )
+                        }
+                    }
+                }
+                Text("Space play/pause · ←/→ seek · ↑/↓ volume", style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 }

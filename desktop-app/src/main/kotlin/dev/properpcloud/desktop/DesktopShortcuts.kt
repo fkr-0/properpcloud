@@ -16,6 +16,8 @@ sealed interface DesktopShortcut {
     data object PlayPause : DesktopShortcut
     data object Next : DesktopShortcut
     data object Previous : DesktopShortcut
+    data class Seek(val deltaMillis: Long) : DesktopShortcut
+    data class AdjustVolume(val delta: Float) : DesktopShortcut
     data object FocusLibrary : DesktopShortcut
     data object FocusQueue : DesktopShortcut
     data object ShowHelp : DesktopShortcut
@@ -63,8 +65,12 @@ internal fun resolveDesktopShortcut(
         key == Key.Spacebar -> DesktopShortcut.PlayPause
         ctrl && key == Key.DirectionRight -> DesktopShortcut.Next
         ctrl && key == Key.DirectionLeft -> DesktopShortcut.Previous
-        focus == DesktopFocusTarget.LIBRARY && key == Key.DirectionDown -> DesktopShortcut.SelectLibrary(1)
-        focus == DesktopFocusTarget.LIBRARY && key == Key.DirectionUp -> DesktopShortcut.SelectLibrary(-1)
+        !ctrl && !alt && !shift && key == Key.DirectionRight -> DesktopShortcut.Seek(30_000)
+        !ctrl && !alt && !shift && key == Key.DirectionLeft -> DesktopShortcut.Seek(-30_000)
+        !ctrl && !alt && !shift && key == Key.DirectionUp -> DesktopShortcut.AdjustVolume(0.05f)
+        !ctrl && !alt && !shift && key == Key.DirectionDown -> DesktopShortcut.AdjustVolume(-0.05f)
+        focus == DesktopFocusTarget.LIBRARY && ctrl && key == Key.DirectionDown -> DesktopShortcut.SelectLibrary(1)
+        focus == DesktopFocusTarget.LIBRARY && ctrl && key == Key.DirectionUp -> DesktopShortcut.SelectLibrary(-1)
         focus == DesktopFocusTarget.LIBRARY && key == Key.Enter && alt ->
             DesktopShortcut.OpenLibrary(LibraryKeyboardOperation.INSPECT)
         focus == DesktopFocusTarget.LIBRARY && key == Key.Enter && ctrl ->
@@ -73,8 +79,8 @@ internal fun resolveDesktopShortcut(
             DesktopShortcut.OpenLibrary(LibraryKeyboardOperation.APPEND)
         focus == DesktopFocusTarget.LIBRARY && key == Key.Enter ->
             DesktopShortcut.OpenLibrary(LibraryKeyboardOperation.OPEN_OR_PLAY)
-        focus == DesktopFocusTarget.QUEUE && key == Key.DirectionDown && !alt -> DesktopShortcut.SelectQueue(1)
-        focus == DesktopFocusTarget.QUEUE && key == Key.DirectionUp && !alt -> DesktopShortcut.SelectQueue(-1)
+        focus == DesktopFocusTarget.QUEUE && ctrl && key == Key.DirectionDown -> DesktopShortcut.SelectQueue(1)
+        focus == DesktopFocusTarget.QUEUE && ctrl && key == Key.DirectionUp -> DesktopShortcut.SelectQueue(-1)
         focus == DesktopFocusTarget.QUEUE && key == Key.Enter -> DesktopShortcut.PlayQueueSelection
         focus == DesktopFocusTarget.QUEUE && key == Key.Delete -> DesktopShortcut.RemoveQueueSelection
         focus == DesktopFocusTarget.QUEUE && key == Key.DirectionUp && alt -> DesktopShortcut.MoveQueueSelection(-1)

@@ -29,13 +29,24 @@ data class ResumePolicy(
 )
 ```
 
-`normalize(record, nowEpochMillis)` returns a copy suitable for playback:
+`normalize(record, nowEpochMillis)` retains the legacy record-normalization behavior. New session restoration should use `resumePositionMillis(record, nowEpochMillis, knownDurationMillis)`:
 
-1. if duration is known and the position ratio reaches the completion threshold, set `completed=true`;
-2. otherwise choose the short or long rewind from elapsed observation time;
-3. subtract the rewind without going below zero.
+1. clamp an impossible stored position to a currently known positive duration when available;
+2. if the record is explicitly completed or the clamped position reaches the 95% completion threshold, restart at `0`;
+3. otherwise choose the short or long rewind from elapsed observation time;
+4. subtract the rewind without going below zero.
 
-The policy does not write persistence and does not resolve media. Platform controllers decide checkpoint frequency and when a completed record should restart from zero.
+The policy does not write persistence and does not resolve media.
+
+## Checkpoint policy
+
+`PlaybackCheckpointPolicy` coalesces active playback writes. The default periodic boundary is approximately 30 seconds by elapsed observation time or position movement. The first observation is saved, and important event boundaries force or trigger a save: pause transition, track/queue transition, playback error, background/task removal, service/application shutdown where available, and completion. Repeated one-second ticker observations while already paused do not produce one write per tick.
+
+The player state always supplies a stable `MediaIdentity` (`SourceId` + `NodeId`) and the checkpoint policy verifies that identity against the active queue before creating `PlaybackProgress`.
+
+## Playback history
+
+Playback history is deliberately separate from session/crash restoration. It is disabled by default. When enabled, a progress checkpoint also upserts a history row containing only stable source/node identity, position, optional duration, observation time, and completion. Default retention is 100 identities and the hard maximum is 500. Expiring URLs, stream handles, credentials, provider response bodies, and complete private paths are not history fields.
 
 ## Persistence guidance
 

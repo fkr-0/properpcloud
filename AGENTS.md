@@ -6,7 +6,8 @@ The filesystem is a first-class library model. Never make embedded tags the only
 
 ## Build invariant
 
-- Build and test through the Docker-backed Make targets.
+- Build and JVM/Android tests through the Docker-backed Make targets. Host-only specification
+  and configuration checks may run through their Make targets without Docker.
 - The committed Gradle Wrapper is mandatory; container entrypoints must not generate or mutate it.
 - Never commit OAuth tokens, passwords, signing keys, downloaded media, Gradle caches, Android SDK contents, APKs, or AABs.
 - Keep Android SDK and Gradle versions pinned and checksum-verified where the upstream provides checksums.
@@ -26,11 +27,18 @@ The normative product and architecture contracts are under `spec/`. When code ch
 
 ## Verification order
 
-1. `make doctor`
-2. `make test`
-3. `make lint`
-4. `make build`
-5. `make ci` before release-oriented changes
+Routine development should avoid repeatedly compiling the Android application. Use the
+narrowest portable check that covers the change and let the push/pull-request GitHub Actions
+workflow own Robolectric, Android lint, APK assembly, documentation build, and the complete
+`make ci` gate.
+
+1. `make local-check` for ordinary shared/domain/provider changes.
+2. A narrower Docker-backed Gradle module test is useful when the pinned image is already
+   present; do not build or pull the Android toolchain only to duplicate CI.
+3. Do not run `make lint`, `make build`, or `make ci` locally unless the user explicitly asks,
+   CI is unavailable, or the work is an intentional release/debug verification pass.
+4. Release-oriented local verification, when explicitly required, remains `make doctor`,
+   `make test`, `make lint`, `make build`, then `make ci`.
 
 ## Safety
 

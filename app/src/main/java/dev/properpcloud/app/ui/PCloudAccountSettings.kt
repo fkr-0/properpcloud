@@ -53,7 +53,6 @@ internal fun PCloudAccountSettings(
     onAuthorizePCloud: (String) -> Unit,
 ) {
     val oauth = PCloudOAuthConfiguration.resolve(BuildConfig.PCLOUD_CLIENT_ID, state.clientId)
-    var showAdvancedOAuth by remember(state.clientId) { mutableStateOf(state.clientId.isNotBlank()) }
     var showDirectLogin by remember(oauth.isConfigured) { mutableStateOf(!oauth.isConfigured) }
     var email by remember { mutableStateOf("") }
     var secretText by remember { mutableStateOf("") }
@@ -74,10 +73,7 @@ internal fun PCloudAccountSettings(
         } else {
             OAuthSignInCard(
                 state = state,
-                actions = actions,
                 oauth = oauth,
-                expanded = showAdvancedOAuth,
-                onExpandedChange = { showAdvancedOAuth = it },
                 onAuthorizePCloud = onAuthorizePCloud,
             )
             DirectLoginCard(
@@ -115,12 +111,13 @@ private fun ConnectedPCloudCard(onDisconnect: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Icon(Icons.Default.Security, null, tint = MaterialTheme.colorScheme.secondary)
+            Icon(Icons.Default.Cloud, null, tint = MaterialTheme.colorScheme.secondary)
             Column(Modifier.weight(1f)) {
                 Text("Connected to pCloud", fontWeight = FontWeight.SemiBold)
                 Text(
-                    "The session token is encrypted with Android Keystore and excluded from backup.",
+                    "Ready to browse and play your library.",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
             TextButton(onClick = onDisconnect) {
@@ -135,10 +132,7 @@ private fun ConnectedPCloudCard(onDisconnect: () -> Unit) {
 @Composable
 private fun OAuthSignInCard(
     state: AppUiState,
-    actions: AppActions,
     oauth: PCloudOAuthConfiguration,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
     onAuthorizePCloud: (String) -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -163,52 +157,10 @@ private fun OAuthSignInCard(
                 }
             } else {
                 Text(
-                    "This build has no bundled pCloud application ID. OAuth can still be " +
-                        "enabled with a public client ID under developer setup.",
+                    "OAuth sign-in is unavailable in this build. Use email and password below.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
                 )
-            }
-            TextButton(
-                onClick = { onExpandedChange(!expanded) },
-                modifier = Modifier.testTag("toggle-advanced-oauth"),
-            ) {
-                Text(if (expanded) "Hide OAuth developer setup" else "OAuth developer setup")
-            }
-            if (expanded) {
-                OAuthDeveloperSetup(state, actions)
-            }
-        }
-    }
-}
-
-@Composable
-private fun OAuthDeveloperSetup(state: AppUiState, actions: AppActions) {
-    Text(
-        "A client ID identifies an application, not your account. Never paste a " +
-            "client secret, password, or token here.",
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.bodySmall,
-    )
-    OutlinedTextField(
-        value = state.clientId,
-        onValueChange = actions.updateClientId,
-        label = { Text("Custom public pCloud client ID") },
-        supportingText = {
-            Text("Redirect: ${PCloudOAuthConfiguration.redirectUri(BuildConfig.APPLICATION_ID)}")
-        },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth().testTag("client-id"),
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(
-            onClick = actions.openPCloudDeveloperConsole,
-            modifier = Modifier.testTag("open-pcloud-console"),
-        ) {
-            Text("Open developer console")
-        }
-        if (state.clientId.isNotBlank() && BuildConfig.PCLOUD_CLIENT_ID.isNotBlank()) {
-            TextButton(onClick = { actions.updateClientId("") }) {
-                Text("Use built-in ID")
             }
         }
     }
@@ -240,23 +192,20 @@ private fun DirectLoginCard(
         ) {
             AccountMethodHeader(
                 icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.tertiary) },
-                title = "Fallback direct sign-in",
-                subtitle = "Legacy provider API fallback when OAuth cannot be used.",
+                title = "Sign in with email and password",
+                subtitle = "Use this when OAuth is unavailable.",
             )
             Text(
-                "Prefer OAuth above. This fallback sends the email and password once, directly to the selected " +
-                    "pCloud regional API over HTTPS. The password is cleared from this form " +
-                    "immediately and is never saved. This legacy flow may be rejected for " +
-                    "accounts requiring two-factor authentication. Accounts created through " +
-                    "Google, Apple, or Facebook need a regular pCloud password; create one " +
-                    "through pCloud's Forgot password flow before using direct sign-in.",
+                "Your password is sent once to the selected pCloud region and is not saved. " +
+                    "Accounts that use two-factor authentication or social sign-in may need OAuth instead.",
                 style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             TextButton(
                 onClick = { onExpandedChange(!expanded) },
                 modifier = Modifier.testTag("toggle-direct-login"),
             ) {
-                Text(if (expanded) "Hide fallback sign-in" else "Use fallback direct sign-in")
+                Text(if (expanded) "Hide email sign-in" else "Use email and password")
             }
             if (expanded) {
                 DirectLoginForm(

@@ -64,7 +64,7 @@ fun runResilienceSoak(durationSeconds: Long = System.getenv("PROPERPCLOUD_SOAK_S
                 forcedExits += 1
                 val saved = requireNotNull(repository.loadProgress(track.sourceId, track.id))
                 mpv.load(source.resolveStream(track.id), saved.positionMillis)
-                awaitSoakCondition("soak explicit recovery", attempts = 80, delayMillis = 25) {
+                awaitSoakCondition("soak recovery primitives", attempts = 80, delayMillis = 25) {
                     mpv.state.value.running && !mpv.state.value.unexpectedExit
                 }
                 maximumDrift = maxOf(maximumDrift, abs(mpv.state.value.positionMillis - saved.positionMillis))

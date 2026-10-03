@@ -5,6 +5,7 @@ enum class TrackSortKey {
     DISC_THEN_TRACK,
     TAGGED_TITLE,
     MODIFIED_TIME,
+    SIZE,
 }
 
 data class TrackSortPolicy(
@@ -27,8 +28,10 @@ object FolderQueueBuilder {
     ): List<AudioTrack> = sortNodes(nodes, policy).filterIsInstance<AudioTrack>()
 
     private fun nodeComparator(policy: TrackSortPolicy): Comparator<MediaNode> = Comparator { left, right ->
-        if (policy.foldersFirst && left::class != right::class) {
-            return@Comparator if (left is AudioFolder) -1 else 1
+        if (policy.foldersFirst) {
+            val leftFolder = left is AudioFolder
+            val rightFolder = right is AudioFolder
+            if (leftFolder != rightFolder) return@Comparator if (leftFolder) -1 else 1
         }
 
         if (left is AudioTrack && right is AudioTrack) {
@@ -38,7 +41,8 @@ object FolderQueueBuilder {
             }
         }
 
-        NaturalTextComparator.compare(left.name, right.name)
+        val byName = NaturalTextComparator.compare(left.name, right.name)
+        if (byName != 0) byName else compareValuesBy(left, right, { it.sourceId.value }, { it.id.value })
     }
 
     private fun compareTracks(left: AudioTrack, right: AudioTrack, key: TrackSortKey): Int = when (key) {
@@ -56,6 +60,10 @@ object FolderQueueBuilder {
         TrackSortKey.MODIFIED_TIME -> compareValues(
             left.modifiedAtEpochMillis ?: Long.MAX_VALUE,
             right.modifiedAtEpochMillis ?: Long.MAX_VALUE,
+        )
+        TrackSortKey.SIZE -> compareValues(
+            left.sizeBytes ?: Long.MAX_VALUE,
+            right.sizeBytes ?: Long.MAX_VALUE,
         )
     }
 }

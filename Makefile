@@ -9,6 +9,10 @@ ANDROID_BUILD_TOOLS ?= 37.0.0
 DESKTOP_JAVA_HOME ?= /opt/android-studio/jbr
 PREBUILT_DESKTOP_IMAGE ?= 0
 NPM ?= npm
+MEDIA_LIBRARY_ROOT ?= /tmp/dib/media-library
+MEDIA_LIBRARY_STATE_DB ?= $(HOME)/.local/state/properpcloud/media-library/catalog.db
+MEDIA_LIBRARY_SOURCE_DB ?=
+MEDIA_LIBRARY_MUSIC_STATE_DB ?= $(HOME)/.local/state/properpcloud/music-ingest.sqlite3
 
 DOTENV_PCLOUD_CLIENT_ID := $(shell python3 scripts/read-dotenv-public.py)
 PCLOUD_CLIENT_ID ?= $(DOTENV_PCLOUD_CLIENT_ID)
@@ -16,7 +20,7 @@ PCLOUD_CLIENT_ID ?= $(DOTENV_PCLOUD_CLIENT_ID)
 export PROPERPCLOUD_BUILD_IMAGE := $(IMAGE)
 export PCLOUD_CLIENT_ID
 
-.PHONY: help oauth-config-check oauth-config-test toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts release-020-readiness release-020-pretag release-020-readiness-strict dependencies test desktop-test desktop-smoke desktop-crash-recovery-smoke desktop-resilience-soak desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit desktop-sleep-monitor-smoke desktop-session-audit desktop-run desktop-package desktop-appimage desktop-appimage-smoke desktop-flatpak desktop-flatpak-smoke arch-package-gate linux-packages linux-package-smoke linux-ci docs-install docs-build lint build check ci shell compose install clean
+.PHONY: help oauth-config-check oauth-config-test media-library-test media-library-init media-library-dry-run media-library-import media-library-adopt-existing media-library-adopt-existing-apply media-library-sync-music media-library-sync-music-apply media-library-verify media-library-space media-library-cleanup music-organize-plan toolchain-archive robolectric-runtime appimage-tool image image-no-cache doctor wrapper-check spec release-check release-client-id-check release-artifacts release-020-readiness release-020-pretag release-020-readiness-strict dependencies fast-test local-check test desktop-test desktop-smoke desktop-crash-recovery-smoke desktop-local-tag-recovery-process-smoke desktop-resilience-soak desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit desktop-sleep-monitor-smoke desktop-session-audit desktop-run desktop-package desktop-appimage desktop-appimage-smoke desktop-flatpak desktop-flatpak-smoke arch-package-gate linux-packages linux-package-smoke linux-ci docs-install docs-build lint build check ci shell compose install clean
 .NOTPARALLEL: linux-ci linux-packages linux-package-smoke
 
 help: ## Show available targets.
@@ -27,7 +31,46 @@ oauth-config-check: ## Validate public OAuth configuration without reading or ex
 	@python3 scripts/validate-pcloud-client-id.py
 
 oauth-config-test: ## Run host-side configuration and packaging boundary regression tests.
-	@python3 -m unittest discover -s tests -p 'test_*.py'
+	@# test_music_ingest.py is pytest-only; unittest discovery imports it but cannot execute its function tests.
+	@python3 -m unittest $$(find tests -maxdepth 1 -type f -name 'test_*.py' ! -name 'test_music_ingest.py' -print | sort | sed 's#/#.#g; s#\.py$$##')
+
+media-library-test: ## Run the catalog/import/media-library regression suite without touching pCloud.
+	@python3 -m unittest discover -s tests -p 'test_media_library.py'
+
+media-library-init: ## Create the extensive media-library directory contract on the configured mount.
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" init
+
+media-library-dry-run: ## Preview a catalog import; set MEDIA_LIBRARY_SOURCE_DB to the discovery SQLite database.
+	@test -n "$(MEDIA_LIBRARY_SOURCE_DB)" || { echo "MEDIA_LIBRARY_SOURCE_DB is required" >&2; exit 2; }
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" import --source-db "$(MEDIA_LIBRARY_SOURCE_DB)"
+
+media-library-import: ## Execute the reviewed catalog import and publish manifests/catalog snapshot.
+	@test -n "$(MEDIA_LIBRARY_SOURCE_DB)" || { echo "MEDIA_LIBRARY_SOURCE_DB is required" >&2; exit 2; }
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" import --source-db "$(MEDIA_LIBRARY_SOURCE_DB)" --execute
+
+media-library-adopt-existing: ## Preview uncataloged media already present in pCloud; source provenance remains unresolved.
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" adopt-existing
+
+media-library-adopt-existing-apply: ## Catalog reviewed existing pCloud media without recopying/probing bytes or inventing provenance.
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" adopt-existing --execute
+
+media-library-sync-music: ## Preview reconciliation of specialized music-ingest results into the canonical catalog.
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" sync-music-ingest --music-state-db "$(MEDIA_LIBRARY_MUSIC_STATE_DB)"
+
+media-library-sync-music-apply: ## Apply reviewed music-ingest catalog reconciliation and publish catalog.db.
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" sync-music-ingest --music-state-db "$(MEDIA_LIBRARY_MUSIC_STATE_DB)" --execute
+
+media-library-verify: ## Verify every cataloged pCloud object exists with the expected size.
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" verify
+
+media-library-space: ## Report physical library bytes by type and provenance-referenced bytes by source disk.
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" space
+
+media-library-cleanup: ## Report bounded duplicate, empty, partial-upload, broken-link, and untracked-media candidates.
+	@python3 scripts/media_library.py --library-root "$(MEDIA_LIBRARY_ROOT)" --state-db "$(MEDIA_LIBRARY_STATE_DB)" cleanup
+
+music-organize-plan: ## Preview evidence-backed organization candidates for music currently parked in Unsorted.
+	@python3 scripts/music_ingest.py organize-plan
 
 toolchain-archive: ## Fetch and checksum-verify the resumable Android tools archive.
 	@ANDROID_CMDLINE_TOOLS_VERSION=$(ANDROID_CMDLINE_TOOLS_VERSION) \
@@ -106,6 +149,18 @@ release-020-readiness-strict: oauth-config-test ## Fail unless every 0.2.0 promo
 dependencies: ## Resolve dependencies without compiling production code.
 	@bash ./scripts/docker-run.sh dependencies
 
+fast-test: oauth-config-check ## Run portable JVM tests in the existing build image; never builds an APK.
+	@bash ./scripts/docker-run.sh \
+	  :core-model:test \
+	  :metadata-online:test \
+	  :metadata-tags:test \
+	  :source-pcloud:test \
+	  :source-server:test \
+	  :server:test \
+	  :source-webdav:test
+
+local-check: oauth-config-test oauth-config-check ## Cheap host-side contract/config gate; compilation belongs to CI by default.
+
 test: oauth-config-check robolectric-runtime ## Run JVM unit and module contract tests in Docker.
 	@bash ./scripts/docker-run.sh test
 
@@ -125,6 +180,10 @@ desktop-crash-recovery-smoke: desktop-package ## Force mpv exit and verify expli
 	@mkdir -p .cache/gradle
 	@JAVA_HOME="$(DESKTOP_JAVA_HOME)" GRADLE_USER_HOME="$$PWD/.cache/gradle" \
 	  ./gradlew --no-daemon :desktop-app:run --args='--crash-recovery-smoke'
+
+desktop-local-tag-recovery-process-smoke: desktop-package ## SIGKILL after local tag replacement, restart packaged app, reselect root, and verify guarded rollback.
+	@bash scripts/desktop-local-tag-recovery-process-smoke.sh \
+	  desktop-app/build/compose/binaries/main/app/properpcloud/bin/properpcloud
 
 desktop-resilience-soak: desktop-package ## Exercise pause/seek/checkpoint and controlled mpv recovery for a bounded retained run.
 	@command -v mpv >/dev/null || { echo "mpv is required" >&2; exit 1; }
@@ -208,7 +267,7 @@ desktop-session-audit: desktop-package ## Record redacted Secret Service and ext
 arch-package-gate: ## Clean-build, install, and smoke the immutable current-version Arch package in a container.
 	@bash scripts/arch-package-gate.sh
 
-linux-ci: desktop-test desktop-package desktop-smoke desktop-crash-recovery-smoke desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit ## Run native Linux unit, package, recovery, keyring, accessibility, mpv, SQLite, and MPRIS gates.
+linux-ci: desktop-test desktop-package desktop-smoke desktop-crash-recovery-smoke desktop-local-tag-recovery-process-smoke desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit ## Run native Linux unit, package, recovery, keyring, accessibility, mpv, SQLite, and MPRIS gates.
 
 docs-install: ## Install the pinned documentation renderer dependencies.
 	@cd website && $(NPM) ci
