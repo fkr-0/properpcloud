@@ -1,0 +1,36 @@
+version: 0.2.0-rc.11
+tag: v0.2.0-rc.11
+status: release_candidate_for_hands_on_testing
+base_release: v0.2.0-rc.10
+final_target: v0.2.0
+date: 2026-10-08
+objective: >-
+  refresh compatible documentation dependencies and produce a verified release candidate
+  without claiming completion of the stable 0.2.0 promotion gates
+included_work:
+  - update Astro, Starlight and Astro Check to qualified newer versions
+  - apply compatible npm transitive security fixes to eliminate high-severity production findings
+  - retain existing Android build stack until newer versions are separately compatibility-verified
+upgrade_note: >-
+  older Android RC artifacts may use a different signing identity; an in-place upgrade may
+  require uninstall/reinstall if the existing installation was signed with an ephemeral key
+verification_required_before_tag:
+  - make doctor
+  - make test
+  - make lint
+  - make build
+  - make ci
+  - make release-check
+  - git diff --check
+final_0_2_0_blockers_not_claimed_by_this_candidate:
+  - physical power-cut filesystem durability evidence
+  - physical media-key and suspend/resume observations
+  - GNOME and KDE session observations
+  - protected Europe and United States pCloud validation
+  - retained provider soak and accessibility acceptance
+stable_promotion_policy: >-
+  pending stable-release promotion requirements are not treated as passing
+publication_scope: >-
+  operator authorizes a new RC commit, signed tag, main/tag push, exact-tag CI verification,
+  and APK delivery through tgtext; publish only after verification succeeds
+warning: this prerelease is for hands-on testing; final v0.2.0 promotion remains fail-closed

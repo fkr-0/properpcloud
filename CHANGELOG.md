@@ -41,6 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stable `v0.2.0` is **not yet tagged**. The canonical pre-tag promotion gate still blocks on physical power-cut durability, the Linux AT-SPI/screen-reader boundary, physical media-key and suspend/resume observations, GNOME/KDE session observations, protected Europe/United States pCloud validation, and the retained protected-provider soak. The exact `v0.2.0` Arch rebuild is intentionally post-tag.
 - The release pipeline now enforces stable signing authority, but the repository has not demonstrated the real production keystore in this local checkout; ordinary local output remains an intentionally non-publishable debug-signed APK. Stable promotion remains fail-closed until the authoritative release gates are satisfied.
 
+## [0.2.0-rc.11] - 2026-10-08
+
+### Changed
+
+- Updated documentation dependencies to Astro 7.3.7, Starlight 0.42.5, and Astro Check 0.9.10 with compatible transitive security fixes.
+
+### Testing
+
+- Documentation tests, typecheck and site build passed; production audit has no high-severity advisories. Moderate transitive PostCSS issues remain pending upstream resolution.
+
 ## [0.2.0-rc.10] - 2026-09-30
 
 ### Added
@@ -937,7 +947,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.10...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.11...HEAD
+[0.2.0-rc.11]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.10...v0.2.0-rc.11
 [0.2.0-rc.10]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.8...v0.2.0-rc.10
 [0.2.0-rc.9]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.8...f3138e0d102514ec7edfa403639729bf02a4c8aa
 [0.2.0-rc.8]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.7...v0.2.0-rc.8
