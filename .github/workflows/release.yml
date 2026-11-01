@@ -30,6 +30,7 @@ jobs:
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ORG_GRADLE_PROJECT_requireReleaseSigning: "true"
     timeout-minutes: 60
 
     steps:
@@ -114,8 +115,6 @@ jobs:
 
       - name: Verify and build Android plus shared desktop image
         run: make ci
-        env:
-          ORG_GRADLE_PROJECT_requireReleaseSigning: "true"
 
       - name: Upload release verification reports
         if: always()

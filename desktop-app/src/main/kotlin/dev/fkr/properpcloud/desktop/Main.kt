@@ -190,7 +190,7 @@ private fun runMprisSmoke() = runBlocking {
             ),
         )
         println("properpcloud MPRIS smoke ready")
-        delay(15_000)
+        delay(30_000)
     }
 }
 
