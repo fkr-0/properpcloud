@@ -1,0 +1,18 @@
+version: 0.3.1
+tag: v0.3.1
+status: release
+base_release: v0.3.0
+date: 2026-11-01
+objective: >-
+  fix CI failures from 0.3.0 package rename (MPRIS Java packages, changelog
+  links, npm audit) and merge pending dependency updates
+included_work:
+  - repair MPRIS D-Bus Java interface package declarations missed by the rename
+  - add missing changelog comparison links for the release-changelog-links test
+  - resolve high-severity npm audit findings in website dependencies
+  - merge GitHub Actions dependency updates (download-artifact, setup-node,
+    setup-buildx-action, build-push-action, action-gh-release)
+  - merge Gradle dependency updates (AGP, Gradle wrapper, Compose BOM, Gson)
+  - close org.jetbrains.compose 1.12.1 PR as incompatible
+verification:
+  - make local-check (139 host tests pass)

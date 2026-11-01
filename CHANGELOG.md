@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-01
+
+### Fixed
+
+- Repaired MPRIS D-Bus Java interface package declarations (`MediaPlayer2`, `Player`) missed by the 0.3.0 package rename, which broke desktop-app compilation in CI.
+- Added missing `[0.3.0]` comparison link and updated `[Unreleased]` link in CHANGELOG to satisfy the release-changelog-links contract test.
+- Resolved high-severity npm audit findings (undici, zod) in website dependencies.
+
+### Changed
+
+- Updated GitHub Actions: `actions/download-artifact` 6→8, `actions/setup-node` 5→7, `docker/setup-buildx-action` 4.2→4.4, `docker/build-push-action` 7.3→7.4, `softprops/action-gh-release` 3.0.2→3.0.3.
+- Updated Gradle dependencies: AGP 9.3→9.4, Gradle wrapper 9.6→9.8, Compose BOM 2026.08→2026.09, Gson 2.11→2.14.
+
 ## [0.3.0] - 2026-11-01
 
 ### Changed
@@ -958,7 +971,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/fkr-0/properpcloud/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.11...v0.3.0
 [0.2.0-rc.11]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.10...v0.2.0-rc.11
 [0.2.0-rc.10]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.8...v0.2.0-rc.10
