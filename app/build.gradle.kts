@@ -39,7 +39,7 @@ val requireReleaseSigning = providers.gradleProperty("requireReleaseSigning").or
 if (requireReleaseSigning && !releaseSigningConfigured) {
     throw GradleException("Release signing is required but missing: ${missingSigningInputs.sorted().joinToString()}")
 }
-if (releaseSigningConfigured && !file(releaseSigningInputs.getValue("storeFile")!!).isFile) {
+if (releaseSigningConfigured && !rootProject.file(releaseSigningInputs.getValue("storeFile")!!).isFile) {
     throw GradleException("Release keystore not found: ${releaseSigningInputs.getValue("storeFile")}")
 }
 if (!releaseSigningConfigured && missingSigningInputs.size < releaseSigningInputs.size) {
@@ -78,7 +78,7 @@ android {
     signingConfigs {
         if (releaseSigningConfigured) {
             create("release") {
-                storeFile = file(releaseSigningInputs.getValue("storeFile")!!)
+                storeFile = rootProject.file(releaseSigningInputs.getValue("storeFile")!!)
                 storePassword = releaseSigningInputs.getValue("storePassword")
                 keyAlias = releaseSigningInputs.getValue("keyAlias")
                 keyPassword = releaseSigningInputs.getValue("keyPassword")
