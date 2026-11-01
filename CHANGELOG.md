@@ -958,7 +958,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.11...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.11...v0.3.0
 [0.2.0-rc.11]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.10...v0.2.0-rc.11
 [0.2.0-rc.10]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.8...v0.2.0-rc.10
 [0.2.0-rc.9]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.8...f3138e0d102514ec7edfa403639729bf02a4c8aa

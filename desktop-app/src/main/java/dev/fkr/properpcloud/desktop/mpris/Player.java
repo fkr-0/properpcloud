@@ -1,4 +1,4 @@
-package dev.properpcloud.desktop.mpris;
+package dev.fkr.properpcloud.desktop.mpris;
 
 import org.freedesktop.dbus.DBusPath;
 import org.freedesktop.dbus.annotations.DBusInterfaceName;
