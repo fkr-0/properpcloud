@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-UI = (ROOT / "desktop-app" / "src" / "main" / "kotlin" / "dev" / "properpcloud" / "desktop" / "DesktopUi.kt").read_text(encoding="utf-8")
+UI = (ROOT / "desktop-app" / "src" / "main" / "kotlin" / "dev" / "fkr" / "properpcloud" / "desktop" / "DesktopUi.kt").read_text(encoding="utf-8")
 
 
 class DesktopKeyboardHelpContractTest(unittest.TestCase):

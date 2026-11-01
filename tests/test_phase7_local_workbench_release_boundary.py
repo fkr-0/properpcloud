@@ -11,7 +11,7 @@ def read(path: str) -> str:
 
 class Phase7LocalWorkbenchReleaseBoundaryTest(unittest.TestCase):
     def test_apply_revalidates_after_rollback_copy_and_before_destructive_replace(self) -> None:
-        source = read("metadata-tags/src/main/java/dev/properpcloud/metadata/tags/FolderTagApplyService.kt")
+        source = read("metadata-tags/src/main/java/dev/fkr/properpcloud/metadata/tags/FolderTagApplyService.kt")
         rollback = source.index("createRollbackSibling(canonicalFile, currentHash)")
         final_guard = source.index("val immediatelyBeforeReplaceHash")
         replace = source.index("atomicReplaceOperation(staged.stagedFile, canonicalFile)")
@@ -20,7 +20,7 @@ class Phase7LocalWorkbenchReleaseBoundaryTest(unittest.TestCase):
         self.assertIn("File content changed immediately before atomic replacement", source)
 
     def test_ambiguous_replace_keeps_recovery_bytes_and_only_guards_known_candidate(self) -> None:
-        source = read("metadata-tags/src/main/java/dev/properpcloud/metadata/tags/FolderTagApplyService.kt")
+        source = read("metadata-tags/src/main/java/dev/fkr/properpcloud/metadata/tags/FolderTagApplyService.kt")
         self.assertIn("val candidateIsCurrent = observedHash?.equals(staged.stagedSha256", source)
         self.assertIn("resultSha256 = observedHash.takeIf { candidateIsCurrent }", source)
         self.assertIn("rollbackFile = rollback.takeIf(File::isFile)", source)
@@ -29,8 +29,8 @@ class Phase7LocalWorkbenchReleaseBoundaryTest(unittest.TestCase):
         self.assertIn("durably verified as restored", source)
 
     def test_session_and_host_have_no_force_rollback_escape_hatch(self) -> None:
-        session = read("metadata-tags/src/main/java/dev/properpcloud/metadata/tags/FolderMetadataSuiteSession.kt")
-        host = read("metadata-tags/src/main/java/dev/properpcloud/metadata/tags/LocalFolderWorkbenchHost.kt")
+        session = read("metadata-tags/src/main/java/dev/fkr/properpcloud/metadata/tags/FolderMetadataSuiteSession.kt")
+        host = read("metadata-tags/src/main/java/dev/fkr/properpcloud/metadata/tags/LocalFolderWorkbenchHost.kt")
         self.assertIn("result.status == ApplyResultStatus.INDETERMINATE", session)
         self.assertIn("result.resultSha256 == null || result.rollbackFile == null", session)
         rollback_body = session[session.index("fun rollbackTagResult(") : session.index("/** Build a direct-folder", session.index("fun rollbackTagResult("))]
@@ -40,14 +40,14 @@ class Phase7LocalWorkbenchReleaseBoundaryTest(unittest.TestCase):
         self.assertIn("suspend fun rollbackTagResult", host)
 
     def test_desktop_binding_confines_rollback_to_selected_root(self) -> None:
-        source = read("desktop-app/src/main/kotlin/dev/properpcloud/desktop/metadata/DesktopLocalFolderBinding.kt")
+        source = read("desktop-app/src/main/kotlin/dev/fkr/properpcloud/desktop/metadata/DesktopLocalFolderBinding.kt")
         self.assertIn("targetPath != rootPath && targetPath.startsWith(rootPath)", source)
         self.assertIn("rollback target escaped the selected local root", source)
         self.assertIn("val rolledBack = host.rollbackTagResult(result)", source)
         self.assertIn("return projectRecoveryGate(rolledBack)", source)
 
     def test_controller_presents_redacted_outcomes_and_preserves_recovery_gate(self) -> None:
-        source = read("desktop-app/src/main/kotlin/dev/properpcloud/desktop/DesktopController.kt")
+        source = read("desktop-app/src/main/kotlin/dev/fkr/properpcloud/desktop/DesktopController.kt")
         self.assertIn("data class DesktopLocalTagOutcome", source)
         self.assertIn("val recoveryRequired: Boolean = false", source)
         self.assertIn("localTagRecoveryResults.any { it.status == ApplyResultStatus.INDETERMINATE }", source)
@@ -58,7 +58,7 @@ class Phase7LocalWorkbenchReleaseBoundaryTest(unittest.TestCase):
         self.assertNotIn("rollbackFile.absolutePath", source)
 
     def test_local_workbench_semantics_and_recovery_disable_mutations(self) -> None:
-        source = read("desktop-app/src/main/kotlin/dev/properpcloud/desktop/DesktopUi.kt")
+        source = read("desktop-app/src/main/kotlin/dev/fkr/properpcloud/desktop/DesktopUi.kt")
         self.assertIn("Local metadata workbench", source)
         self.assertIn("modifier = Modifier.semantics { heading() }", source)
         self.assertIn("&& !state.recoveryRequired", source)
@@ -69,7 +69,7 @@ class Phase7LocalWorkbenchReleaseBoundaryTest(unittest.TestCase):
         self.assertIn("A later external edit causes a conflict instead of being overwritten", source)
 
     def test_large_text_layout_splits_consent_and_mutation_controls(self) -> None:
-        source = read("desktop-app/src/main/kotlin/dev/properpcloud/desktop/DesktopUi.kt")
+        source = read("desktop-app/src/main/kotlin/dev/fkr/properpcloud/desktop/DesktopUi.kt")
         tag_start = source.index("Allow recursive tag plan")
         playlist_start = source.index('Text("Playlist:')
         self.assertIn("Column(verticalArrangement = Arrangement.spacedBy(6.dp))", source[tag_start - 1200 : tag_start + 1800])
@@ -88,7 +88,7 @@ class Phase7LocalWorkbenchReleaseBoundaryTest(unittest.TestCase):
 
     def test_flatpak_permissions_remain_narrow_and_local_selector_fails_closed(self) -> None:
         package = read("scripts/package-flatpak.sh")
-        selector = read("desktop-app/src/main/kotlin/dev/properpcloud/desktop/platform/LocalFolderSelector.kt")
+        selector = read("desktop-app/src/main/kotlin/dev/fkr/properpcloud/desktop/platform/LocalFolderSelector.kt")
         self.assertNotIn("--filesystem=host", package)
         self.assertNotIn("--filesystem=home", package)
         self.assertIn("--filesystem=xdg-run/properpcloud:create", package)
@@ -97,8 +97,8 @@ class Phase7LocalWorkbenchReleaseBoundaryTest(unittest.TestCase):
         self.assertIn("document-portal", selector.lower())
 
     def test_kotlin_recovery_regressions_cover_conflict_interruption_and_host_recovery(self) -> None:
-        service_test = read("metadata-tags/src/test/java/dev/properpcloud/metadata/tags/FolderTagApplyServiceTest.kt")
-        host_test = read("metadata-tags/src/test/java/dev/properpcloud/metadata/tags/LocalFolderWorkbenchHostTest.kt")
+        service_test = read("metadata-tags/src/test/java/dev/fkr/properpcloud/metadata/tags/FolderTagApplyServiceTest.kt")
+        host_test = read("metadata-tags/src/test/java/dev/fkr/properpcloud/metadata/tags/LocalFolderWorkbenchHostTest.kt")
         self.assertIn("userRollbackRefusesUnknownCurrentResultHashEvenWhenRecoveryBytesExist", service_test)
         self.assertIn("sourceChangeDuringStagingIsAConflictBeforeAtomicReplacement", service_test)
         self.assertIn("ambiguousReplacementRetainsGuardedRollbackAndBatchStopsUntilRecovery", service_test)

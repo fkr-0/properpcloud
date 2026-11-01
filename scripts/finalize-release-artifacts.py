@@ -62,7 +62,7 @@ def main() -> int:
     evidence["linux_distribution"] = {
         "architecture": "x86_64",
         "appimage_runtime": "bundled jlink runtime; host mpv remains required",
-        "flatpak_app_id": "dev.properpcloud.app",
+        "flatpak_app_id": "dev.fkr.properpcloud.app",
         "flatpak_runtime": f"org.freedesktop.Platform//{args.flatpak_runtime_version}",
         "flatpak_mpv_boundary": (
             "host mpv invoked through flatpak-spawn with only "

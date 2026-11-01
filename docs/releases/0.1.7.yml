@@ -29,7 +29,7 @@ release:
       hints: 6
   artifact:
     path: app/build/outputs/apk/debug/app-debug.apk
-    package: dev.properpcloud.app
+    package: dev.fkr.properpcloud.app
     version_code: 1007
     version_name: 0.1.7
     production_signed: false

@@ -3,8 +3,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOAK = ROOT / "desktop-app" / "src" / "main" / "kotlin" / "dev" / "properpcloud" / "desktop" / "ResilienceSoak.kt"
-MAIN = ROOT / "desktop-app" / "src" / "main" / "kotlin" / "dev" / "properpcloud" / "desktop" / "Main.kt"
+SOAK = ROOT / "desktop-app" / "src" / "main" / "kotlin" / "dev" / "fkr" / "properpcloud" / "desktop" / "ResilienceSoak.kt"
+MAIN = ROOT / "desktop-app" / "src" / "main" / "kotlin" / "dev" / "fkr" / "properpcloud" / "desktop" / "Main.kt"
 
 
 class ResilienceSoakContractTest(unittest.TestCase):

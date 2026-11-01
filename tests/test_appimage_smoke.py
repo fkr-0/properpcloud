@@ -38,7 +38,7 @@ test "${{PROPERPCLOUD_CLEAN_PROFILE:-}}" = 1
 echo fake-package-smoke-ok
 APP
 chmod 0755 squashfs-root/usr/lib/properpcloud/bin/properpcloud
-cat > squashfs-root/usr/share/applications/dev.properpcloud.app.desktop <<'DESKTOP'
+cat > squashfs-root/usr/share/applications/dev.fkr.properpcloud.app.desktop <<'DESKTOP'
 [Desktop Entry]
 Name=properpcloud
 X-AppImage-Version={VERSION}

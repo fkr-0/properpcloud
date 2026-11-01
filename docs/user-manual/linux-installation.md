@@ -24,7 +24,7 @@ chmod +x properpcloud-{{LATEST_RELEASE_VERSION}}-x86_64.AppImage
 
 ```bash
 flatpak install --user ./properpcloud-{{LATEST_RELEASE_VERSION}}-x86_64.flatpak
-flatpak run dev.properpcloud.app
+flatpak run dev.fkr.properpcloud.app
 ```
 
 ## Runtime requirements

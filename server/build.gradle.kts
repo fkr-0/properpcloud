@@ -25,5 +25,5 @@ dependencies {
 }
 
 application {
-    mainClass.set("dev.properpcloud.server.ServerMainKt")
+    mainClass.set("dev.fkr.properpcloud.server.ServerMainKt")
 }

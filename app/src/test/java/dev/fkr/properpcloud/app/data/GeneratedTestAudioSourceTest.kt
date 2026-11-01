@@ -1,0 +1,37 @@
+package dev.fkr.properpcloud.app.data
+
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import dev.fkr.properpcloud.core.model.AudioFolder
+import dev.fkr.properpcloud.core.model.AudioTrack
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import java.io.File
+
+@RunWith(RobolectricTestRunner::class)
+class GeneratedTestAudioSourceTest {
+    private val context: Context = ApplicationProvider.getApplicationContext()
+
+    @Test
+    fun generatedLibraryContainsNestedFolderFirstContent() = runTest {
+        val source = GeneratedTestAudioSource(context)
+        val rootChildren = source.list(source.root.id)
+        assertEquals(listOf("Audiobooks", "Field recordings", "Numbered tracks"), rootChildren.map { it.name })
+        assertTrue(rootChildren.all { it is AudioFolder })
+    }
+
+    @Test
+    fun generatedStreamProducesAValidLocalWav() = runTest {
+        val source = GeneratedTestAudioSource(context)
+        val musicFolder = source.list(source.root.id).filterIsInstance<AudioFolder>().first { it.name == "Numbered tracks" }
+        val track = source.list(musicFolder.id).filterIsInstance<AudioTrack>().first()
+        val stream = source.resolveStream(track.id)
+        val file = File(requireNotNull(android.net.Uri.parse(stream.url).path))
+        assertTrue(file.exists())
+        assertEquals("RIFF", file.inputStream().use { String(it.readNBytes(4), Charsets.US_ASCII) })
+    }
+}

@@ -1,6 +1,6 @@
 # pCloud adapter API
 
-Package: `dev.properpcloud.source.pcloud`
+Package: `dev.fkr.properpcloud.source.pcloud`
 
 ## PCloudSession
 

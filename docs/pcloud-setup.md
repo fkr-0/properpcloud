@@ -26,7 +26,7 @@ client secret is intentionally not read, exported to Docker, written to
 
 1. Sign in to pCloud's developer console and verify the properpcloud application.
 2. Confirm that the application permits the Android SDK token flow.
-3. Register `pcloud-oauth://dev.properpcloud.app` as the redirect URI.
+3. Register `pcloud-oauth://dev.fkr.properpcloud.app` as the redirect URI.
 4. Enable **Allow implicit grant**, as required by pCloud's Android SDK token flow.
 5. Put only the public client ID in the ignored local `.env` as
    `PCLOUD_CLIENT_ID=...` and run `make oauth-config-check`.

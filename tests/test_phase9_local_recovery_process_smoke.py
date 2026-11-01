@@ -9,11 +9,11 @@ class Phase9LocalRecoveryProcessSmokeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.main = (
-            ROOT / "desktop-app/src/main/kotlin/dev/properpcloud/desktop/Main.kt"
+            ROOT / "desktop-app/src/main/kotlin/dev/fkr/properpcloud/desktop/Main.kt"
         ).read_text(encoding="utf-8")
         cls.smoke = (
             ROOT
-            / "desktop-app/src/main/kotlin/dev/properpcloud/desktop/DesktopLocalTagRecoveryProcessSmoke.kt"
+            / "desktop-app/src/main/kotlin/dev/fkr/properpcloud/desktop/DesktopLocalTagRecoveryProcessSmoke.kt"
         ).read_text(encoding="utf-8")
         cls.script = (ROOT / "scripts/desktop-local-tag-recovery-process-smoke.sh").read_text(
             encoding="utf-8"

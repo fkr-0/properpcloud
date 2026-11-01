@@ -1,6 +1,6 @@
 # Desktop platform API
 
-Packages: `dev.properpcloud.desktop.*`
+Packages: `dev.fkr.properpcloud.desktop.*`
 
 The desktop classes are public primarily for integration tests and future platform composition. Their behavioral contracts matter more than binary stability before the first desktop release.
 

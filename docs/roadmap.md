@@ -213,7 +213,7 @@ Status: **implementation complete; application registration and repository varia
 - regional `/logout` invalidation uses an HTTPS bearer header and typed safe outcomes.
 
 The application-registration and repository-variable steps are complete. Remaining
-external gates are to confirm `pcloud-oauth://dev.properpcloud.app` and implicit
+external gates are to confirm `pcloud-oauth://dev.fkr.properpcloud.app` and implicit
 grant in the provider console and complete protected US/EU OAuth and logout tests.
 The client secret is not a client build input and must remain outside Android/Linux
 binaries and release automation.

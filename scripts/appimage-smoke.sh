@@ -35,7 +35,7 @@ trap cleanup EXIT
 
 appdir="$work/squashfs-root"
 launcher="$appdir/AppRun"
-desktop="$appdir/usr/share/applications/dev.properpcloud.app.desktop"
+desktop="$appdir/usr/share/applications/dev.fkr.properpcloud.app.desktop"
 binary="$appdir/usr/lib/properpcloud/bin/properpcloud"
 
 if [[ ! -f "$launcher" || -L "$launcher" || ! -x "$launcher" || ! -s "$launcher" ]]; then

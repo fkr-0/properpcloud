@@ -4,7 +4,7 @@ set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 version=$(<"$root/VERSION")
 version=${version//$'\n'/}
-app_id=dev.properpcloud.app
+app_id=dev.fkr.properpcloud.app
 bundle=${1:-}
 
 if [[ -z "$bundle" ]]; then

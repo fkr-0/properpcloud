@@ -4,7 +4,7 @@ set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 version=$(<"$root/VERSION")
 version=${version//$'\n'/}
-app_id="dev.properpcloud.app"
+app_id="dev.fkr.properpcloud.app"
 runtime_version="${PROPERPCLOUD_FLATPAK_RUNTIME_VERSION:-25.08}"
 source_image="${PROPERPCLOUD_DESKTOP_IMAGE:-$root/desktop-app/build/compose/binaries/main/app/properpcloud}"
 output_dir="${PROPERPCLOUD_LINUX_OUTPUT_DIR:-$root/build/releases}"
@@ -57,14 +57,14 @@ cp -a "$source_image/." "$build_dir/files/lib/properpcloud/"
 install -Dm755 "$root/packaging/flatpak/properpcloud" "$build_dir/files/bin/properpcloud"
 install -Dm755 "$root/packaging/flatpak/mpv-host" "$build_dir/files/bin/mpv"
 install -Dm644 \
-  "$root/packaging/linux/dev.properpcloud.app.desktop" \
-  "$build_dir/files/share/applications/dev.properpcloud.app.desktop"
+  "$root/packaging/linux/dev.fkr.properpcloud.app.desktop" \
+  "$build_dir/files/share/applications/dev.fkr.properpcloud.app.desktop"
 install -Dm644 \
-  "$root/packaging/linux/dev.properpcloud.app.png" \
-  "$build_dir/files/share/icons/hicolor/512x512/apps/dev.properpcloud.app.png"
+  "$root/packaging/linux/dev.fkr.properpcloud.app.png" \
+  "$build_dir/files/share/icons/hicolor/512x512/apps/dev.fkr.properpcloud.app.png"
 install -Dm644 \
-  "$root/packaging/linux/dev.properpcloud.app.metainfo.xml" \
-  "$build_dir/files/share/metainfo/dev.properpcloud.app.metainfo.xml"
+  "$root/packaging/linux/dev.fkr.properpcloud.app.metainfo.xml" \
+  "$build_dir/files/share/metainfo/dev.fkr.properpcloud.app.metainfo.xml"
 
 flatpak build-finish \
   --command=properpcloud \

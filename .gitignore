@@ -20,6 +20,9 @@ dist/
 build/
 **/build/
 local.properties
+keystore.properties
+*.jks
+*.keystore
 captures/
 .externalNativeBuild/
 .cxx/

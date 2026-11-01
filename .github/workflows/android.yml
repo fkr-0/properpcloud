@@ -73,7 +73,7 @@ jobs:
           name: properpcloud-debug-and-reports
           if-no-files-found: warn
           path: |
-            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/*/app-*.apk
             desktop-app/build/compose/binaries/main/app/**
             **/build/reports/tests/**
             **/build/reports/lint-results-*.html

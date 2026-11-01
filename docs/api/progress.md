@@ -1,6 +1,6 @@
 # Progress API
 
-Package: `dev.properpcloud.core.model`
+Package: `dev.fkr.properpcloud.core.model`
 
 ## PlaybackProgress
 

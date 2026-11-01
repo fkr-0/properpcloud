@@ -26,7 +26,7 @@ release:
       actionable_tasks: 192
   artifact:
     path: app/build/outputs/apk/debug/app-debug.apk
-    package: dev.properpcloud.app
+    package: dev.fkr.properpcloud.app
     version_code: 1001
     version_name: 0.1.1
     production_signed: false

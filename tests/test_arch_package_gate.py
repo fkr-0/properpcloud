@@ -19,8 +19,8 @@ class ArchPackageGateTest(unittest.TestCase):
         self.assertIn("@SOURCE_SHA256@", content)
         self.assertNotIn("SKIP", content)
         self.assertIn(":desktop-app:createDistributable", content)
-        self.assertIn("dev.properpcloud.app.png", content)
-        self.assertNotIn("dev.properpcloud.app.svg", content)
+        self.assertIn("dev.fkr.properpcloud.app.png", content)
+        self.assertNotIn("dev.fkr.properpcloud.app.svg", content)
         self.assertIn("THIRD_PARTY_NOTICES.md", content)
 
 

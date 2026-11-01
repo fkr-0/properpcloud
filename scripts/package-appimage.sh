@@ -35,18 +35,18 @@ cp -a "$source_image/." "$appdir/usr/lib/properpcloud/"
 install -Dm755 "$root/packaging/linux/AppRun" "$appdir/AppRun"
 ln -s ../lib/properpcloud/bin/properpcloud "$appdir/usr/bin/properpcloud"
 install -Dm644 \
-  "$root/packaging/linux/dev.properpcloud.app.desktop" \
-  "$appdir/usr/share/applications/dev.properpcloud.app.desktop"
-printf 'X-AppImage-Version=%s\n' "$version" >> "$appdir/usr/share/applications/dev.properpcloud.app.desktop"
+  "$root/packaging/linux/dev.fkr.properpcloud.app.desktop" \
+  "$appdir/usr/share/applications/dev.fkr.properpcloud.app.desktop"
+printf 'X-AppImage-Version=%s\n' "$version" >> "$appdir/usr/share/applications/dev.fkr.properpcloud.app.desktop"
 install -Dm644 \
-  "$root/packaging/linux/dev.properpcloud.app.png" \
-  "$appdir/usr/share/icons/hicolor/512x512/apps/dev.properpcloud.app.png"
+  "$root/packaging/linux/dev.fkr.properpcloud.app.png" \
+  "$appdir/usr/share/icons/hicolor/512x512/apps/dev.fkr.properpcloud.app.png"
 install -Dm644 \
-  "$root/packaging/linux/dev.properpcloud.app.metainfo.xml" \
-  "$appdir/usr/share/metainfo/dev.properpcloud.app.metainfo.xml"
-ln -s dev.properpcloud.app.metainfo.xml "$appdir/usr/share/metainfo/dev.properpcloud.app.appdata.xml"
-ln -s usr/share/applications/dev.properpcloud.app.desktop "$appdir/dev.properpcloud.app.desktop"
-ln -s usr/share/icons/hicolor/512x512/apps/dev.properpcloud.app.png "$appdir/dev.properpcloud.app.png"
+  "$root/packaging/linux/dev.fkr.properpcloud.app.metainfo.xml" \
+  "$appdir/usr/share/metainfo/dev.fkr.properpcloud.app.metainfo.xml"
+ln -s dev.fkr.properpcloud.app.metainfo.xml "$appdir/usr/share/metainfo/dev.fkr.properpcloud.app.appdata.xml"
+ln -s usr/share/applications/dev.fkr.properpcloud.app.desktop "$appdir/dev.fkr.properpcloud.app.desktop"
+ln -s usr/share/icons/hicolor/512x512/apps/dev.fkr.properpcloud.app.png "$appdir/dev.fkr.properpcloud.app.png"
 
 export ARCH=x86_64
 export APPIMAGE_EXTRACT_AND_RUN=1

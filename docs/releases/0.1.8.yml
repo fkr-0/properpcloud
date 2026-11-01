@@ -57,7 +57,7 @@ release:
       - prohibit tokens, passwords, signed URLs, and private media in reports
   artifact:
     path: app/build/outputs/apk/debug/app-debug.apk
-    package: dev.properpcloud.app
+    package: dev.fkr.properpcloud.app
     version_code: 1008
     version_name: 0.1.8
     production_signed: false

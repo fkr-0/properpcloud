@@ -40,7 +40,7 @@ val appVersion = providers.fileContents(rootProject.layout.projectDirectory.file
 
 compose.desktop {
     application {
-        mainClass = "dev.properpcloud.desktop.MainKt"
+        mainClass = "dev.fkr.properpcloud.desktop.MainKt"
         nativeDistributions {
             targetFormats(TargetFormat.Deb, TargetFormat.Rpm)
             modules("java.sql", "jdk.security.auth", "jdk.httpserver")

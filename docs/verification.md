@@ -76,7 +76,7 @@ Robolectric_runtime_sha256: 16f1f751643d1d3d5592008846bbdfc1e57cff15e6ec303d2658
 
 ```yaml
 path: app/build/outputs/apk/debug/app-debug.apk
-package: dev.properpcloud.app
+package: dev.fkr.properpcloud.app
 version_code: 1000
 version_name: 0.1.0
 minimum_sdk: 26

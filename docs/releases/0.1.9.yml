@@ -67,7 +67,7 @@ release:
       exact_commit_digests: generated after the signed local candidate commit
   android_artifact:
     path: app/build/outputs/apk/debug/app-debug.apk
-    package: dev.properpcloud.app
+    package: dev.fkr.properpcloud.app
     version_code: 1009
     version_name: 0.1.9
     production_signed: false

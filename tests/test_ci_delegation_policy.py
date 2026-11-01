@@ -27,7 +27,7 @@ class CiDelegationPolicyTest(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "android.yml").read_text(encoding="utf-8")
         self.assertIn("pull_request:", workflow)
         self.assertIn("run: make ci", workflow)
-        self.assertIn("app/build/outputs/apk/debug/app-debug.apk", workflow)
+        self.assertIn("app/build/outputs/apk/*/app-*.apk", workflow)
 
     def test_release_workflow_marks_semver_prereleases_and_never_makes_them_latest(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
@@ -44,25 +44,32 @@ class CiDelegationPolicyTest(unittest.TestCase):
         prepare_release = (ROOT / "scripts" / "prepare-release.py").read_text(encoding="utf-8")
 
         for secret in (
-            "ANDROID_RELEASE_KEYSTORE_BASE64",
-            "ANDROID_RELEASE_KEYSTORE_PASSWORD",
-            "ANDROID_RELEASE_KEY_ALIAS",
-            "ANDROID_RELEASE_KEY_PASSWORD",
+            "ANDROID_KEYSTORE_BASE64",
+            "ANDROID_KEYSTORE_PASSWORD",
+            "ANDROID_KEY_ALIAS",
+            "ANDROID_KEY_PASSWORD",
         ):
             self.assertIn(f"secrets.{secret}", workflow)
-        self.assertIn('PROPERPCLOUD_REQUIRE_STABLE_SIGNING: "true"', workflow)
+        self.assertIn('ORG_GRADLE_PROJECT_requireReleaseSigning: "true"', workflow)
         self.assertIn("base64 --decode", workflow)
-        self.assertIn('rm -f "$PROPERPCLOUD_ANDROID_KEYSTORE_PATH"', workflow)
+        self.assertIn('rm -f "$ANDROID_KEYSTORE_FILE"', workflow)
 
         for variable in (
-            "PROPERPCLOUD_REQUIRE_STABLE_SIGNING",
-            "PROPERPCLOUD_ANDROID_KEYSTORE_PATH",
-            "PROPERPCLOUD_ANDROID_KEYSTORE_PASSWORD",
-            "PROPERPCLOUD_ANDROID_KEY_ALIAS",
-            "PROPERPCLOUD_ANDROID_KEY_PASSWORD",
+            "ORG_GRADLE_PROJECT_requireReleaseSigning",
+            "ANDROID_KEYSTORE_FILE",
+            "ANDROID_KEYSTORE_PASSWORD",
+            "ANDROID_KEY_ALIAS",
+            "ANDROID_KEY_PASSWORD",
         ):
             self.assertIn(variable, docker_run)
-            self.assertIn(variable, app_gradle if variable != "PROPERPCLOUD_ANDROID_KEYSTORE_PASSWORD" else app_gradle)
+        for variable in (
+            "requireReleaseSigning",
+            "ANDROID_KEYSTORE_FILE",
+            "ANDROID_KEYSTORE_PASSWORD",
+            "ANDROID_KEY_ALIAS",
+            "ANDROID_KEY_PASSWORD",
+        ):
+            self.assertIn(variable, app_gradle)
         self.assertIn("publishable Android artifacts require", prepare_release)
         self.assertIn("stable Android signing configuration is incomplete", prepare_release)
 

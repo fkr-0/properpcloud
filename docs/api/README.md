@@ -6,12 +6,12 @@ This reference documents the stable source-neutral contracts used by both Androi
 
 | Package | Purpose |
 | --- | --- |
-| `dev.properpcloud.core.model` | Stable identities, media nodes, sources, queue, sorting, and progress policy. |
-| `dev.properpcloud.source.pcloud` | pCloud node mapping, session creation, source adapter, and verified metadata download. |
-| `dev.properpcloud.source.webdav` | Portable WebDAV endpoint contract. |
-| `dev.properpcloud.metadata.tags` | Embedded tag parsing and mutation boundary. |
-| `dev.properpcloud.metadata.online` | Online metadata lookup boundary and provider implementations. |
-| `dev.properpcloud.desktop.*` | Linux platform adapters and orchestration. |
+| `dev.fkr.properpcloud.core.model` | Stable identities, media nodes, sources, queue, sorting, and progress policy. |
+| `dev.fkr.properpcloud.source.pcloud` | pCloud node mapping, session creation, source adapter, and verified metadata download. |
+| `dev.fkr.properpcloud.source.webdav` | Portable WebDAV endpoint contract. |
+| `dev.fkr.properpcloud.metadata.tags` | Embedded tag parsing and mutation boundary. |
+| `dev.fkr.properpcloud.metadata.online` | Online metadata lookup boundary and provider implementations. |
+| `dev.fkr.properpcloud.desktop.*` | Linux platform adapters and orchestration. |
 
 ## Contract pages
 

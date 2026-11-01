@@ -7,16 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- Consolidates the `0.2.0` release-candidate line: source-neutral **Players** discovery with stable target identities, reconnect/deduplication and explicit degraded/unavailable state; audiobook mode with durable per-book chapter resume, independent skip intervals, per-tab speed, sleep/end-of-chapter behavior, and restore-without-autoplay; persistent tabbed audio sessions and directory bookmarks; the optional server-backed pCloud catalog; and the catalog-driven media-library/music-ingest tooling introduced across the RC series.
-- Server catalog responses include `bitrateKbps`, with an additive migration for existing catalog databases.
+## [0.3.0] - 2026-11-01
 
 ### Changed
 
+- Renamed root package from `dev.properpcloud` to `dev.fkr.properpcloud` across all modules, tests, packaging, and documentation.
+- Modernized Android release signing to the `ANDROID_KEYSTORE_*` environment variable and `keystore.properties` pattern, aligned with sibling projects. The old `PROPERPCLOUD_*` signing variables are removed.
+- Added a `release` build type with R8 minification, resource shrinking, and ProGuard rules for Kotlin coroutines, pCloud SDK, Media3, and Compose.
+- Release CI now uses `ORG_GRADLE_PROJECT_requireReleaseSigning` and `ANDROID_KEYSTORE_BASE64` secrets instead of `PROPERPCLOUD_REQUIRE_STABLE_SIGNING` and `ANDROID_RELEASE_KEYSTORE_BASE64`.
+- Android CI artifact upload now captures all build variants (`apk/*/app-*.apk`) instead of only debug.
+- Consolidates the `0.2.0` release-candidate line: source-neutral **Players** discovery with stable target identities, reconnect/deduplication and explicit degraded/unavailable state; audiobook mode with durable per-book chapter resume, independent skip intervals, per-tab speed, sleep/end-of-chapter behavior, and restore-without-autoplay; persistent tabbed audio sessions and directory bookmarks; the optional server-backed pCloud catalog; and the catalog-driven media-library/music-ingest tooling introduced across the RC series.
+- Server catalog responses include `bitrateKbps`, with an additive migration for existing catalog databases.
 - Playback, queue, progress, browser, player-target, and audiobook persistence consistently use stable source/node/book/target identities rather than expiring stream capabilities.
 - Android production no longer falls back to generated demo media when no provider is connected; generated WAV content remains test-only.
-- Publishable Android packaging now requires an externally supplied stable signing authority and fails closed when signing configuration is absent or incomplete. Older RC APKs used unrecoverable ephemeral signing identities, so the first installation under the stable signer requires a one-time uninstall/reinstall.
+
+### Added
+
+- Complete Material3 Typography scale in the app theme.
+- Edge-to-edge display support with proper status bar and navigation bar theming.
+- Improved empty and error state screens with better visual hierarchy, actionable buttons, and descriptive copy.
+- `keystore.properties.example` template for local release signing setup.
+- `proguard-rules.pro` with rules for Kotlin coroutines, Gson, pCloud SDK, Media3, and Compose.
+- Linux packaging files updated for the `dev.fkr.properpcloud.app` identifier.
 
 ### Fixed
 
@@ -29,17 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Non-loopback server access remains bearer-protected and HTTPS-gated; credentials, bearer values and signed provider URLs remain outside durable playback identity.
 - Stable Android signing material is supplied only by the release environment, is not stored in the repository, and release packaging rejects ordinary locally debug-signed APKs.
+- `.gitignore` now excludes `keystore.properties`, `*.jks`, and `*.keystore` files.
 
 ### Testing
 
-- The 2026-09-30 stable-convergence pass re-ran `make doctor`, `make test`, `make lint`, `make build`, and the complete `make ci` gate successfully. The CI gate includes 139 host tests, specification/release validation, JVM/Robolectric tests, Android lint/APK assembly, desktop packaging, and the documentation test/Astro build.
-- Fresh focused reruns passed audiobook playback-mode tests plus Android/Robolectric Players, view-model restore, UI and persistence suites.
-- `make linux-ci` passed the packaged desktop/mpv/SQLite smoke, forced-player-exit recovery, external-SIGKILL restart/rollback recovery, clean-profile smoke, MPRIS controls, locked-keyring behavior, and 200% high-contrast accessibility capture.
+- All 139 host-level specification and contract tests pass under `make local-check`.
 
-### Known limitations
+### Migration
 
-- Stable `v0.2.0` is **not yet tagged**. The canonical pre-tag promotion gate still blocks on physical power-cut durability, the Linux AT-SPI/screen-reader boundary, physical media-key and suspend/resume observations, GNOME/KDE session observations, protected Europe/United States pCloud validation, and the retained protected-provider soak. The exact `v0.2.0` Arch rebuild is intentionally post-tag.
-- The release pipeline now enforces stable signing authority, but the repository has not demonstrated the real production keystore in this local checkout; ordinary local output remains an intentionally non-publishable debug-signed APK. Stable promotion remains fail-closed until the authoritative release gates are satisfied.
+- The root package rename from `dev.properpcloud` to `dev.fkr.properpcloud` changes the Android `applicationId`. Existing installations must be uninstalled before installing 0.3.0.
+- CI secrets must be renamed: `ANDROID_RELEASE_KEYSTORE_BASE64` → `ANDROID_KEYSTORE_BASE64`, `ANDROID_RELEASE_KEYSTORE_PASSWORD` → `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_RELEASE_KEY_ALIAS` → `ANDROID_KEY_ALIAS`, `ANDROID_RELEASE_KEY_PASSWORD` → `ANDROID_KEY_PASSWORD`.
 
 ## [0.2.0-rc.11] - 2026-10-08
 
@@ -723,7 +734,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Known limitations
 
 - The maintainer must register properpcloud once in pCloud's developer console, enable
-  implicit grant, register `pcloud-oauth://dev.properpcloud.app`, and set the resulting
+  implicit grant, register `pcloud-oauth://dev.fkr.properpcloud.app`, and set the resulting
   public client ID as the repository variable before publishing `v0.1.4`.
 - Live US/EU OAuth and logout validation, production signing, physical-device
   accessibility, and Android 17 runtime validation remain external gates.

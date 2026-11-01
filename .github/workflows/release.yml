@@ -25,12 +25,11 @@ jobs:
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
       PCLOUD_CLIENT_ID: ${{ vars.PCLOUD_CLIENT_ID }}
-      PROPERPCLOUD_REQUIRE_STABLE_SIGNING: "true"
-      PROPERPCLOUD_ANDROID_KEYSTORE_PATH: .cache/release-signing/properpcloud.jks
-      PROPERPCLOUD_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
-      PROPERPCLOUD_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
-      PROPERPCLOUD_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
-      ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_FILE: .cache/release-signing/properpcloud.jks
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     timeout-minutes: 60
 
     steps:
@@ -56,18 +55,25 @@ jobs:
           printf 'release_commit=%s\n' "$(git rev-parse HEAD)"
           git tag --points-at HEAD | grep --fixed-strings --line-regexp "$RELEASE_TAG"
 
-      - name: Materialize stable Android release signing key
+      - name: Require signing configuration
         shell: bash
         run: |
           set -euo pipefail
-          : "${ANDROID_RELEASE_KEYSTORE_BASE64:?missing ANDROID_RELEASE_KEYSTORE_BASE64 secret}"
-          : "${PROPERPCLOUD_ANDROID_KEYSTORE_PASSWORD:?missing ANDROID_RELEASE_KEYSTORE_PASSWORD secret}"
-          : "${PROPERPCLOUD_ANDROID_KEY_ALIAS:?missing ANDROID_RELEASE_KEY_ALIAS secret}"
-          : "${PROPERPCLOUD_ANDROID_KEY_PASSWORD:?missing ANDROID_RELEASE_KEY_PASSWORD secret}"
-          mkdir -p "$(dirname "$PROPERPCLOUD_ANDROID_KEYSTORE_PATH")"
-          printf '%s' "$ANDROID_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$PROPERPCLOUD_ANDROID_KEYSTORE_PATH"
-          chmod 600 "$PROPERPCLOUD_ANDROID_KEYSTORE_PATH"
-          test -s "$PROPERPCLOUD_ANDROID_KEYSTORE_PATH"
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Materialize release signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$ANDROID_KEYSTORE_FILE")"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_FILE"
+          chmod 600 "$ANDROID_KEYSTORE_FILE"
+          test -s "$ANDROID_KEYSTORE_FILE"
 
       - name: Validate optional bundled pCloud OAuth identity
         run: make release-client-id-check
@@ -108,6 +114,8 @@ jobs:
 
       - name: Verify and build Android plus shared desktop image
         run: make ci
+        env:
+          ORG_GRADLE_PROJECT_requireReleaseSigning: "true"
 
       - name: Upload release verification reports
         if: always()
@@ -118,7 +126,7 @@ jobs:
           path: |
             **/build/reports/tests/**
             **/build/test-results/**
-            app/build/reports/lint-results-debug.html
+            app/build/reports/lint-results-*.html
 
       - name: Prepare Android release baseline
         run: make release-artifacts
@@ -154,10 +162,10 @@ jobs:
           path: .release-inputs/properpcloud-desktop-image.tar.gz
           retention-days: 1
 
-      - name: Remove Android release signing key
+      - name: Remove release signing key
         if: always()
         shell: bash
-        run: rm -f "$PROPERPCLOUD_ANDROID_KEYSTORE_PATH"
+        run: rm -f "$ANDROID_KEYSTORE_FILE"
 
   appimage:
     needs: android

@@ -54,7 +54,7 @@ OAuth AuthorizationActivity
 The official Android authorization module expects a registered pCloud application and an OAuth redirect URI of the form:
 
 ```text
-pcloud-oauth://dev.properpcloud.app
+pcloud-oauth://dev.fkr.properpcloud.app
 ```
 
 The source adapter itself depends on the portable `java-core` artifact. The Android OAuth feature depends separately on the `android` artifact; pCloud does not publish the Android artifact with a transitive `java-core` dependency. The OAuth client ID is build configuration, not a secret. OAuth and legacy `auth` tokens are credentials and must be stored with Android Keystore-backed encryption. OAuth requires no password exposure to properpcloud; the explicitly fallback-only direct-login adapter handles a password only for one allowlisted regional HTTPS token request and never persists it.

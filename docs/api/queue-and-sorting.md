@@ -1,6 +1,6 @@
 # Queue and sorting API
 
-Package: `dev.properpcloud.core.model`
+Package: `dev.fkr.properpcloud.core.model`
 
 ## Queue model
 

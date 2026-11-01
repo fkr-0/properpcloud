@@ -42,18 +42,18 @@ def download_verified(url: str, destination: Path, expected_sha256: str) -> None
 
 
 def require_stable_android_signing(root: Path) -> None:
-    required = os.environ.get("PROPERPCLOUD_REQUIRE_STABLE_SIGNING", "").strip().lower()
+    required = os.environ.get("ORG_GRADLE_PROJECT_requireReleaseSigning", "").strip().lower()
     if required not in {"1", "true"}:
         raise SystemExit(
             "release error: publishable Android artifacts require "
-            "PROPERPCLOUD_REQUIRE_STABLE_SIGNING=true"
+            "ORG_GRADLE_PROJECT_requireReleaseSigning=true"
         )
 
     values = {
-        "PROPERPCLOUD_ANDROID_KEYSTORE_PATH": os.environ.get("PROPERPCLOUD_ANDROID_KEYSTORE_PATH", "").strip(),
-        "PROPERPCLOUD_ANDROID_KEYSTORE_PASSWORD": os.environ.get("PROPERPCLOUD_ANDROID_KEYSTORE_PASSWORD", ""),
-        "PROPERPCLOUD_ANDROID_KEY_ALIAS": os.environ.get("PROPERPCLOUD_ANDROID_KEY_ALIAS", "").strip(),
-        "PROPERPCLOUD_ANDROID_KEY_PASSWORD": os.environ.get("PROPERPCLOUD_ANDROID_KEY_PASSWORD", ""),
+        "ANDROID_KEYSTORE_FILE": os.environ.get("ANDROID_KEYSTORE_FILE", "").strip(),
+        "ANDROID_KEYSTORE_PASSWORD": os.environ.get("ANDROID_KEYSTORE_PASSWORD", ""),
+        "ANDROID_KEY_ALIAS": os.environ.get("ANDROID_KEY_ALIAS", "").strip(),
+        "ANDROID_KEY_PASSWORD": os.environ.get("ANDROID_KEY_PASSWORD", ""),
     }
     missing = [name for name, value in values.items() if not value]
     if missing:
@@ -62,7 +62,7 @@ def require_stable_android_signing(root: Path) -> None:
             + ", ".join(missing)
         )
 
-    keystore = Path(values["PROPERPCLOUD_ANDROID_KEYSTORE_PATH"])
+    keystore = Path(values["ANDROID_KEYSTORE_FILE"])
     if not keystore.is_absolute():
         keystore = root / keystore
     if not keystore.is_file():
@@ -73,9 +73,9 @@ def main() -> int:
     root = Path(__file__).resolve().parents[1]
     version = (root / "VERSION").read_text(encoding="utf-8").strip()
     require_stable_android_signing(root)
-    source = root / "app/build/outputs/apk/debug/app-debug.apk"
+    source = root / "app/build/outputs/apk/release/app-release.apk"
     if not source.is_file():
-        raise SystemExit("release error: debug APK is missing; run make ci first")
+        raise SystemExit("release error: release APK is missing; run make ci first")
 
     dist = root / "dist"
     if dist.exists():

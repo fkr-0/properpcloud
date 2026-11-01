@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-app_id="${1:-dev.properpcloud.app}"
+app_id="${1:-dev.fkr.properpcloud.app}"
 log=$(mktemp)
 identity=$(mktemp)
 playback_status=$(mktemp)

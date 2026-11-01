@@ -133,7 +133,7 @@ def main() -> int:
         if status:
             errors.append("working tree is not clean")
 
-    metainfo_path = root / "packaging" / "linux" / "dev.properpcloud.app.metainfo.xml"
+    metainfo_path = root / "packaging" / "linux" / "dev.fkr.properpcloud.app.metainfo.xml"
     try:
         metainfo = ET.parse(metainfo_path).getroot()
         release_versions = {

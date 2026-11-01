@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class Phase6DesktopLocalSourceContractsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        desktop = ROOT / "desktop-app/src/main/kotlin/dev/properpcloud/desktop"
+        desktop = ROOT / "desktop-app/src/main/kotlin/dev/fkr/properpcloud/desktop"
         cls.controller = (desktop / "DesktopController.kt").read_text(encoding="utf-8")
         cls.ui = (desktop / "DesktopUi.kt").read_text(encoding="utf-8")
         cls.selector = (desktop / "platform/LocalFolderSelector.kt").read_text(encoding="utf-8")
@@ -16,7 +16,7 @@ class Phase6DesktopLocalSourceContractsTest(unittest.TestCase):
         cls.binding = (desktop / "metadata/DesktopLocalFolderBinding.kt").read_text(encoding="utf-8")
         cls.host = (
             ROOT
-            / "metadata-tags/src/main/java/dev/properpcloud/metadata/tags/LocalFolderWorkbenchHost.kt"
+            / "metadata-tags/src/main/java/dev/fkr/properpcloud/metadata/tags/LocalFolderWorkbenchHost.kt"
         ).read_text(encoding="utf-8")
         cls.flatpak = (ROOT / "scripts/package-flatpak.sh").read_text(encoding="utf-8")
 

@@ -3,8 +3,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROLLER = (ROOT / "desktop-app" / "src" / "main" / "kotlin" / "dev" / "properpcloud" / "desktop" / "DesktopController.kt").read_text(encoding="utf-8")
-MPV = (ROOT / "desktop-app" / "src" / "main" / "kotlin" / "dev" / "properpcloud" / "desktop" / "playback" / "MpvController.kt").read_text(encoding="utf-8")
+CONTROLLER = (ROOT / "desktop-app" / "src" / "main" / "kotlin" / "dev" / "fkr" / "properpcloud" / "desktop" / "DesktopController.kt").read_text(encoding="utf-8")
+MPV = (ROOT / "desktop-app" / "src" / "main" / "kotlin" / "dev" / "fkr" / "properpcloud" / "desktop" / "playback" / "MpvController.kt").read_text(encoding="utf-8")
 
 
 class StreamRefreshContractTest(unittest.TestCase):

@@ -14,7 +14,7 @@ SPEC.loader.exec_module(MODULE)
 
 class DesktopSessionAuditTest(unittest.TestCase):
     def test_missing_bus_name_is_false_without_exposing_address(self) -> None:
-        self.assertFalse(MODULE.dbus_has_name("dev.properpcloud.DoesNotExist"))
+        self.assertFalse(MODULE.dbus_has_name("dev.fkr.properpcloud.DoesNotExist"))
 
     def test_runner_captures_bounded_output(self) -> None:
         result = MODULE.run(["python3", "-c", "print('ok')"])

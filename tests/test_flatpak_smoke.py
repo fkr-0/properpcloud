@@ -74,7 +74,7 @@ class FlatpakSmokeTest(unittest.TestCase):
             environment["PATH"] = f"{bin_dir}:{environment['PATH']}"
             environment["XDG_RUNTIME_DIR"] = str(work / "runtime")
             result = subprocess.run(
-                [str(SMOKE), "dev.properpcloud.app"],
+                [str(SMOKE), "dev.fkr.properpcloud.app"],
                 text=True,
                 capture_output=True,
                 env=environment,

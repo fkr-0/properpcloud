@@ -38,7 +38,7 @@ release:
       unconfigured_evaluation_apk_excludes_test_id: true
   artifact:
     path: app/build/outputs/apk/debug/app-debug.apk
-    package: dev.properpcloud.app
+    package: dev.fkr.properpcloud.app
     version_code: 1004
     version_name: 0.1.4
     production_signed: false

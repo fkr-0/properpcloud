@@ -45,7 +45,7 @@ class TagFolderWorkbenchSpecTest(unittest.TestCase):
         clients = " ".join(self.document["implemented_vertical_slice"]["clients"])
         host = (
             ROOT
-            / "metadata-tags/src/main/java/dev/properpcloud/metadata/tags/LocalFolderWorkbenchHost.kt"
+            / "metadata-tags/src/main/java/dev/fkr/properpcloud/metadata/tags/LocalFolderWorkbenchHost.kt"
         ).read_text()
         build = (ROOT / "metadata-tags/build.gradle.kts").read_text()
 
@@ -127,19 +127,19 @@ class TagFolderWorkbenchSpecTest(unittest.TestCase):
         self.assertIn("genuinely own", boundaries["capability_boundary"])
         self.assertIn("stale evidence rejects", playlist["batch_generation"]["materialization"])
 
-        workflow = (ROOT / "metadata-tags/src/main/java/dev/properpcloud/metadata/tags/FolderAutoTagWorkflow.kt").read_text()
-        session = (ROOT / "metadata-tags/src/main/java/dev/properpcloud/metadata/tags/FolderMetadataSuiteSession.kt").read_text()
-        regeneration = (ROOT / "metadata-tags/src/main/java/dev/properpcloud/metadata/tags/FolderPlaylistRegenerationService.kt").read_text()
-        writer = (ROOT / "metadata-tags/src/main/java/dev/properpcloud/metadata/tags/FolderPlaylistWriter.kt").read_text()
-        review_projection = (ROOT / "metadata-tags/src/main/java/dev/properpcloud/metadata/tags/MetadataReviewProjection.kt").read_text()
-        actions = (ROOT / "app/src/main/java/dev/properpcloud/app/ui/ProperpcloudApp.kt").read_text()
-        activity = (ROOT / "app/src/main/java/dev/properpcloud/app/MainActivity.kt").read_text()
-        editor = (ROOT / "app/src/main/java/dev/properpcloud/app/ui/MetadataEditorScreen.kt").read_text()
-        view_model = (ROOT / "app/src/main/java/dev/properpcloud/app/ui/MainViewModel.kt").read_text()
-        workspace = (ROOT / "app/src/main/java/dev/properpcloud/app/metadata/MetadataEditingWorkspace.kt").read_text()
-        desktop_controller = (ROOT / "desktop-app/src/main/kotlin/dev/properpcloud/desktop/DesktopController.kt").read_text()
-        desktop_ui = (ROOT / "desktop-app/src/main/kotlin/dev/properpcloud/desktop/DesktopUi.kt").read_text()
-        playlist_cli = (ROOT / "desktop-app/src/main/kotlin/dev/properpcloud/desktop/PlaylistCli.kt").read_text()
+        workflow = (ROOT / "metadata-tags/src/main/java/dev/fkr/properpcloud/metadata/tags/FolderAutoTagWorkflow.kt").read_text()
+        session = (ROOT / "metadata-tags/src/main/java/dev/fkr/properpcloud/metadata/tags/FolderMetadataSuiteSession.kt").read_text()
+        regeneration = (ROOT / "metadata-tags/src/main/java/dev/fkr/properpcloud/metadata/tags/FolderPlaylistRegenerationService.kt").read_text()
+        writer = (ROOT / "metadata-tags/src/main/java/dev/fkr/properpcloud/metadata/tags/FolderPlaylistWriter.kt").read_text()
+        review_projection = (ROOT / "metadata-tags/src/main/java/dev/fkr/properpcloud/metadata/tags/MetadataReviewProjection.kt").read_text()
+        actions = (ROOT / "app/src/main/java/dev/fkr/properpcloud/app/ui/ProperpcloudApp.kt").read_text()
+        activity = (ROOT / "app/src/main/java/dev/fkr/properpcloud/app/MainActivity.kt").read_text()
+        editor = (ROOT / "app/src/main/java/dev/fkr/properpcloud/app/ui/MetadataEditorScreen.kt").read_text()
+        view_model = (ROOT / "app/src/main/java/dev/fkr/properpcloud/app/ui/MainViewModel.kt").read_text()
+        workspace = (ROOT / "app/src/main/java/dev/fkr/properpcloud/app/metadata/MetadataEditingWorkspace.kt").read_text()
+        desktop_controller = (ROOT / "desktop-app/src/main/kotlin/dev/fkr/properpcloud/desktop/DesktopController.kt").read_text()
+        desktop_ui = (ROOT / "desktop-app/src/main/kotlin/dev/fkr/properpcloud/desktop/DesktopUi.kt").read_text()
+        playlist_cli = (ROOT / "desktop-app/src/main/kotlin/dev/fkr/properpcloud/desktop/PlaylistCli.kt").read_text()
 
         self.assertIn("fun writePlaylist(plan: FolderPlaylistPlan)", workflow)
         self.assertNotIn("fun writePlaylist(command: FolderPlaylistWriteCommand)", workflow)

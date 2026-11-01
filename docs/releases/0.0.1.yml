@@ -32,7 +32,7 @@ release:
       kind: unsigned_debug_apk
       size_bytes: 6165705
       sha256: 9341b239a2c2c29cc9c90e06f17693e8318e0000af3da3be108b2a1fbabf2f69
-      package: dev.properpcloud.app
+      package: dev.fkr.properpcloud.app
       version_code: 1
       version_name: 0.0.1
       published: false

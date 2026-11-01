@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.gradle.api.tasks.testing.Test
 
 plugins {
@@ -17,28 +18,32 @@ val pCloudClientId = providers
     .getOrElse("")
     .trim()
 
-val requireStableAndroidSigning = providers
-    .environmentVariable("PROPERPCLOUD_REQUIRE_STABLE_SIGNING")
-    .map { value -> value.equals("true", ignoreCase = true) || value == "1" }
-    .getOrElse(false)
-val stableSigningKeystorePath = providers.environmentVariable("PROPERPCLOUD_ANDROID_KEYSTORE_PATH").getOrElse("").trim()
-val stableSigningStorePassword = providers.environmentVariable("PROPERPCLOUD_ANDROID_KEYSTORE_PASSWORD").getOrElse("")
-val stableSigningKeyAlias = providers.environmentVariable("PROPERPCLOUD_ANDROID_KEY_ALIAS").getOrElse("").trim()
-val stableSigningKeyPassword = providers.environmentVariable("PROPERPCLOUD_ANDROID_KEY_PASSWORD").getOrElse("")
-val stableSigningValues = listOf(
-    stableSigningKeystorePath,
-    stableSigningStorePassword,
-    stableSigningKeyAlias,
-    stableSigningKeyPassword,
-)
-val anyStableSigningValue = stableSigningValues.any(String::isNotEmpty)
-val stableSigningConfigured = stableSigningValues.all(String::isNotEmpty)
-
-require(!anyStableSigningValue || stableSigningConfigured) {
-    "stable Android signing requires keystore path, store password, key alias, and key password together"
+val keystoreProperties = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.isFile }?.inputStream()?.use(::load)
 }
-require(!requireStableAndroidSigning || stableSigningConfigured) {
-    "stable Android signing is required but release signing configuration is incomplete"
+
+fun signingInput(env: String, property: String): String? =
+    System.getenv(env)?.takeIf { it.isNotBlank() }
+        ?: keystoreProperties.getProperty(property)?.takeIf { it.isNotBlank() }
+
+val releaseSigningInputs = mapOf(
+    "storeFile" to signingInput("ANDROID_KEYSTORE_FILE", "storeFile"),
+    "storePassword" to signingInput("ANDROID_KEYSTORE_PASSWORD", "storePassword"),
+    "keyAlias" to signingInput("ANDROID_KEY_ALIAS", "keyAlias"),
+    "keyPassword" to signingInput("ANDROID_KEY_PASSWORD", "keyPassword"),
+)
+val missingSigningInputs = releaseSigningInputs.filterValues { it == null }.keys
+val releaseSigningConfigured = missingSigningInputs.isEmpty()
+val requireReleaseSigning = providers.gradleProperty("requireReleaseSigning").orNull == "true"
+
+if (requireReleaseSigning && !releaseSigningConfigured) {
+    throw GradleException("Release signing is required but missing: ${missingSigningInputs.sorted().joinToString()}")
+}
+if (releaseSigningConfigured && !file(releaseSigningInputs.getValue("storeFile")!!).isFile) {
+    throw GradleException("Release keystore not found: ${releaseSigningInputs.getValue("storeFile")}")
+}
+if (!releaseSigningConfigured && missingSigningInputs.size < releaseSigningInputs.size) {
+    throw GradleException("Incomplete release signing configuration; missing: ${missingSigningInputs.sorted().joinToString()}")
 }
 
 require(pCloudClientId.none(Char::isISOControl)) {
@@ -66,27 +71,23 @@ fun androidVersionCode(version: String): Int {
 }
 
 android {
-    namespace = "dev.properpcloud.app"
+    namespace = "dev.fkr.properpcloud.app"
     compileSdk = libs.versions.compile.sdk.get().toInt()
     buildToolsVersion = libs.versions.build.tools.get()
 
     signingConfigs {
-        getByName("debug") {
-            if (stableSigningConfigured) {
-                val configuredKeystore = rootProject.file(stableSigningKeystorePath)
-                require(configuredKeystore.isFile) {
-                    "configured Android signing keystore is missing"
-                }
-                storeFile = configuredKeystore
-                storePassword = stableSigningStorePassword
-                keyAlias = stableSigningKeyAlias
-                keyPassword = stableSigningKeyPassword
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(releaseSigningInputs.getValue("storeFile")!!)
+                storePassword = releaseSigningInputs.getValue("storePassword")
+                keyAlias = releaseSigningInputs.getValue("keyAlias")
+                keyPassword = releaseSigningInputs.getValue("keyPassword")
             }
         }
     }
 
     defaultConfig {
-        applicationId = "dev.properpcloud.app"
+        applicationId = "dev.fkr.properpcloud.app"
         minSdk = libs.versions.min.sdk.get().toInt()
         targetSdk = libs.versions.target.sdk.get().toInt()
         versionCode = androidVersionCode(appVersion)
@@ -95,8 +96,15 @@ android {
     }
 
     buildTypes {
-        getByName("debug") {
-            signingConfig = signingConfigs.getByName("debug")
+        release {
+            isDebuggable = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            signingConfig = signingConfigs.getByName(if (releaseSigningConfigured) "release" else "debug")
         }
     }
 
