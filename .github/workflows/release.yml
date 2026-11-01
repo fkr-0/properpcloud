@@ -116,6 +116,9 @@ jobs:
       - name: Verify and build Android plus shared desktop image
         run: make ci
 
+      - name: Build signed release APK
+        run: bash scripts/docker-run.sh :app:assembleRelease
+
       - name: Upload release verification reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
