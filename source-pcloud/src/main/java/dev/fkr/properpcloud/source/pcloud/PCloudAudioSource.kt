@@ -15,6 +15,8 @@ import dev.fkr.properpcloud.core.model.AudioTrack
 import dev.fkr.properpcloud.core.model.LibraryFile
 import dev.fkr.properpcloud.core.model.LibraryFileKind
 import dev.fkr.properpcloud.core.model.MediaNode
+import dev.fkr.properpcloud.core.model.MediaFormatClassification
+import dev.fkr.properpcloud.core.model.MediaFormatRegistry
 import dev.fkr.properpcloud.core.model.MetadataContentSource
 import dev.fkr.properpcloud.core.model.NodeId
 import dev.fkr.properpcloud.core.model.NodeInspection
@@ -83,7 +85,7 @@ class PCloudAudioSource internal constructor(
             StreamHandle(
                 url = link.bestUrl().toExternalForm(),
                 expiresAtEpochMillis = link.expirationDate()?.time,
-                contentType = remoteFile.contentType(),
+                contentType = classifyPCloudMedia(remoteFile.name(), remoteFile.contentType()).playbackMimeType,
             )
         } catch (error: Exception) {
             if (error is CancellationException) throw error
@@ -183,7 +185,8 @@ class PCloudAudioSource internal constructor(
 
             entry.isFile -> {
                 val file = entry.asFile()
-                if (!file.looksLikeAudio()) {
+                val classification = classifyPCloudMedia(file.name(), file.contentType())
+                if (!classification.isAudioCandidate) {
                     LibraryFile(
                         sourceId = id,
                         id = PCloudNodeIds.file(file.fileId()),
@@ -201,7 +204,7 @@ class PCloudAudioSource internal constructor(
                         parentId = PCloudNodeIds.folder(file.parentFolderId()),
                         name = file.name(),
                         modifiedAtEpochMillis = file.lastModified().time,
-                        contentType = file.contentType(),
+                        contentType = classification.playbackMimeType,
                         sizeBytes = file.size(),
                     )
                 }
@@ -349,11 +352,5 @@ object PCloudSourceFactory {
 
 val allowedPCloudApiHosts: Set<String> = setOf("api.pcloud.com", "eapi.pcloud.com")
 
-private val audioExtensions = setOf(
-    "aac", "aiff", "alac", "flac", "m4a", "m4b", "mp3", "oga", "ogg", "opus", "wav", "wma",
-)
-
-private fun com.pcloud.sdk.RemoteFile.looksLikeAudio(): Boolean {
-    if (contentType()?.startsWith("audio/", ignoreCase = true) == true) return true
-    return name().substringAfterLast('.', missingDelimiterValue = "").lowercase() in audioExtensions
-}
+internal fun classifyPCloudMedia(name: String, contentType: String?): MediaFormatClassification =
+    MediaFormatRegistry.classify(name, contentType)

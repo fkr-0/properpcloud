@@ -56,7 +56,22 @@ linux_client:
       - metadata-tags
       - metadata-online
     UI: Compose Desktop three-pane browser, inspector, queue, bottom player, and explicit local-folder metadata workbench surface
-    playback: mpv child process with private Unix JSON IPC and no-config
+    playback: mpv child process with private Unix JSON IPC, no-config, and --vid=no audio-only media policy
+    media_containers:
+      local_audio_admission:
+        webm: audio-bearing WebM candidate; actual audio track is verified at load
+        mka: audio-bearing Matroska candidate; actual audio track is verified at load
+        mkv: audio-bearing Matroska candidate; actual audio track is verified at load
+        codec_guarantee: none; actual decoding depends on host mpv capabilities
+        metadata_tag_scanner: conservative supported-format policy remains unchanged
+      resume: generation-correlated start-file/file-loaded event gate before absolute resume seek
+      failures: missing-audio, unsupported-codec, invalid-container, and transient-network are separately classified with redacted user-facing messages
+      incidental_video: disabled; no second unmanaged video surface is created
+      unsupported_product_capabilities:
+        - first-class video playback
+        - subtitle selection
+        - chapter navigation
+      host_runtime: AppImage uses host mpv; Flatpak uses the validated host mpv bridge; mpv is not bundled
     persistence: SQLite JDBC with WAL settings, queue/progress tables, persisted search preferences, and optional bounded playback history
     secrets: bounded asynchronous freedesktop Secret Service lookup through secret-tool with no plaintext fallback
     media_integration: MPRIS root/player interfaces over session D-Bus, capability-gated system tray controls/track-change notifications, plus logind PrepareForSleep over the system bus
@@ -73,6 +88,7 @@ linux_client:
     verification:
       - desktop unit tests for XDG, SQLite, deterministic media, correlated IPC responses, Secret Service boundaries, shortcut resolution, and stream-failure classification
       - host smoke for generated WAV, recursive queue, SQLite, and real mpv IPC
+      - host-mpv WebM and Matroska Opus smoke verifies audio track discovery, duration, resume seek, and EOF using null audio output; CI installs and requires the baseline Opus profile
       - forced process recovery and bounded stream-capability re-resolution preserve stable identity and durable progress
       - packaged current-session audit probes disposable Secret Service storage, all external MPRIS controls, and logind subscription without recording credentials or D-Bus addresses
       - isolated locked-keyring lookup is bounded and never touches the real user collection

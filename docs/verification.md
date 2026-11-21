@@ -61,13 +61,13 @@ the Android 17 compatibility matrix is completed.
 
 ```yaml
 Java: Eclipse Temurin 21
-Gradle: 9.6.1
-Android_Gradle_Plugin: 9.3.1
+Gradle: 9.8.0
+Android_Gradle_Plugin: 9.5.1
 compile_sdk: 37
 target_sdk: 36
 build_tools: 37.0.0
-toolchain_image_id: sha256:93420ccd18a67c7e3a72868111b7dcc24cd51e5dafb0a8003b41b10fe0d7d43a
-Gradle_wrapper_sha256: 497c8c2a7e5031f6aa847f88104aa80a93532ec32ee17bdb8d1d2f67a194a9c7
+toolchain_image_id: sha256:0a81fd689f3ef449c549f6dbc9e9727dd5f818b2859fb38a4ed6432d332b5b72
+Gradle_wrapper_sha256: 238e777fcddd7e34f9708186085def2abd6e08e658505b38718d79d74c21abd5
 Android_tools_sha256: 4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583
 Robolectric_runtime_sha256: 16f1f751643d1d3d5592008846bbdfc1e57cff15e6ec303d26584de3b6ac25ec
 ```

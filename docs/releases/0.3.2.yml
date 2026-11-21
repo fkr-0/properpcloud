@@ -1,0 +1,35 @@
+version: 0.3.2
+tag: v0.3.2
+status: candidate
+base_release: v0.3.1
+date: 2026-11-21
+objective: >-
+  Harden Android and desktop playback read recovery, server HTTP streaming
+  semantics, and source-neutral media-format classification; add verified
+  audio-only WebM/Matroska support on Linux mpv and converge ten dependency PRs.
+included_work:
+  - classify HTTP 416 and out-of-range Media3 reads as bounded range recovery rather than queue-item failure
+  - retry transient Android read failures with bounded per-item 250/500/1000 ms backoff and stable queue/timeline validation
+  - distinguish exhausted range recovery from corrupt or unsupported media in user-facing playback errors
+  - reject unsatisfiable HTTP byte ranges with 416 and Content-Range bytes */size
+  - fail server stream copies when source EOF arrives before the advertised Content-Length
+  - add source-neutral filename/MIME evidence classification and use it in pCloud item and stream-handle mapping
+  - admit WebM audio candidates in shared local folder/tag enumeration without guessing codec support
+  - add Linux mpv audio-only admission for WebM and Matroska containers, typed no-audio/codec/container/network failures, MPRIS audio MIME behavior, and playlist-entry-correlated load/seek readiness
+  - merge all ten dependency/action update PRs (#21–#30)
+verification:
+  - make local-check: 139 host contract tests passed
+  - make fast-test: 27 Gradle tasks passed
+  - make test: full JVM, Android/Robolectric, and desktop tests passed
+  - make desktop-test: passed after entry-ID correlation and persistent terminal-failure state fixes
+  - make mpv-webm-smoke: passed for generated Opus WebM, MKA, MKV, and audio/video MKV; verified audio tracks, duration, seek, EOF, and video suppression
+  - make linux-ci: passed including native Desktop, mpv smoke, crash recovery, MPRIS, keyring, and accessibility gates
+  - make ci: passed; 98 Gradle actions, Android lint/debug APK, desktop distribution, release-check, and docs build
+  - make release-check: 14 YAML specifications, 21 requirements, and 22 use cases validated for 0.3.2
+  - make docs-build: 59 pages built and v0.3.2 release smoke passed
+  - git diff --check: passed
+known_limits:
+  - Android WebM support is a container/MIME recognition hint; hardware decoder availability remains device/codec-specific
+  - Android video WebM playback is not claimed; the app has no video rendering surface
+  - Linux WebM/Matroska verification covers host mpv 0.41.0 with Opus; other codecs and Flatpak runtime variants are not universally qualified
+  - server stream symlink-race, offline-mount, and health-probe-amplification findings from the security audit remain follow-up work

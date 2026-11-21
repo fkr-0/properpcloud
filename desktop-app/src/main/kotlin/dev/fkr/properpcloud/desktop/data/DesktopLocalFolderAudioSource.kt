@@ -19,6 +19,13 @@ import java.nio.file.LinkOption
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
+/** Audio extensions admitted by desktop playback independently of tag-scanner support.
+ * WebM is admitted as an audio container (.webm); Matroska is admitted for audio-bearing
+ * .mka and .mkv containers. These extensions do not assert that any particular codec exists.
+ */
+internal val DESKTOP_AUDIO_PLAYABLE_EXTENSIONS =
+    FolderTagScanner.SUPPORTED_EXTENSIONS + setOf("webm", "mka", "mkv")
+
 /** Stable opaque identity derived from the selected filesystem root and root-relative paths. */
 class DesktopLocalFilesystemIdentity private constructor(
     val canonicalRoot: File,
@@ -145,8 +152,8 @@ class DesktopLocalFolderAudioSource(
                 },
                 name = canonical.name,
                 modifiedAtEpochMillis = canonical.lastModified().takeIf { it > 0 },
-                contentType = runCatching { Files.probeContentType(canonical.toPath()) }.getOrNull()
-                    ?: contentTypeForExtension(canonical.extension),
+                contentType = contentTypeForExtension(canonical.extension)
+                    ?: runCatching { Files.probeContentType(canonical.toPath()) }.getOrNull(),
                 sizeBytes = canonical.length(),
             ).also { pathsById[it.id] = canonical }
 
@@ -183,7 +190,7 @@ class DesktopLocalFolderAudioSource(
     private fun safeAudioFile(file: File): Boolean =
         identity.isInsideRoot(file) &&
             !file.isSymbolicLink() &&
-            file.extension.lowercase() in FolderTagScanner.SUPPORTED_EXTENSIONS &&
+            file.extension.lowercase() in DESKTOP_AUDIO_PLAYABLE_EXTENSIONS &&
             Files.isRegularFile(file.toPath(), LinkOption.NOFOLLOW_LINKS) &&
             Files.isReadable(file.toPath())
 
@@ -198,6 +205,8 @@ class DesktopLocalFolderAudioSource(
         "aac" -> "audio/aac"
         "wav" -> "audio/wav"
         "aif", "aiff" -> "audio/aiff"
+        "webm" -> "audio/webm"
+        "mka", "mkv" -> "audio/x-matroska"
         else -> null
     }
 

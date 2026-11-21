@@ -21,7 +21,7 @@ build:
       pinned_digest: sha256:b9142586f9712700c6c9e07adcedfb18608b1a3a056e4001423a3354adfa9d80
       update_rule: Digest updates require a reviewed image build and complete verification run.
     gradle:
-      version: 9.6.1
+      version: 9.8.0
       launcher: committed wrapper
       distribution: bin
       checksum: mandatory in gradle-wrapper.properties
@@ -35,7 +35,7 @@ build:
       policy: Compile with the current stable AndroidX baseline while keeping target SDK 36 until Android 17 compatibility validation completes.
       unnecessary_for_current_scope: [NDK, CMake, emulator inside build image]
     plugins:
-      Android_Gradle_Plugin: 9.3.1
+      Android_Gradle_Plugin: 9.5.1
       Kotlin: AGP built-in Kotlin
     libraries:
       Media3: 1.10.1
@@ -214,7 +214,7 @@ build:
         correction: Buildx and GitHub Actions BuildKit cache
   integration_steps:
     bootstrap:
-      - Generate reviewed Gradle 9.6.1 wrapper and add distribution checksum.
+      - The committed Gradle 9.8.0 wrapper and distribution checksum are reviewed and verified.
       - Build image with make image.
       - Run make doctor.
       - Resolve dependencies and commit verification metadata.

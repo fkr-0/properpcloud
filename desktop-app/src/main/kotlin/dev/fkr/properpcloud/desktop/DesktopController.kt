@@ -55,6 +55,8 @@ import dev.fkr.properpcloud.desktop.platform.NativeLocalFolderSelector
 import dev.fkr.properpcloud.desktop.platform.SleepTransitionPolicy
 import dev.fkr.properpcloud.desktop.platform.XdgPaths
 import dev.fkr.properpcloud.desktop.playback.MpvController
+import dev.fkr.properpcloud.desktop.playback.MpvFailureKind
+import dev.fkr.properpcloud.desktop.playback.MpvPlaybackException
 import dev.fkr.properpcloud.desktop.playback.MpvState
 import dev.fkr.properpcloud.desktop.security.SecretServiceVault
 import dev.fkr.properpcloud.desktop.security.PCloudSessionRestorePolicy
@@ -1216,6 +1218,18 @@ class DesktopController(
     }
 
     private fun refreshStreamAfterFailure(playback: MpvState) {
+        if (playback.failureKind != MpvFailureKind.TRANSIENT_NETWORK) {
+            val message = when (playback.failureKind) {
+                MpvFailureKind.NO_AUDIO -> "This file has no audio stream; no provider link refresh was attempted."
+                MpvFailureKind.UNSUPPORTED_CODEC -> "The host mpv build cannot decode this audio codec; no provider link refresh was attempted."
+                MpvFailureKind.INVALID_MEDIA -> "The media container is invalid or unsupported; no provider link refresh was attempted."
+                MpvFailureKind.UNKNOWN -> "Playback failed without evidence of a temporary provider failure; no link refresh was attempted."
+                MpvFailureKind.NONE -> "Playback failed; no temporary provider failure was identified."
+                MpvFailureKind.TRANSIENT_NETWORK -> error("unreachable")
+            }
+            mutableState.value = mutableState.value.copy(status = message)
+            return
+        }
         val track = mutableState.value.queue.current?.track ?: return
         val failedSource = runCatching { sourceFor(track) }.getOrNull()
         if (failedSource == demoSource || failedSource is DesktopLocalFolderAudioSource) {
@@ -1857,11 +1871,11 @@ class DesktopController(
 
     private fun sourceFor(node: MediaNode): AudioSource = sources[node.sourceId] ?: error("source ${node.sourceId.value} is unavailable")
 
-    private fun playbackFailure(@Suppress("UNUSED_PARAMETER") error: Throwable) {
+    private fun playbackFailure(error: Throwable) {
         checkpoint(mutableState.value.playback, force = true)
-        mutableState.value = mutableState.value.copy(
-            status = "Playback failed. Check mpv availability and retry.",
-        )
+        val message = (error as? MpvPlaybackException)?.message
+            ?: "Playback failed. Check mpv availability and retry."
+        mutableState.value = mutableState.value.copy(status = message)
     }
 
     private fun updateMpris() {

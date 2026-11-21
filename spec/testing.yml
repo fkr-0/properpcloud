@@ -56,6 +56,8 @@ testing:
       - range-ignored content
       - expiring URL returning 403
       - transient 500 then success
+      - unsatisfiable byte range returning HTTP 416 and Content-Range bytes */size
+      - source file truncated after Content-Length was computed
       - truncated response
       - revision change between resolve and download
     databases:
@@ -183,7 +185,11 @@ testing:
         TEST-SIGNED-LINK-RETRY-GATE:
           expect: [one immediate retry, no loop inside cooldown, later retry allowed]
         TEST-PLAY-RANGE:
-          expect: correct range behavior or explicit unsupported-seek state
+          expect: [supported byte ranges return exact bytes, HTTP 416 and read-position-out-of-range recover the same stable item once from zero without queue skip, exhausted recovery surfaces a position/range message]
+        TEST-PLAY-READ-RETRY:
+          expect: [network connection failure/timeout retries the current stable item with 250/500/1000ms maximum backoff, preserves queue and position, stops after the retry budget, stale retry cannot mutate a replaced timeline]
+        TEST-HTTP-STREAM-SHORT-READ:
+          expect: [server returns 416 for a valid unsatisfiable range, malformed range returns 400, early EOF before advertised body length fails the stream]
         TEST-PLAY-AUDIO-FOCUS:
           scenarios: [transient_loss, duck, permanent_loss, headset_disconnect]
         TEST-PLAY-PROCESS-RECREATE:

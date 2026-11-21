@@ -6,7 +6,7 @@
 
 Folder-first pCloud audio playback for Android and Linux.
 
-[![Version](https://img.shields.io/badge/version-0.2.0--rc.3-59636e)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.2-59636e)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f855a)](LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-properpcloud.fkr.dev-276a51)](https://properpcloud.fkr.dev)
 
@@ -125,7 +125,7 @@ See [`SECURITY.md`](SECURITY.md), [`docs/privacy.md`](docs/privacy.md), and [`TH
 
 ## Build and verification
 
-The pinned container supplies Eclipse Temurin 21, Gradle 9.6.1, Android compile SDK 37, target SDK 36, and build tools 37.0.0. Portable modules emit JVM 17-compatible bytecode.
+The pinned container supplies Eclipse Temurin 21, Gradle 9.8.0, Android Gradle Plugin 9.5.1, compile SDK 37, target SDK 36, and build tools 37.0.0. Portable modules emit JVM 17-compatible bytecode.
 
 ```bash
 make image                # build the pinned toolchain image

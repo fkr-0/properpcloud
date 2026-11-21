@@ -167,6 +167,9 @@ test: oauth-config-check robolectric-runtime ## Run JVM unit and module contract
 desktop-test: ## Run the Linux desktop adapter and persistence tests in Docker.
 	@bash ./scripts/docker-run.sh :desktop-app:test
 
+mpv-webm-smoke: ## Generate deterministic WebM/Matroska audio fixtures and qualify host-mpv decode, resume seek, and completion.
+	@MPV_SMOKE_REQUIRE_BASELINE=1 bash scripts/mpv-webm-smoke.sh
+
 desktop-smoke: desktop-package ## Verify generated media, SQLite, and a real host mpv JSON-IPC process.
 	@command -v mpv >/dev/null || { echo "mpv is required" >&2; exit 1; }
 	@test -x "$(DESKTOP_JAVA_HOME)/bin/java" || { echo "JDK 21 not found at $(DESKTOP_JAVA_HOME)" >&2; exit 1; }
@@ -267,7 +270,7 @@ desktop-session-audit: desktop-package ## Record redacted Secret Service and ext
 arch-package-gate: ## Clean-build, install, and smoke the immutable current-version Arch package in a container.
 	@bash scripts/arch-package-gate.sh
 
-linux-ci: desktop-test desktop-package desktop-smoke desktop-crash-recovery-smoke desktop-local-tag-recovery-process-smoke desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit ## Run native Linux unit, package, recovery, keyring, accessibility, mpv, SQLite, and MPRIS gates.
+linux-ci: desktop-test desktop-package desktop-smoke mpv-webm-smoke desktop-crash-recovery-smoke desktop-local-tag-recovery-process-smoke desktop-clean-profile-smoke desktop-mpris-smoke desktop-locked-keyring-smoke desktop-accessibility-audit ## Run native Linux unit, package, media-container, recovery, keyring, accessibility, mpv, SQLite, and MPRIS gates.
 
 docs-install: ## Install the pinned documentation renderer dependencies.
 	@cd website && $(NPM) ci

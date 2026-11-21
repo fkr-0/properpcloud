@@ -32,7 +32,7 @@ flatpak run dev.fkr.properpcloud.app
 | Component | Purpose |
 | --- | --- |
 | Java 17+ runtime | Runs the packaged desktop application when using the Gradle distribution. Native packages bundle an application runtime. |
-| mpv | Codec and streaming playback engine controlled over a private Unix socket. |
+| mpv | Host codec and streaming playback engine controlled over a private Unix socket. |
 | Secret Service provider | Stores the pCloud session token; commonly GNOME Keyring or KWallet through a compatible service. |
 | Session D-Bus | Provides MPRIS media controls. The app still runs when MPRIS registration is unavailable. |
 
@@ -44,6 +44,14 @@ sudo pacman -S --needed mpv libsecret
 
 Ensure a Secret Service implementation is running in the graphical session. On minimal i3 sessions, `gnome-keyring-daemon --start --components=secrets` is one option.
 
+## Audio containers and codec support
+
+The local audio library can queue audio-bearing WebM (`.webm`) and Matroska (`.mka`, `.mkv`) containers without changing the separate metadata-tag scanner's format policy. The application checks the actual mpv audio track list when loading; a filename extension does not imply that a codec is installed or that the file contains audio.
+
+The client launches mpv with video disabled. It is an audio player, not a video surface: first-class video playback, subtitle selection, and chapter navigation are not supported. Supported audio codec profiles depend on the host mpv build and its FFmpeg configuration. CI qualifies a generated Opus audio profile in WebM and Matroska, but no guarantee is made for all codecs or profiles.
+
+AppImage resolves mpv from the normal host `PATH`. Flatpak invokes the host mpv through its validated host bridge; mpv is not bundled into either package.
+
 ## Run from source
 
 The repository pins compilation to JDK 21 while emitting JVM 17 bytecode:
@@ -51,11 +59,12 @@ The repository pins compilation to JDK 21 while emitting JVM 17 bytecode:
 ```bash
 make desktop-test
 make desktop-smoke
+make mpv-webm-smoke
 make desktop-mpris-smoke
 make desktop-run
 ```
 
-`desktop-smoke` verifies generated audio, recursive queue creation, SQLite persistence, and real mpv JSON IPC with a null audio output. `desktop-mpris-smoke` builds the packaged runtime, starts an isolated session bus, and queries the exported identity, playback status, and metadata properties externally.
+`desktop-smoke` verifies generated audio, recursive queue creation, SQLite persistence, and real mpv JSON IPC with a null audio output. `mpv-webm-smoke` creates small deterministic Opus fixtures for WebM, `.mka`, and `.mkv`, then verifies track discovery, duration, resume seeking, and clean completion with null audio output. It reports an explicit unavailable-codec/tool skip locally; the Linux CI baseline treats missing mpv, ffmpeg, or Opus support as a failure. `desktop-mpris-smoke` builds the packaged runtime, starts an isolated session bus, and queries the exported identity, playback status, and metadata properties externally.
 
 ## Build a distributable
 
@@ -107,4 +116,5 @@ When an XDG variable is absent, the normal user-home fallback is used. Runtime f
 - MPRIS bus name: `org.mpris.MediaPlayer2.properpcloud`
 - Desktop entry: `properpcloud`
 - Media controls: play, pause, next, previous, seek, and position
-- mpv is always launched with `--no-config`, so user mpv settings cannot break or alter application playback.
+- MPRIS URI scheme list is empty; `OpenUri` rejects unsupported URI requests rather than accepting a no-op
+- mpv is always launched with `--no-config`, so user mpv settings cannot break or alter application playback

@@ -2,6 +2,7 @@ package dev.fkr.properpcloud.app.playback
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.Bundle
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -10,6 +11,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import dev.fkr.properpcloud.core.model.MediaFormatRegistry
 import dev.fkr.properpcloud.core.model.MediaIdentity
 import dev.fkr.properpcloud.core.model.MAX_PLAYBACK_SPEED
 import dev.fkr.properpcloud.core.model.MIN_PLAYBACK_SPEED
@@ -92,6 +94,8 @@ internal fun playbackErrorUserMessage(
         "Playback cannot access this media. Check the source permission and reconnect."
     errorCode == PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND || responseCode == 404 ->
         "This media item is no longer available at its source."
+    responseCode == 416 || errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ->
+        "The playback position is outside the available stream range. Restart from the beginning or seek to an earlier position."
     responseCode == 401 || responseCode == 403 ->
         "Playback access expired or was denied. Reconnect and press play to retry."
     errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
@@ -101,8 +105,7 @@ internal fun playbackErrorUserMessage(
         errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ||
         errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
         errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED ||
-        errorCode == PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ||
-        errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ->
+        errorCode == PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ->
         "This media file could not be decoded. It may be corrupt or unsupported."
     else -> "Playback failed ($errorCodeName)."
 }
@@ -329,14 +332,22 @@ class PlaybackConnection(context: Context) : PlaybackController, Player.Listener
     }
 }
 
+internal const val PLAYBACK_MIME_TYPE_EXTRA = "dev.fkr.properpcloud.playback.MIME_TYPE"
+
 internal fun PlaybackQueue.toStableMediaItems(): List<MediaItem> = entries.map { entry ->
+    val mimeType = MediaFormatRegistry.classify(entry.track.name, entry.track.contentType).playbackMimeType
+    val metadata = MediaMetadata.Builder()
+        .setTitle(entry.track.taggedTitle ?: entry.track.filenameStem)
+        .setSubtitle(entry.track.name)
+        .apply {
+            mimeType?.let { hint ->
+                setExtras(Bundle().apply { putString(PLAYBACK_MIME_TYPE_EXTRA, hint) })
+            }
+        }
+        .build()
+
     MediaItem.Builder()
         .setMediaId(MediaIdentity.encode(entry.track.sourceId, entry.track.id))
-        .setMediaMetadata(
-            MediaMetadata.Builder()
-                .setTitle(entry.track.taggedTitle ?: entry.track.filenameStem)
-                .setSubtitle(entry.track.name)
-                .build(),
-        )
+        .setMediaMetadata(metadata)
         .build()
 }

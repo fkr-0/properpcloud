@@ -106,6 +106,17 @@ class FolderTagScannerTest {
         )
     }
 
+    @Test
+    fun webmAudioCandidateIsIncludedInFolderTagScan() {
+        val directory = temporary.newFolder("webm-audio")
+        File(directory, "01-track.webm").writeText("webm fixture")
+        val scanner = FolderTagScanner(FakeToolkit()).also { it.addAuthorizedRoot(directory) }
+
+        val snapshot = scanner.scan(directory, SourceId("local"), SnapshotGeneration(1))
+
+        assertEquals(listOf("01-track.webm"), snapshot.files.map { it.identity.filename })
+    }
+
     private class FakeToolkit : AudioTagToolkit {
         override fun inspect(file: File): TagSnapshot {
             if (file.readText() == "broken") error("synthetic parse failure")

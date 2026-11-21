@@ -4,10 +4,8 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
-import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.URLDecoder
-import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -184,7 +182,13 @@ class LibraryHttpServer(
         require(file.startsWith(root)) { "catalog path escaped mount root" }
         require(Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(file)) { "catalog file unavailable" }
         val size = Files.size(file)
-        val range = parseRange(exchange.requestHeaders.getFirst("Range"), size)
+        val range = try {
+            parseByteRange(exchange.requestHeaders.getFirst("Range"), size)
+        } catch (_: RangeNotSatisfiableException) {
+            exchange.responseHeaders.set("Accept-Ranges", "bytes")
+            exchange.responseHeaders.set("Content-Range", "bytes */$size")
+            return json(exchange, 416, mapOf("error" to "range_not_satisfiable"))
+        }
         exchange.responseHeaders.set("Accept-Ranges", "bytes")
         exchange.responseHeaders.set("Content-Type", entry.contentType ?: "application/octet-stream")
         exchange.responseHeaders.set("Cache-Control", "private, no-store")
@@ -203,36 +207,6 @@ class LibraryHttpServer(
         FileChannel.open(file, StandardOpenOption.READ).use { channel ->
             channel.position(start)
             copyBounded(channel, exchange.responseBody, length)
-        }
-    }
-
-    private fun parseRange(header: String?, size: Long): LongRange? {
-        if (header.isNullOrBlank()) return null
-        require(header.startsWith("bytes=") && ',' !in header) { "unsupported Range header" }
-        val raw = header.removePrefix("bytes=")
-        val (left, right) = raw.split('-', limit = 2).let { it[0] to it.getOrElse(1) { "" } }
-        if (left.isBlank()) {
-            val suffix = right.toLongOrNull()?.takeIf { it > 0 } ?: throw IllegalArgumentException("invalid Range")
-            val start = (size - suffix).coerceAtLeast(0)
-            return start..(size - 1)
-        }
-        val start = left.toLongOrNull()?.takeIf { it >= 0 && it < size } ?: throw IllegalArgumentException("invalid Range")
-        val end = right.toLongOrNull()?.coerceAtMost(size - 1) ?: (size - 1)
-        require(end >= start) { "invalid Range" }
-        return start..end
-    }
-
-    private fun copyBounded(channel: FileChannel, output: OutputStream, count: Long) {
-        var remaining = count
-        val buffer = ByteBuffer.allocate(64 * 1024)
-        while (remaining > 0) {
-            buffer.clear()
-            buffer.limit(minOf(buffer.capacity().toLong(), remaining).toInt())
-            val read = channel.read(buffer)
-            if (read < 0) break
-            buffer.flip()
-            output.write(buffer.array(), 0, read)
-            remaining -= read
         }
     }
 

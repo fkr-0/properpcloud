@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-21
+
+### Added
+
+- Added a source-neutral media-format evidence registry for deterministic filename/MIME classification, preserving unknown, ambiguous, and conflicting media as library files instead of guessing codec support.
+- Added WebM audio-container recognition to local folder/tag enumeration and pCloud MIME classification when extension and MIME evidence are consistent; this does not claim Android video rendering or universal device codec support.
+- Added Linux mpv audio-only admission for WebM and Matroska containers, MPRIS audio MIME reporting, and a deterministic Opus/WebM/Matroska smoke covering track discovery, duration, seeking, completion, and incidental-video suppression.
+- Added regression tests for media-format conflicts, ambiguous MP4, normalized MIME parameters, WebM audio candidates, HTTP byte ranges, and incomplete source reads.
+
+### Fixed
+
+- Hardened Media3 read recovery: HTTP 416 and out-of-range read positions now trigger bounded range recovery from a fresh stream capability instead of skipping the queue item.
+- Added per-media bounded network read retries with 250/500/1000 ms backoff and stable media-ID/timeline checks so stale retries cannot restart a replaced queue.
+- Report exhausted range recovery as a playback-position/range problem rather than incorrectly labelling the media corrupt.
+- Return HTTP 416 with Content-Range for unsatisfiable byte ranges and fail a stream copy when the source ends before its advertised response length.
+
+### Changed
+
+- Updated dependency and GitHub Actions pins through the ten reviewed dependency PRs (#21–#30), including SQLite JDBC 3.54.1.0 and dbus-java 5.2.2.
+- Hardened mpv IPC load readiness with playlist-entry correlation, bounded load waits, typed codec/container/network errors, and stable resume-seek behavior.
+
 ## [0.3.1] - 2026-11-01
 
 ### Fixed
@@ -971,7 +992,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live pCloud OAuth, folder UI, persisted queue/progress, and production playback flows
   are intentionally scheduled for `0.1.0`.
 
-[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/fkr-0/properpcloud/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/fkr-0/properpcloud/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/fkr-0/properpcloud/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.11...v0.3.0
 [0.2.0-rc.11]: https://github.com/fkr-0/properpcloud/compare/v0.2.0-rc.10...v0.2.0-rc.11

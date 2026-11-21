@@ -250,6 +250,7 @@ class FolderTagScanner(
             "ogg",
             "oga",
             "opus",
+            "webm",
             "m4a",
             "mp4",
             "aac",

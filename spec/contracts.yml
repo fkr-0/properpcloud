@@ -485,6 +485,10 @@ contracts:
       recovery:
         retriable_http_statuses: [401, 403, 404, 408, 410, 425, 429, 5xx]
         retriable_network: [connection_failed, connection_timeout]
+        range_errors: [http_416, read_position_out_of_range]
+        range_recovery: refresh the ephemeral capability once per cooldown window, restart the same stable item from position zero, preserve queue identity, and surface after the bounded attempt is exhausted
+        transient_read_backoff_ms: [250, 500, 1000]
+        short_read: fail when EOF arrives before the advertised Content-Length; never report a truncated body as a successful complete response
         rule: invalidate only ephemeral stream location, keep queue/current/position stable, re-resolve from source/node identity under bounded retry
         permanent: skip an item-specific unplayable entry when a distinct next queue item exists; otherwise surface without an automatic capability-refresh loop
         transient_network: surface or retry in place; never cascade-skip later queue items merely because connectivity is unavailable

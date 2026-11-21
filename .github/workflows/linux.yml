@@ -35,7 +35,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
-            mpv dbus-x11 libglib2.0-bin libsecret-tools gnome-keyring \
+            mpv ffmpeg dbus-x11 libglib2.0-bin libsecret-tools gnome-keyring \
             xvfb xdotool imagemagick
 
       - name: Set up Buildx

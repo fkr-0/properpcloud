@@ -1,12 +1,16 @@
 package dev.fkr.properpcloud.app.playback
 
+import dev.fkr.properpcloud.core.model.MediaIdentity
+import dev.fkr.properpcloud.core.model.NodeId
 import dev.fkr.properpcloud.core.model.PlayerConnectivity
 import dev.fkr.properpcloud.core.model.PlayerPlaybackState
 import dev.fkr.properpcloud.core.model.PlayerTargetId
 import dev.fkr.properpcloud.core.model.PlayerTargetProvider
 import dev.fkr.properpcloud.core.model.PlayerTargetSnapshot
+import dev.fkr.properpcloud.core.model.SourceId
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -115,6 +119,23 @@ class PlayerRegistryTest {
         assertEquals(PlayerRegistry.LOCAL_PLAYER_ID, players.single().id)
         assertTrue(players.single().controllable)
         assertTrue(players.single().local)
+    }
+
+    @Test
+    fun `local player registry exposes stable source node identity, not a stream capability URL`() {
+        val mediaId = MediaIdentity.encode(SourceId("pcloud"), NodeId("file:42"))
+        val snapshot = PlayerRegistry(::noProviders).observeLocal(
+            PlaybackUiState(
+                connected = true,
+                mediaId = mediaId,
+                title = "Chapter 1",
+                subtitle = "Book",
+                isPlaying = true,
+            ),
+        ).single()
+
+        assertEquals(mediaId, snapshot.currentMediaId)
+        assertFalse(snapshot.currentMediaId.orEmpty().startsWith("https://"))
     }
 
     @Test

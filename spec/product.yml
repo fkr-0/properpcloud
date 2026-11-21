@@ -263,6 +263,8 @@ product:
         - Resolve fresh direct links from stable file IDs just in time.
         - Treat direct links as expiring secrets, not persistent identity.
         - Support seeking and HTTP ranges when provider and format permit.
+        - Treat HTTP 416 and out-of-range reads as bounded range recovery on the same stable item, not as proof that the media item is unavailable.
+        - Treat premature EOF before an advertised stream length as an incomplete read, never a successful complete response.
         - Refresh a link after an eligible expiry, authorization, transient HTTP, or network transport response.
         - Explicit Play after an eligible terminal transport failure rebuilds the selected item from stable source/node identity so a failed direct URL is never blindly replayed.
         - Stream resolution classifies provider failures source-neutrally: only a proven item-unavailable stable identity may be omitted or skipped; source, network, authentication, and temporary capability failures preserve the queue and remain retryable.

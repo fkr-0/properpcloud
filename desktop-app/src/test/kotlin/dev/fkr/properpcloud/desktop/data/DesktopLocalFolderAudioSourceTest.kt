@@ -60,11 +60,49 @@ class DesktopLocalFolderAudioSourceTest {
     }
 
     @Test
+    fun `webm and matroska extensions are admitted by desktop playback policy`() = runTest {
+        val root = temporary.newFolder("container-library")
+        listOf("audio.webm", "audio.mka", "video-container.mkv").forEach { File(root, it).writeBytes(byteArrayOf(1, 2, 3)) }
+        File(root, "document.txt").writeText("not media")
+        File(root, "unknown.bin").writeBytes(byteArrayOf(0))
+
+        assertTrue(DESKTOP_AUDIO_PLAYABLE_EXTENSIONS.containsAll(setOf("webm", "mka", "mkv")))
+
+        val identity = DesktopLocalFilesystemIdentity.forSelectedRoot(root)
+        val source = DesktopLocalFolderAudioSource(LocalFolderRootCapability.open(root, identity.sourceId), identity)
+        val nodes = source.list(source.root.id)
+        val tracks = nodes.filterIsInstance<AudioTrack>().associateBy { it.name }
+
+        assertEquals(setOf("audio.webm", "audio.mka", "video-container.mkv"), tracks.keys)
+        assertEquals("audio/webm", tracks.getValue("audio.webm").contentType)
+        assertEquals("audio/x-matroska", tracks.getValue("audio.mka").contentType)
+        assertEquals("audio/x-matroska", tracks.getValue("video-container.mkv").contentType)
+        assertTrue(nodes.filterIsInstance<LibraryFile>().any { it.name == "document.txt" })
+        assertTrue(nodes.filterIsInstance<LibraryFile>().any { it.name == "unknown.bin" })
+    }
+
+    @Test
+    fun `playable container metadata is not required for queue admission`() = runTest {
+        val root = temporary.newFolder("metadata-free-container")
+        val file = File(root, "voice.webm").apply { writeBytes(byteArrayOf(0x1, 0x2)) }
+        val identity = DesktopLocalFilesystemIdentity.forSelectedRoot(root)
+        val source = DesktopLocalFolderAudioSource(LocalFolderRootCapability.open(root, identity.sourceId), identity)
+
+        val track = source.list(source.root.id).filterIsInstance<AudioTrack>().single()
+
+        assertEquals(file.name, track.name)
+        assertEquals("voice", track.filenameStem)
+        assertEquals(null, track.durationMillis)
+        assertEquals("audio/webm", track.contentType)
+    }
+
+    @Test
     fun `browse rejects symlink escapes`() = runTest {
         val root = temporary.newFolder("symlink-library")
         val outside = temporary.newFolder("outside")
         File(root, "inside.mp3").writeText("inside")
         File(outside, "outside.mp3").writeText("outside")
+        File(outside, "outside.webm").writeText("outside")
         val link = File(root, "escape")
         val symlinkCreated = runCatching {
             Files.createSymbolicLink(link.toPath(), outside.toPath())
@@ -76,6 +114,11 @@ class DesktopLocalFolderAudioSourceTest {
         val names = source.list(source.root.id).map { it.name }
 
         assertEquals(listOf("inside.mp3"), names)
-        if (symlinkCreated) assertFalse(names.contains("escape"))
+        if (symlinkCreated) {
+            assertFalse(names.contains("escape"))
+            val fileLink = File(root, "escape.webm")
+            Files.createSymbolicLink(fileLink.toPath(), File(outside, "outside.webm").toPath())
+            assertFalse(source.list(source.root.id).any { it.name == "escape.webm" })
+        }
     }
 }

@@ -1,5 +1,7 @@
 package dev.fkr.properpcloud.app.playback
 
+import android.net.Uri
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -10,15 +12,20 @@ import dev.fkr.properpcloud.core.model.NodeId
 import dev.fkr.properpcloud.core.model.PlaybackQueue
 import dev.fkr.properpcloud.core.model.QueueEntry
 import dev.fkr.properpcloud.core.model.SourceId
+import dev.fkr.properpcloud.core.model.StreamHandle
 import dev.fkr.properpcloud.core.model.StreamResolutionException
 import dev.fkr.properpcloud.core.model.StreamResolutionFailureKind
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 @UnstableApi
 class PlaybackConnectionTest {
     @Test
@@ -92,13 +99,33 @@ class PlaybackConnectionTest {
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
             PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED,
             PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
-            PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
         ).forEach { errorCode ->
             assertEquals(
                 expected,
                 playbackErrorUserMessage(errorCode, responseCode = null, errorCodeName = "fixture"),
             )
         }
+    }
+
+    @Test
+    fun outOfRangeReadExplainsPositionRecoveryInsteadOfCallingMediaCorrupt() {
+        val expected = "The playback position is outside the available stream range. Restart from the beginning or seek to an earlier position."
+        assertEquals(
+            expected,
+            playbackErrorUserMessage(
+                PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+                responseCode = null,
+                errorCodeName = "ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE",
+            ),
+        )
+        assertEquals(
+            expected,
+            playbackErrorUserMessage(
+                PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+                responseCode = 416,
+                errorCodeName = "ERROR_CODE_IO_BAD_HTTP_STATUS",
+            ),
+        )
     }
 
     @Test
@@ -180,7 +207,7 @@ class PlaybackConnectionTest {
 
     @Test
     fun terminalMediaVariantsSkipWithoutTreatingPermissionFailureAsItemTerminal() {
-        listOf(404, 410, 415, 416, 422).forEach { responseCode ->
+        listOf(404, 410, 415, 422).forEach { responseCode ->
             assertEquals(
                 PlaybackFailureAction.SKIP_TO_NEXT,
                 playbackFailureAction(
@@ -195,7 +222,6 @@ class PlaybackConnectionTest {
         listOf(
             PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
             PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
-            PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
             PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
@@ -226,6 +252,93 @@ class PlaybackConnectionTest {
                 hasNextMediaItem = true,
             ),
         )
+    }
+
+    @Test
+    fun rangeReadFailuresRecoverOnceInsteadOfConsumingTheQueueEntry() {
+        assertEquals(
+            PlaybackFailureAction.RECOVER_RANGE,
+            playbackFailureAction(
+                PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+                responseCode = 416,
+                refreshAvailable = false,
+                hasNextMediaItem = true,
+                rangeRecoveryAvailable = true,
+            ),
+        )
+        assertEquals(
+            PlaybackFailureAction.RECOVER_RANGE,
+            playbackFailureAction(
+                PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+                responseCode = null,
+                refreshAvailable = false,
+                hasNextMediaItem = false,
+                rangeRecoveryAvailable = true,
+            ),
+        )
+        assertEquals(
+            PlaybackFailureAction.SURFACE_FAILURE,
+            playbackFailureAction(
+                PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE,
+                responseCode = null,
+                refreshAvailable = false,
+                hasNextMediaItem = true,
+                rangeRecoveryAvailable = false,
+            ),
+        )
+        assertEquals(
+            PlaybackFailureAction.SURFACE_FAILURE,
+            playbackFailureAction(
+                PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+                responseCode = 416,
+                refreshAvailable = false,
+                hasNextMediaItem = true,
+                rangeRecoveryAvailable = false,
+            ),
+        )
+    }
+
+    @Test
+    fun transientNetworkReadFailuresRetryCurrentItemWithoutSkipping() {
+        listOf(
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+        ).forEach { errorCode ->
+            assertEquals(
+                PlaybackFailureAction.RETRY_TRANSIENT,
+                playbackFailureAction(
+                    errorCode = errorCode,
+                    responseCode = null,
+                    refreshAvailable = false,
+                    hasNextMediaItem = false,
+                    transientRetryAvailable = true,
+                ),
+            )
+            assertEquals(
+                PlaybackFailureAction.SURFACE_FAILURE,
+                playbackFailureAction(
+                    errorCode = errorCode,
+                    responseCode = null,
+                    refreshAvailable = false,
+                    hasNextMediaItem = true,
+                    transientRetryAvailable = false,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun boundedPlaybackRetryGateLimitsRetriesPerStableMediaIdentity() {
+        val gate = BoundedPlaybackRetryGate()
+
+        assertEquals(250L, gate.nextDelayMillis("pcloud:file:42"))
+        assertEquals(500L, gate.nextDelayMillis("pcloud:file:42"))
+        assertEquals(1_000L, gate.nextDelayMillis("pcloud:file:42"))
+        assertNull(gate.nextDelayMillis("pcloud:file:42"))
+        assertEquals(250L, gate.nextDelayMillis("pcloud:file:43"))
+
+        gate.reset("pcloud:file:42")
+        assertEquals(250L, gate.nextDelayMillis("pcloud:file:42"))
     }
 
     @Test
@@ -263,107 +376,143 @@ class PlaybackConnectionTest {
     }
 
     @Test
-    fun queueResolutionSkipsBrokenItemsAndMovesStartToNextSurvivor() = runTest {
-        val items = listOf("good-a", "broken", "good-b").map { MediaItem.Builder().setMediaId(it).build() }
-
-        val result = resolveMediaItemsSkippingFailures(items, startIndex = 1, startPositionMs = 42_000) { item ->
-            if (item.mediaId == "broken") {
-                throw StreamResolutionException(
-                    StreamResolutionFailureKind.ITEM_UNAVAILABLE,
-                    "fixture item unavailable",
-                )
-            }
-            // Keep this a plain JVM policy test. MediaItem.setUri(String) calls android.net.Uri,
-            // which is intentionally unavailable outside Robolectric and would make every
-            // otherwise-good item look like a resolution failure here.
-            item
+    fun queuePreparationPreservesEveryStableItemAndRequestedPosition() = runTest {
+        val items = listOf("first", "current", "later").map { mediaId ->
+            MediaItem.Builder().setMediaId(mediaId).build()
         }
 
-        assertEquals(listOf("good-a", "good-b"), result.items.map { it.mediaId })
-        assertEquals(1, result.startIndex)
-        assertEquals(0, result.startPositionMs)
+        val prepared = prepareMediaItemsForPlayback(items, startIndex = 1, startPositionMs = 42_000)
+
+        assertEquals(items, prepared.items)
+        assertEquals(listOf("first", "current", "later"), prepared.items.map { it.mediaId })
+        assertEquals(1, prepared.startIndex)
+        assertEquals(42_000, prepared.startPositionMs)
     }
 
     @Test
-    fun queueResolutionPreservesStartPositionWhenRequestedItemSurvives() = runTest {
-        val items = listOf("broken", "good").map { MediaItem.Builder().setMediaId(it).build() }
-
-        val result = resolveMediaItemsSkippingFailures(items, startIndex = 1, startPositionMs = 12_345) { item ->
-            if (item.mediaId == "broken") {
-                throw StreamResolutionException(
-                    StreamResolutionFailureKind.ITEM_UNAVAILABLE,
-                    "fixture item unavailable",
-                )
-            }
-            item
+    fun queuePreparationClampsIndexWithoutDroppingItemsOrPosition() = runTest {
+        val items = listOf("first", "last").map { mediaId ->
+            MediaItem.Builder().setMediaId(mediaId).build()
         }
 
-        assertEquals(listOf("good"), result.items.map { it.mediaId })
-        assertEquals(0, result.startIndex)
-        assertEquals(12_345, result.startPositionMs)
+        val prepared = prepareMediaItemsForPlayback(items, startIndex = Int.MAX_VALUE, startPositionMs = 12_345)
+
+        assertEquals(items, prepared.items)
+        assertEquals(1, prepared.startIndex)
+        assertEquals(12_345, prepared.startPositionMs)
     }
 
     @Test
-    fun terminalFinalRequestedItemDoesNotReplayEarlierSurvivor() = runTest {
-        val items = listOf("good", "broken").map { MediaItem.Builder().setMediaId(it).build() }
+    fun queuePreparationPreservesUnsetPositionSentinel() = runTest {
+        val items = listOf(MediaItem.Builder().setMediaId("current").build())
 
-        val failure = runCatching {
-            resolveMediaItemsSkippingFailures(items, startIndex = 1, startPositionMs = 12_345) { item ->
-                if (item.mediaId == "broken") {
-                    throw StreamResolutionException(
-                        StreamResolutionFailureKind.ITEM_UNAVAILABLE,
-                        "fixture item unavailable",
-                    )
-                }
-                item
-            }
-        }.exceptionOrNull()
+        val prepared = prepareMediaItemsForPlayback(items, startIndex = 0, startPositionMs = C.TIME_UNSET)
 
-        assertTrue(failure is StreamResolutionException)
-        assertEquals(StreamResolutionFailureKind.ITEM_UNAVAILABLE, (failure as StreamResolutionException).kind)
+        assertEquals(C.TIME_UNSET, prepared.startPositionMs)
     }
 
     @Test
-    fun transientResolutionFailureIsSurfacedWithoutDestructiveQueueOmission() = runTest {
-        val items = listOf("good-a", "offline", "good-b").map { MediaItem.Builder().setMediaId(it).build() }
-        val attempted = mutableListOf<String>()
+    fun streamResolutionRetriesCapabilityAtExpiryBoundaryAfterDeterministicDelay() = runTest {
+        val handles = listOf(
+            StreamHandle("https://expired.example/audio", expiresAtEpochMillis = 30_000),
+            StreamHandle("https://fresh.example/audio", expiresAtEpochMillis = 30_001),
+        )
+        val delays = mutableListOf<Long>()
+        var attempts = 0
+
+        val resolved = resolveStreamHandleWithRetry(
+            resolver = { handles[attempts++] },
+            nowEpochMillis = { 0L },
+            wait = { duration ->
+                delays += duration
+                delay(duration)
+            },
+        )
+
+        assertEquals("https://fresh.example/audio", resolved.url)
+        assertEquals(2, attempts)
+        assertEquals(listOf(250L), delays)
+    }
+
+    @Test
+    fun streamResolutionRetriesTransientFailuresWithBoundedBackoff() = runTest {
+        val delays = mutableListOf<Long>()
+        var attempts = 0
 
         val failure = runCatching {
-            resolveMediaItemsSkippingFailures(items) { item ->
-                attempted += item.mediaId
-                if (item.mediaId == "offline") {
+            resolveStreamHandleWithRetry(
+                resolver = {
+                    attempts += 1
                     throw StreamResolutionException(
                         StreamResolutionFailureKind.TRANSIENT,
-                        "fixture source offline",
+                        "temporary provider failure",
                     )
-                }
-                item
-            }
+                },
+                nowEpochMillis = { 0L },
+                wait = { duration ->
+                    delays += duration
+                    delay(duration)
+                },
+            )
         }.exceptionOrNull()
 
         assertTrue(failure is StreamResolutionException)
         assertEquals(StreamResolutionFailureKind.TRANSIENT, (failure as StreamResolutionException).kind)
-        assertEquals(listOf("good-a", "offline"), attempted)
+        assertEquals(3, attempts)
+        assertEquals(listOf(250L, 500L), delays)
     }
 
     @Test
-    fun allTerminalResolutionFailuresEndOnceInsteadOfReturningAnEmptyPlayerQueue() = runTest {
-        val items = listOf("bad-a", "bad-b").map { MediaItem.Builder().setMediaId(it).build() }
+    fun repeatedlyNearExpiredCapabilitiesStopAtTheRetryLimit() = runTest {
+        val delays = mutableListOf<Long>()
         var attempts = 0
 
         val failure = runCatching {
-            resolveMediaItemsSkippingFailures(items) {
-                attempts += 1
-                throw StreamResolutionException(
-                    StreamResolutionFailureKind.ITEM_UNAVAILABLE,
-                    "fixture item unavailable",
-                )
-            }
+            resolveStreamHandleWithRetry(
+                resolver = {
+                    attempts += 1
+                    StreamHandle("https://near-expiry.example/audio", expiresAtEpochMillis = 29_999)
+                },
+                nowEpochMillis = { 0L },
+                wait = { duration ->
+                    delays += duration
+                    delay(duration)
+                },
+            )
         }.exceptionOrNull()
 
-        assertEquals(2, attempts)
+        assertTrue(failure is StreamResolutionException)
+        assertEquals(StreamResolutionFailureKind.TRANSIENT, (failure as StreamResolutionException).kind)
+        assertEquals(3, attempts)
+        assertEquals(listOf(250L, 500L), delays)
+    }
+
+    @Test
+    fun permanentUnavailableItemIsNotRetried() = runTest {
+        var attempts = 0
+        val delays = mutableListOf<Long>()
+
+        val failure = runCatching {
+            resolveStreamHandleWithRetry(
+                resolver = {
+                    attempts += 1
+                    throw StreamResolutionException(
+                        StreamResolutionFailureKind.ITEM_UNAVAILABLE,
+                        "missing stable item",
+                    )
+                },
+                wait = { duration ->
+                    delays += duration
+                    delay(duration)
+                },
+                maxAttempts = 5,
+            )
+        }.exceptionOrNull()
+
         assertTrue(failure is StreamResolutionException)
         assertEquals(StreamResolutionFailureKind.ITEM_UNAVAILABLE, (failure as StreamResolutionException).kind)
+        assertEquals(1, attempts)
+        assertTrue(delays.isEmpty())
     }
 
     @Test
@@ -372,6 +521,44 @@ class PlaybackConnectionTest {
         assertTrue(shouldPrepareAfterManualSeek(Player.STATE_IDLE, hasPlayerError = false))
         assertTrue(shouldPrepareAfterManualSeek(Player.STATE_READY, hasPlayerError = true))
         assertFalse(shouldPrepareAfterManualSeek(Player.STATE_READY, hasPlayerError = false))
+    }
+
+    @Test
+    fun stableQueueCarriesOnlyCanonicalConsistentMimeHints() {
+        val sourceId = SourceId("pcloud")
+        fun track(name: String, contentType: String?) = AudioTrack(
+            sourceId = sourceId,
+            id = NodeId("file:$name"),
+            parentId = NodeId("folder:1"),
+            name = name,
+            contentType = contentType,
+        )
+        val queue = PlaybackQueue(
+            entries = listOf(
+                QueueEntry(track("chapter.m4b", null)),
+                QueueEntry(track("recording.AIFF", "application/octet-stream")),
+                QueueEntry(track("payload.exe", "audio/mpeg")),
+                QueueEntry(track("mismatch.mp3", "audio/flac")),
+                QueueEntry(track("movie.mp4", "application/octet-stream")),
+                QueueEntry(track("voice", " AUDIO/OPUS ; codecs=opus ")),
+            ),
+        )
+
+        val hints = queue.toStableMediaItems().map { item ->
+            item.mediaMetadata.extras?.getString(PLAYBACK_MIME_TYPE_EXTRA)
+        }
+
+        assertEquals(
+            listOf("audio/mp4", "audio/aiff", null, null, null, "audio/opus"),
+            hints,
+        )
+
+        val audioItem = queue.toStableMediaItems().first()
+        val deferred = audioItem.withDeferredStreamUri(
+            Uri.Builder().scheme("properpcloud-stream").authority("item").build(),
+        )
+        assertEquals("audio/mp4", deferred.localConfiguration?.mimeType)
+        assertEquals("properpcloud-stream", deferred.localConfiguration?.uri?.scheme)
     }
 
     @Test

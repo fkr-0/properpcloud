@@ -29,6 +29,28 @@ data class MprisSnapshot(
     val canPrevious: Boolean = false,
 )
 
+internal fun mprisSupportedUriSchemes(): List<String> = emptyList()
+
+/** Audio MIME capabilities only. Container codecs still depend on the installed host mpv build. */
+internal fun mprisSupportedMimeTypes(): List<String> = listOf(
+    "audio/mpeg",
+    "audio/flac",
+    "audio/ogg",
+    "audio/opus",
+    "audio/aac",
+    "audio/wav",
+    "audio/aiff",
+    "audio/mp4",
+    "audio/webm",
+    "audio/x-matroska",
+)
+
+internal fun mprisDurationMicros(track: AudioTrack?, playback: MpvState): Long? =
+    (track?.durationMillis ?: playback.durationMillis)?.takeIf { it > 0 }?.times(1_000)
+
+internal fun rejectUnsupportedMprisUri(@Suppress("UNUSED_PARAMETER") uri: String): Nothing =
+    throw UnsupportedOperationException("URI opening is not supported")
+
 class MprisService(private val actions: MprisActions) : MediaPlayer2, Player, Properties, AutoCloseable {
     private val snapshot = AtomicReference(MprisSnapshot())
     private val connection: DBusConnection = DBusConnectionBuilder.forSessionBus().build().also {
@@ -60,7 +82,7 @@ class MprisService(private val actions: MprisActions) : MediaPlayer2, Player, Pr
     override fun Play() = actions.play()
     override fun Seek(offsetMicroseconds: Long) = actions.seek(offsetMicroseconds / 1_000)
     override fun SetPosition(trackId: DBusPath, positionMicroseconds: Long) = actions.seekAbsolute(positionMicroseconds / 1_000)
-    override fun OpenUri(uri: String) = Unit
+    override fun OpenUri(uri: String) = rejectUnsupportedMprisUri(uri)
     override fun isRemote(): Boolean = false
     override fun getObjectPath(): String = OBJECT_PATH
 
@@ -94,8 +116,8 @@ class MprisService(private val actions: MprisActions) : MediaPlayer2, Player, Pr
         "HasTrackList" to Variant(false),
         "Identity" to Variant("properpcloud"),
         "DesktopEntry" to Variant("properpcloud"),
-        "SupportedUriSchemes" to Variant(listOf("file", "https"), "as"),
-        "SupportedMimeTypes" to Variant(listOf("audio/mpeg", "audio/flac", "audio/ogg", "audio/wav", "audio/mp4"), "as"),
+        "SupportedUriSchemes" to Variant(mprisSupportedUriSchemes(), "as"),
+        "SupportedMimeTypes" to Variant(mprisSupportedMimeTypes(), "as"),
     )
 
     private fun playerProperties(): Map<String, Variant<*>> {
@@ -105,7 +127,7 @@ class MprisService(private val actions: MprisActions) : MediaPlayer2, Player, Pr
             "mpris:trackid" to Variant(DBusPath(track?.let(::trackPath) ?: "/org/mpris/MediaPlayer2/Track/none")),
             "xesam:title" to Variant(track?.taggedTitle ?: track?.filenameStem ?: "Nothing playing"),
         )
-        track?.durationMillis?.let { metadata["mpris:length"] = Variant(it * 1_000) }
+        mprisDurationMicros(track, current.playback)?.let { metadata["mpris:length"] = Variant(it) }
         track?.name?.let { metadata["xesam:url"] = Variant("properpcloud:${track.id.value}") }
         return linkedMapOf(
             "PlaybackStatus" to Variant(if (current.playback.idle) "Stopped" else if (current.playback.paused) "Paused" else "Playing"),

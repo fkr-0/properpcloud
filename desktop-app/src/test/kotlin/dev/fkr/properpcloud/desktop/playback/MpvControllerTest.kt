@@ -9,6 +9,7 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.google.gson.JsonParser
 import java.nio.file.Path
 
 class MpvControllerTest {
@@ -48,6 +49,54 @@ class MpvControllerTest {
             )
         }
         assertEquals("mpv command failed", error.message)
+    }
+
+    @Test
+    fun `file-loaded is accepted only after start for the expected playlist entry`() {
+        val gate = MpvLoadEventGate()
+
+        assertFalse(gate.acceptFileLoaded())
+        assertFalse(gate.acceptStart(6))
+        gate.expectEntryId(7)
+        assertFalse(gate.acceptFileLoaded())
+        assertFalse(gate.acceptStart(6))
+        assertFalse(gate.acceptStart(null))
+        assertTrue(gate.acceptStart(7))
+        assertTrue(gate.acceptFileLoaded())
+
+        // A new load generation expects a different mpv playlist entry. Events for the
+        // previous entry must not make the replacement appear ready.
+        gate.expectEntryId(8)
+        assertFalse(gate.acceptFileLoaded())
+        assertFalse(gate.acceptStart(7))
+        assertTrue(gate.acceptStart(8))
+        assertTrue(gate.acceptFileLoaded())
+    }
+
+    @Test
+    fun `audio track discovery accepts audio-only and audio-video containers but rejects no-audio media`() {
+        assertFalse(mpvTrackListHasAudio(JsonParser.parseString("[]").asJsonArray))
+        assertFalse(mpvTrackListHasAudio(JsonParser.parseString("[{\"type\":\"video\"}]").asJsonArray))
+        assertTrue(mpvTrackListHasAudio(JsonParser.parseString("[{\"type\":\"audio\"}]").asJsonArray))
+        assertTrue(mpvTrackListHasAudio(JsonParser.parseString("[{\"type\":\"video\"},{\"type\":\"audio\"}]").asJsonArray))
+        assertFalse(mpvTrackListHasAudio(null))
+    }
+
+    @Test
+    fun `classifies deterministic media errors separately from network failures`() {
+        assertEquals(MpvFailureKind.UNSUPPORTED_CODEC, classifyMpvFailure("Failed to open codec decoder"))
+        assertEquals(MpvFailureKind.INVALID_MEDIA, classifyMpvFailure("demux: invalid container"))
+        assertEquals(MpvFailureKind.NO_AUDIO, classifyMpvFailure("no audio stream found"))
+        assertEquals(MpvFailureKind.TRANSIENT_NETWORK, classifyMpvFailure("HTTP connection timed out"))
+        assertEquals(MpvFailureKind.UNKNOWN, classifyMpvFailure("opaque mpv failure"))
+    }
+
+    @Test
+    fun `failure classifications never retain raw diagnostics`() {
+        val failure = MpvPlaybackException(classifyMpvFailure("unsupported codec in https://private.invalid/file?token=secret"))
+        assertEquals(MpvFailureKind.UNSUPPORTED_CODEC, failure.kind)
+        assertFalse(failure.message.orEmpty().contains("private.invalid"))
+        assertFalse(failure.message.orEmpty().contains("secret"))
     }
 
     @Test
@@ -126,6 +175,33 @@ class MpvControllerTest {
         assertFalse(stopped.eofReached)
         assertNull(eof.error)
         assertNull(stopped.error)
+    }
+
+    @Test
+    fun `known terminal failure survives polling without being reclassified as transient`() {
+        val failed = MpvState(
+            running = true,
+            paused = true,
+            idle = true,
+            error = "unsupported or unavailable audio codec",
+            failureKind = MpvFailureKind.UNSUPPORTED_CODEC,
+            streamFailure = true,
+        )
+
+        val projected = mpvPlaybackState(
+            previous = failed,
+            paused = true,
+            positionMillis = 0,
+            durationMillis = null,
+            idle = true,
+            eofReached = false,
+            expectedIdle = false,
+        )
+
+        assertEquals(MpvFailureKind.UNSUPPORTED_CODEC, projected.failureKind)
+        assertEquals("unsupported or unavailable audio codec", projected.error)
+        assertFalse(projected.streamFailure)
+        assertFalse(projected.restartAvailable)
     }
 
     @Test
