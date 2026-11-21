@@ -121,7 +121,7 @@ jobs:
 
       - name: Upload release verification reports
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: properpcloud-release-reports-${{ env.RELEASE_TAG }}
           if-no-files-found: warn
@@ -150,14 +150,14 @@ jobs:
             | gzip -n > .release-inputs/properpcloud-desktop-image.tar.gz
 
       - name: Upload Android release baseline
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: properpcloud-android-${{ env.RELEASE_TAG }}
           if-no-files-found: error
           path: dist/
 
       - name: Upload shared desktop image
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: properpcloud-desktop-image-${{ env.RELEASE_TAG }}
           if-no-files-found: error
@@ -211,7 +211,7 @@ jobs:
           bash scripts/run-clean-profile.sh bash scripts/appimage-smoke.sh "$appimage"
 
       - name: Upload AppImage
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: properpcloud-appimage-${{ env.RELEASE_TAG }}
           if-no-files-found: error
@@ -264,7 +264,7 @@ jobs:
           bash scripts/flatpak-bundle-smoke.sh "$bundle"
 
       - name: Upload Flatpak
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: properpcloud-flatpak-${{ env.RELEASE_TAG }}
           if-no-files-found: error
@@ -334,7 +334,7 @@ jobs:
           subject-path: dist/properpcloud-*
 
       - name: Upload complete release artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: properpcloud-${{ env.RELEASE_TAG }}
           if-no-files-found: error
